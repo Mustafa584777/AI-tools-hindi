@@ -43,6 +43,7 @@ export default function AdminPanelPage() {
   const contentRef = useRef<HTMLTextAreaElement>(null);
   const contentImageInputRef = useRef<HTMLInputElement>(null);
   const featuredImageInputRef = useRef<HTMLInputElement>(null);
+  const restoreFileInputRef = useRef<HTMLInputElement>(null);
 
   const [notification, setNotification] = useState<string | null>(null);
 
@@ -84,7 +85,7 @@ export default function AdminPanelPage() {
     }, 0);
   };
 
-  // Local Image Upload for Article Content
+  // Local Image Upload for Article Content (Mid-article WordPress style)
   const handleContentImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -97,7 +98,6 @@ export default function AdminPanelPage() {
       insertTag(imgHtml, '');
     };
     reader.readAsDataURL(file);
-    // Reset file input
     if (contentImageInputRef.current) contentImageInputRef.current.value = '';
   };
 
@@ -156,6 +156,48 @@ export default function AdminPanelPage() {
     setWpRawCode('');
     setShowWpImporter(false);
     showNotify('WordPress code successfully converted and inserted into editor!');
+  };
+
+  const handleExportBackup = () => {
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(posts, null, 2));
+    const downloadAnchor = document.createElement('a');
+    downloadAnchor.setAttribute("href", dataStr);
+    downloadAnchor.setAttribute("download", `aitoolhindi-backup-${new Date().toISOString().slice(0, 10)}.json`);
+    document.body.appendChild(downloadAnchor);
+    downloadAnchor.click();
+    downloadAnchor.remove();
+    showNotify('All site articles backup exported successfully!');
+  };
+
+  const handleImportBackup = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (uploadEvent) => {
+      try {
+        const content = uploadEvent.target?.result as string;
+        const importedPosts: BlogPost[] = JSON.parse(content);
+        if (!Array.isArray(importedPosts)) {
+          alert('Invalid backup format. Must be an array of articles.');
+          return;
+        }
+
+        if (confirm(`Are you sure you want to restore ${importedPosts.length} articles? This will sync them to Firestore and update existing items.`)) {
+          for (const post of importedPosts) {
+            await saveBlogPostToFirestore(post);
+          }
+          await loadData();
+          showNotify(`Successfully restored ${importedPosts.length} articles!`);
+        }
+      } catch (err) {
+        console.error(err);
+        alert('Failed to parse backup JSON file.');
+      } finally {
+        if (restoreFileInputRef.current) restoreFileInputRef.current.value = '';
+      }
+    };
+    reader.readAsText(file);
   };
 
   const handleOpenNewBlog = () => {
@@ -266,7 +308,7 @@ export default function AdminPanelPage() {
                 {editingBlogId ? 'Edit WordPress Tutorial Post' : 'Create New WordPress Tutorial Post'}
               </h1>
               <p className="text-black text-sm font-medium">
-                Write or paste your WordPress article below. Local image upload and popup link insertion supported.
+                Write or paste your WordPress article below. Mid-article local image uploads and popup link insertion supported.
               </p>
             </div>
 
@@ -420,11 +462,11 @@ export default function AdminPanelPage() {
                 />
               </div>
 
-              {/* WordPress-Style Formatting Toolbar with Local Image & Popup Link */}
+              {/* WordPress-Style Formatting Toolbar with Mid-Article Image Upload */}
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <label className="text-xs font-bold text-black">Rich HTML Content Editor (WordPress Style)</label>
-                  <span className="text-xs text-black font-medium">Insert local images & links via popup</span>
+                  <span className="text-xs text-orange-600 font-bold">💡 Tip: Place cursor in text and click &quot;Upload Mid-Article Image&quot;</span>
                 </div>
 
                 <div className="flex flex-wrap items-center gap-1.5 p-2.5 bg-slate-100 rounded-xl border border-slate-200">
@@ -450,9 +492,9 @@ export default function AdminPanelPage() {
                   <span className="text-slate-300">|</span>
                   {/* Link Popup Button */}
                   <button type="button" onClick={handleOpenLinkModal} className="px-3 py-1.5 bg-white hover:bg-orange-50 hover:text-orange-600 rounded-lg text-xs font-bold text-black shadow-sm flex items-center gap-1">
-                    <LinkIcon className="w-3.5 h-3.5" /> Insert Link (Popup)
+                    <LinkIcon className="w-3.5 h-3.5" /> Insert Link
                   </button>
-                  {/* Local Content Image Upload Button */}
+                  {/* Mid-Article Content Image Upload Button */}
                   <input
                     type="file"
                     accept="image/*"
@@ -463,9 +505,9 @@ export default function AdminPanelPage() {
                   />
                   <label
                     htmlFor="contentImgUploadInput"
-                    className="px-3 py-1.5 bg-white hover:bg-orange-50 hover:text-orange-600 rounded-lg text-xs font-bold text-black shadow-sm flex items-center gap-1 cursor-pointer"
+                    className="px-3.5 py-1.5 bg-orange-600 hover:bg-orange-700 text-white rounded-lg text-xs font-bold shadow-sm flex items-center gap-1.5 cursor-pointer"
                   >
-                    <Upload className="w-3.5 h-3.5" /> Upload Image Locally
+                    <Upload className="w-3.5 h-3.5" /> Upload Mid-Article Image
                   </label>
                   <button type="button" onClick={() => insertTag('<ul>\n  <li>', '</li>\n</ul>')} className="px-3 py-1.5 bg-white hover:bg-orange-50 hover:text-orange-600 rounded-lg text-xs font-bold text-black shadow-sm">
                     List
@@ -563,7 +605,7 @@ export default function AdminPanelPage() {
   }
 
   // ==========================================
-  // RENDER MAIN ADMIN DASHBOARD (Tutorials Only)
+  // RENDER MAIN ADMIN DASHBOARD (Tutorials + Backup & Restore)
   // ==========================================
   return (
     <>
@@ -579,7 +621,7 @@ export default function AdminPanelPage() {
             </div>
             <h1 className="text-3xl font-extrabold text-black tracking-tight">Tutorials Content Management</h1>
             <p className="text-black text-sm font-medium">
-              Manage your high-traffic Hindi AI tutorials, import WordPress code, and publish instantly to Firebase.
+              Manage your high-traffic Hindi AI tutorials, import WordPress code, backup site data, and publish instantly to Firebase.
             </p>
           </div>
 
@@ -598,6 +640,42 @@ export default function AdminPanelPage() {
             <span>{notification}</span>
           </div>
         )}
+
+        {/* Backup & Restore Section */}
+        <div className="bg-white rounded-3xl border border-slate-200 p-8 shadow-sm space-y-4">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+              <h2 className="text-lg font-bold text-black">Site Data Backup & Restore (बैकअप और रीस्टोर)</h2>
+              <p className="text-xs text-black font-medium mt-0.5">Export all tutorial articles as a JSON backup file or restore/import articles into Firebase.</p>
+            </div>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={handleExportBackup}
+                className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-black font-bold rounded-xl text-xs inline-flex items-center gap-2 transition-colors"
+              >
+                <Upload className="w-4 h-4 rotate-180" />
+                <span>Export JSON Backup</span>
+              </button>
+
+              <input
+                type="file"
+                accept=".json"
+                ref={restoreFileInputRef}
+                onChange={handleImportBackup}
+                className="hidden"
+                id="restoreJsonInput"
+              />
+              <label
+                htmlFor="restoreJsonInput"
+                className="px-4 py-2.5 bg-orange-600 hover:bg-orange-700 text-white font-bold rounded-xl text-xs cursor-pointer inline-flex items-center gap-2 shadow-sm transition-colors"
+              >
+                <Upload className="w-4 h-4" />
+                <span>Restore from Backup</span>
+              </label>
+            </div>
+          </div>
+        </div>
 
         {/* Posts Table */}
         <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">

@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import Image from 'next/image';
 
 export default function Footer() {
   return (
@@ -6,8 +7,14 @@ export default function Footer() {
       <div className="max-w-7xl mx-auto px-6 py-12 grid grid-cols-1 md:grid-cols-4 gap-8">
         <div className="space-y-4 md:col-span-1">
           <div className="flex items-center gap-2.5 text-white font-bold text-lg tracking-tight">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-orange-600 to-amber-500 flex items-center justify-center text-white">
-              <span className="text-xs font-bold">हिं</span>
+            <div className="w-9 h-9 relative rounded-xl overflow-hidden bg-orange-100 shrink-0">
+              <Image
+                src="/logo.png"
+                alt="Logo"
+                fill
+                className="object-cover"
+                referrerPolicy="no-referrer"
+              />
             </div>
             <span>Aitoolhindi.online</span>
           </div>
@@ -21,7 +28,6 @@ export default function Footer() {
           <ul className="space-y-2 text-sm text-slate-300">
             <li><Link href="/" className="hover:text-white transition-colors">Home</Link></li>
             <li><Link href="/blog" className="hover:text-white transition-colors">Informational Blog & Tutorials</Link></li>
-            <li><Link href="/admin-panel" className="hover:text-white transition-colors">Admin Panel (CRUD)</Link></li>
             <li><Link href="/about-us" className="hover:text-white transition-colors">About Us</Link></li>
             <li><Link href="/contact-us" className="hover:text-white transition-colors">Contact Us</Link></li>
           </ul>
