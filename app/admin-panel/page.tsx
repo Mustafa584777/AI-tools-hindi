@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { Plus, Edit, Trash2, Database, CheckCircle, ExternalLink, Sparkles, FileText, ArrowLeft, Image as ImageIcon, Link as LinkIcon, Bold, Italic, Heading1, Heading2, Heading3, Code, Wand2, Upload, X, RefreshCw, Eye, Code2, HelpCircle, Bot, AlertTriangle, TrendingUp, Award, Folder, List, Table, Undo, Redo, Settings, ArrowUp, ArrowDown, Copy } from 'lucide-react';
+import { Plus, Edit, Trash2, Database, CheckCircle, ExternalLink, Sparkles, FileText, ArrowLeft, Image as ImageIcon, Link as LinkIcon, Bold, Italic, Heading1, Heading2, Heading3, Code, Wand2, Upload, X, RefreshCw, Eye, Code2, HelpCircle, Bot, AlertTriangle, TrendingUp, Award, Folder, List, Table, Undo, Redo, Settings } from 'lucide-react';
 import { 
   fetchBlogPostsFromFirestore, 
   saveBlogPostToFirestore, 
@@ -33,15 +33,6 @@ interface AIAnalysis {
   competitorComparison: string;
 }
 
-interface EditorBlock {
-  id: string;
-  type: 'p' | 'h1' | 'h2' | 'h3' | 'quote' | 'ul' | 'img';
-  content: string;
-  src?: string;
-  alt?: string;
-  slug?: string;
-}
-
 const CATEGORIES_KEY = 'aitoolhindi_categories_v1';
 
 export default function AdminPanelPage() {
@@ -60,6 +51,7 @@ export default function AdminPanelPage() {
   const [blogSlug, setBlogSlug] = useState('');
   const [isSlugManual, setIsSlugManual] = useState(false);
   const [blogExcerpt, setBlogExcerpt] = useState('');
+  const [blogContent, setBlogContent] = useState('');
   const [blogCategory, setBlogCategory] = useState('AI Guides');
   const [isNewCategoryMode, setIsNewCategoryMode] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
@@ -71,20 +63,9 @@ export default function AdminPanelPage() {
   // Post Settings Toggle State
   const [showPostSettings, setShowPostSettings] = useState(true);
 
-  // WordPress Seamless Block Editor State
-  const [blocks, setBlocks] = useState<EditorBlock[]>([
-    { id: 'b-title', type: 'h1', content: 'Article Title' },
-    { id: 'b-start', type: 'p', content: 'Start writing your tutorial here...' }
-  ]);
-  const [selectedBlockId, setSelectedBlockId] = useState<string | null>('b-start');
-
-  // Editor History for Undo / Redo
-  const [history, setHistory] = useState<EditorBlock[][]>([]);
-  const [historyIndex, setHistoryIndex] = useState<number>(-1);
-
-  // Editor Mode: Block vs HTML Code Mode
-  const [editorMode, setEditorMode] = useState<'block' | 'html'>('block');
-  const [rawHtmlContent, setRawHtmlContent] = useState('');
+  // Editor Mode: Visual vs HTML Code Mode
+  const [editorMode, setEditorMode] = useState<'visual' | 'html'>('visual');
+  const [, setSelectedBlockElement] = useState<HTMLElement | null>(null);
 
   // Article Media Library
   const [articleImages, setArticleImages] = useState<ArticleImage[]>([]);
@@ -105,6 +86,7 @@ export default function AdminPanelPage() {
   const [wpRawCode, setWpRawCode] = useState('');
   const [showWpImporter, setShowWpImporter] = useState(false);
 
+  const visualContentRef = useRef<HTMLDivElement>(null);
   const contentImageInputRef = useRef<HTMLInputElement>(null);
   const featuredImageInputRef = useRef<HTMLInputElement>(null);
   const restoreFileInputRef = useRef<HTMLInputElement>(null);
@@ -142,31 +124,6 @@ export default function AdminPanelPage() {
   const showNotify = (msg: string) => {
     setNotification(msg);
     setTimeout(() => setNotification(null), 3500);
-  };
-
-  const pushHistory = (newBlocks: EditorBlock[]) => {
-    const updatedHistory = history.slice(0, historyIndex + 1);
-    updatedHistory.push(newBlocks);
-    setHistory(updatedHistory);
-    setHistoryIndex(updatedHistory.length - 1);
-  };
-
-  const handleUndo = () => {
-    if (historyIndex > 0) {
-      const prevIndex = historyIndex - 1;
-      setBlocks(history[prevIndex]);
-      setHistoryIndex(prevIndex);
-      showNotify('Undo applied');
-    }
-  };
-
-  const handleRedo = () => {
-    if (historyIndex < history.length - 1) {
-      const nextIndex = historyIndex + 1;
-      setBlocks(history[nextIndex]);
-      setHistoryIndex(nextIndex);
-      showNotify('Redo applied');
-    }
   };
 
   const handleClearCacheAndRefresh = () => {
@@ -209,176 +166,47 @@ export default function AdminPanelPage() {
     }
   };
 
-  // Parse HTML to Block array (Pure helper)
-  const parseHtmlToBlocks = (html: string): EditorBlock[] => {
-    if (!html || !html.trim()) {
-      return [
-        { id: 'b-title', type: 'h1', content: 'Article Title' },
-        { id: 'b-start', type: 'p', content: 'Start writing your tutorial here...' }
-      ];
+  const applyFormatting = (command: string, value: string = '') => {
+    document.execCommand(command, false, value);
+    if (visualContentRef.current) {
+      setBlogContent(visualContentRef.current.innerHTML);
     }
+  };
 
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(html, 'text/html');
-    const children = Array.from(doc.body.children);
-    const result: EditorBlock[] = [];
+  const insertTag = (tagOpen: string, tagClose: string = '') => {
+    const selection = window.getSelection();
+    const selectedText = selection ? selection.toString() : 'Text here';
+    const wrapped = `${tagOpen}${selectedText}${tagClose}`;
+    applyFormatting('insertHTML', wrapped);
+  };
 
-    if (children.length === 0) {
-      return [{ id: 'b-0', type: 'p', content: html }];
+  const insertList = () => {
+    const listHtml = `<ul class="list-disc pl-6 space-y-2 mb-6 text-slate-700"><li>List item 1</li><li>List item 2</li><li>List item 3</li></ul>\n`;
+    applyFormatting('insertHTML', listHtml);
+  };
+
+  const insertTable = () => {
+    const tableHtml = `<div class="overflow-x-auto my-6"><table class="w-full border-collapse border border-slate-300"><thead><tr class="bg-slate-100"><th class="border border-slate-300 p-3 text-left font-bold text-black">Header 1</th><th class="border border-slate-300 p-3 text-left font-bold text-black">Header 2</th></tr></thead><tbody><tr><td class="border border-slate-300 p-3 text-black">Row 1 Cell 1</td><td class="border border-slate-300 p-3 text-black">Row 1 Cell 2</td></tr><tr><td class="border border-slate-300 p-3 text-black">Row 2 Cell 1</td><td class="border border-slate-300 p-3 text-black">Row 2 Cell 2</td></tr></tbody></table></div>\n`;
+    applyFormatting('insertHTML', tableHtml);
+  };
+
+  const handleInsertLink = () => {
+    const url = prompt('Enter URL (Link):', 'https://');
+    if (!url) return;
+    applyFormatting('createLink', url);
+  };
+
+  // Click handler to select block and highlight with light blue border across all blocks
+  const handleVisualClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    const target = e.target as HTMLElement;
+    const blockEl = target.closest('p, h1, h2, h3, blockquote, ul, table, li, div') as HTMLElement;
+    if (blockEl && visualContentRef.current?.contains(blockEl) && blockEl !== visualContentRef.current) {
+      visualContentRef.current.querySelectorAll('.editor-selected-block').forEach(el => {
+        el.classList.remove('ring-2', 'ring-blue-400', 'bg-blue-50/20', 'rounded-xl', 'p-2', 'editor-selected-block');
+      });
+      blockEl.classList.add('ring-2', 'ring-blue-400', 'bg-blue-50/20', 'rounded-xl', 'p-2', 'editor-selected-block');
+      setSelectedBlockElement(blockEl);
     }
-
-    children.forEach((el, idx) => {
-      const tag = el.tagName.toLowerCase();
-      const text = el.textContent || '';
-      const uniqueId = 'b-' + idx + '-' + Math.random().toString(36).substring(2, 8);
-      if (tag === 'h1') {
-        result.push({ id: uniqueId, type: 'h1', content: text });
-      } else if (tag === 'h2') {
-        result.push({ id: uniqueId, type: 'h2', content: text });
-      } else if (tag === 'h3') {
-        result.push({ id: uniqueId, type: 'h3', content: text });
-      } else if (tag === 'blockquote') {
-        result.push({ id: uniqueId, type: 'quote', content: text });
-      } else if (tag === 'ul') {
-        const items = Array.from(el.querySelectorAll('li')).map(li => li.textContent || '').join('\n');
-        result.push({ id: uniqueId, type: 'ul', content: items });
-      } else if (tag === 'img') {
-        result.push({
-          id: el.getAttribute('data-img-id') || uniqueId,
-          type: 'img',
-          content: '',
-          src: el.getAttribute('src') || '',
-          alt: el.getAttribute('alt') || '',
-          slug: el.getAttribute('data-img-slug') || ''
-        });
-      } else {
-        result.push({ id: uniqueId, type: 'p', content: el.innerHTML || text });
-      }
-    });
-
-    return result.length > 0 ? result : [{ id: 'b-fallback', type: 'p', content: html }];
-  };
-
-  // Serialize blocks to HTML string with proper paragraph spacing (mb-6)
-  const serializeBlocksToHtml = (blocksList: EditorBlock[]): string => {
-    return blocksList.map(block => {
-      switch (block.type) {
-        case 'h1':
-          return `<h1 class="text-3xl font-extrabold text-black mt-6 mb-4">${block.content}</h1>`;
-        case 'h2':
-          return `<h2 class="text-2xl font-bold text-black mt-6 mb-3">${block.content}</h2>`;
-        case 'h3':
-          return `<h3 class="text-xl font-semibold text-black mt-4 mb-2">${block.content}</h3>`;
-        case 'quote':
-          return `<blockquote class="border-l-4 border-orange-500 pl-4 py-3 my-6 italic bg-slate-50 text-slate-800 rounded-r-2xl">${block.content}</blockquote>`;
-        case 'ul':
-          return `<ul class="list-disc pl-6 space-y-2 mb-6 text-slate-700">${block.content.split('\n').filter(Boolean).map(li => `<li>${li}</li>`).join('')}</ul>`;
-        case 'img':
-          return `<img src="${block.src || ''}" alt="${block.alt || 'Tutorial image'}" data-img-slug="${block.slug || 'tutorial-image'}" class="w-full rounded-2xl my-6 shadow-md object-cover" />`;
-        case 'p':
-        default:
-          return `<p class="mb-6 text-slate-700 leading-relaxed text-lg">${block.content}</p>`;
-      }
-    }).join('\n');
-  };
-
-  // Block management functions
-  const handleAddBlock = (type: EditorBlock['type'] = 'p') => {
-    const newBlock: EditorBlock = {
-      id: 'b-' + Math.random().toString(36).substring(2, 9),
-      type,
-      content: type === 'img' ? '' : 'New content here...',
-      ...(type === 'img' ? { src: 'https://picsum.photos/seed/newimg/800/450', alt: 'Tutorial illustration', slug: 'tutorial-illustration' } : {})
-    };
-    const updated = [...blocks, newBlock];
-    setBlocks(updated);
-    pushHistory(updated);
-    setSelectedBlockId(newBlock.id);
-  };
-
-  const handleUpdateBlockContent = (id: string, content: string) => {
-    const updated = blocks.map(b => b.id === id ? { ...b, content } : b);
-    setBlocks(updated);
-    pushHistory(updated);
-  };
-
-  const handleMoveBlock = (index: number, direction: 'up' | 'down') => {
-    const newIndex = direction === 'up' ? index - 1 : index + 1;
-    if (newIndex < 0 || newIndex >= blocks.length) return;
-    const updated = [...blocks];
-    const temp = updated[index];
-    updated[index] = updated[newIndex];
-    updated[newIndex] = temp;
-    setBlocks(updated);
-    pushHistory(updated);
-  };
-
-  const handleDeleteBlock = (id: string) => {
-    if (blocks.length <= 1) {
-      alert('Article must have at least one block.');
-      return;
-    }
-    const updated = blocks.filter(b => b.id !== id);
-    setBlocks(updated);
-    pushHistory(updated);
-  };
-
-  // Formatting toolbar actions applied to the currently SELECTED block automatically!
-  const handleFormatSelectedBlock = (action: 'h1' | 'h2' | 'h3' | 'p' | 'bold' | 'italic' | 'link') => {
-    const targetId = selectedBlockId || (blocks.length > 0 ? blocks[0].id : null);
-    if (!targetId) {
-      alert('Please click on a block first to select it.');
-      return;
-    }
-
-    const updated = blocks.map(b => {
-      if (b.id !== targetId) return b;
-      if (action === 'h1' || action === 'h2' || action === 'h3' || action === 'p') {
-        return { ...b, type: action as EditorBlock['type'] };
-      }
-      let updatedContent = b.content;
-      if (action === 'bold') {
-        updatedContent = `<strong>${updatedContent}</strong>`;
-      } else if (action === 'italic') {
-        updatedContent = `<em>${updatedContent}</em>`;
-      } else if (action === 'link') {
-        const url = prompt('Enter URL:', 'https://');
-        if (url) {
-          updatedContent = `<a href="${url}" target="_blank" rel="noopener noreferrer" class="text-orange-600 underline font-bold">${updatedContent}</a>`;
-        }
-      }
-      return { ...b, content: updatedContent };
-    });
-
-    setBlocks(updated);
-    pushHistory(updated);
-    setSelectedBlockId(targetId);
-    showNotify(`Formatting applied to selected block!`);
-  };
-
-  const insertListBlock = () => {
-    const newBlock: EditorBlock = {
-      id: 'b-' + Math.random().toString(36).substring(2, 9),
-      type: 'ul',
-      content: 'List item 1\nList item 2\nList item 3'
-    };
-    const updated = [...blocks, newBlock];
-    setBlocks(updated);
-    pushHistory(updated);
-    setSelectedBlockId(newBlock.id);
-  };
-
-  const insertTableBlock = () => {
-    const tableHtml = `<div class="overflow-x-auto my-6"><table class="w-full border-collapse border border-slate-300"><thead><tr class="bg-slate-100"><th class="border border-slate-300 p-3 text-left font-bold text-black">Header 1</th><th class="border border-slate-300 p-3 text-left font-bold text-black">Header 2</th></tr></thead><tbody><tr><td class="border border-slate-300 p-3 text-black">Row 1 Cell 1</td><td class="border border-slate-300 p-3 text-black">Row 1 Cell 2</td></tr><tr><td class="border border-slate-300 p-3 text-black">Row 2 Cell 1</td><td class="border border-slate-300 p-3 text-black">Row 2 Cell 2</td></tr></tbody></table></div>`;
-    const newBlock: EditorBlock = {
-      id: 'b-' + Math.random().toString(36).substring(2, 9),
-      type: 'p',
-      content: tableHtml
-    };
-    const updated = [...blocks, newBlock];
-    setBlocks(updated);
-    pushHistory(updated);
-    setSelectedBlockId(newBlock.id);
   };
 
   const handleContentImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -393,7 +221,7 @@ export default function AdminPanelPage() {
       const imgSlug = cleanAlt.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
 
       const newImg: ArticleImage = {
-        id: 'img-' + Math.random().toString(36).substring(2, 8),
+        id: 'img-' + (articleImages.length + 1),
         base64: base64String,
         alt: cleanAlt,
         slug: imgSlug
@@ -401,20 +229,9 @@ export default function AdminPanelPage() {
 
       setArticleImages(prev => [...prev, newImg]);
 
-      const imageBlock: EditorBlock = {
-        id: newImg.id,
-        type: 'img',
-        content: '',
-        src: base64String,
-        alt: cleanAlt,
-        slug: imgSlug
-      };
-
-      const updated = [...blocks, imageBlock];
-      setBlocks(updated);
-      pushHistory(updated);
-      setSelectedBlockId(imageBlock.id);
-      showNotify('Image block added successfully!');
+      const imgHtml = `<img src="${base64String}" alt="${cleanAlt}" data-img-slug="${imgSlug}" class="w-full rounded-2xl my-6 shadow-md object-cover" />\n`;
+      applyFormatting('insertHTML', imgHtml);
+      showNotify('Image inserted into visual editor!');
     };
     reader.readAsDataURL(file);
     if (contentImageInputRef.current) contentImageInputRef.current.value = '';
@@ -445,17 +262,17 @@ export default function AdminPanelPage() {
     if (!cleaned.includes('<p>') && !cleaned.includes('<h1>')) {
       cleaned = cleaned
         .split('\n\n')
-        .map(p => p.trim() ? `<p>${p.trim()}</p>` : '')
+        .map(p => p.trim() ? `<p class="mb-6 text-slate-700 leading-relaxed text-lg">${p.trim()}</p>` : '')
         .join('\n');
     }
 
-    const parsedBlocks = parseHtmlToBlocks(cleaned);
-    const updated = [...blocks, ...parsedBlocks];
-    setBlocks(updated);
-    pushHistory(updated);
+    setBlogContent(prev => (prev ? prev + '\n\n' + cleaned : cleaned));
+    if (visualContentRef.current) {
+      visualContentRef.current.innerHTML = blogContent + '\n\n' + cleaned;
+    }
     setWpRawCode('');
     setShowWpImporter(false);
-    showNotify('WordPress code successfully converted into blocks!');
+    showNotify('WordPress code successfully converted and inserted into visual editor!');
   };
 
   // FAQ Builder Handlers
@@ -465,17 +282,17 @@ export default function AdminPanelPage() {
     setFaqs(updatedFaqs);
     setNewFaqQ('');
     setNewFaqA('');
-    updateBlocksWithFaqs(updatedFaqs);
+    updateContentWithFaqs(updatedFaqs);
     showNotify('FAQ added and Schema automatically generated!');
   };
 
   const handleDeleteFaq = (index: number) => {
     const updatedFaqs = faqs.filter((_, i) => i !== index);
     setFaqs(updatedFaqs);
-    updateBlocksWithFaqs(updatedFaqs);
+    updateContentWithFaqs(updatedFaqs);
   };
 
-  const updateBlocksWithFaqs = (currentFaqs: FAQItem[]) => {
+  const updateContentWithFaqs = (currentFaqs: FAQItem[]) => {
     if (currentFaqs.length === 0) return;
 
     let faqHtml = `<div class="my-8 p-6 bg-slate-50 border border-slate-200 rounded-3xl space-y-4">\n  <h3 class="text-xl font-bold text-black">Frequently Asked Questions (FAQs)</h3>\n  <div class="space-y-3">\n`;
@@ -499,149 +316,146 @@ export default function AdminPanelPage() {
       }))
     };
 
-    const scriptTag = `<script type="application/ld+json">\n${JSON.stringify(schemaData, null, 2)}\n</script>`;
-    const fullContent = faqHtml + '\n' + scriptTag;
+    const schemaScript = `<script type="application/ld+json">\n${JSON.stringify(schemaData, null, 2)}\n</script>`;
 
-    const faqBlock: EditorBlock = {
-      // eslint-disable-next-line react-hooks/purity
-      id: 'b-faq-' + Date.now(),
-      type: 'p',
-      content: fullContent
-    };
-
-    const updated = [...blocks, faqBlock];
-    setBlocks(updated);
-    pushHistory(updated);
+    setBlogContent(prev => {
+      const cleanPrev = prev.replace(/<div class="my-8 p-6 bg-slate-50[^>]*>[\s\S]*?<\/script>/g, '').trim();
+      const updated = cleanPrev + '\n\n' + faqHtml + '\n\n' + schemaScript;
+      if (visualContentRef.current) visualContentRef.current.innerHTML = updated;
+      return updated;
+    });
   };
 
-  // AI Generator & Auditor
+  // AI Supervisor Actions
   const handleAiGeneratePost = async () => {
-    if (!aiKeyword.trim()) {
-      alert('Please enter a keyword or title for AI post generation.');
-      return;
-    }
-
+    if (!aiKeyword.trim()) return;
     setIsGeneratingAi(true);
     try {
       const res = await fetch('/api/ai-supervisor', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'generate', keyword: aiKeyword })
+        body: JSON.stringify({ action: 'generate', keywordOrTitle: aiKeyword })
       });
       const data = await res.json();
-      if (data.error) throw new Error(data.error);
-
-      if (data.title) setBlogTitle(data.title);
-      if (data.slug) {
-        setBlogSlug(data.slug);
-        setIsSlugManual(true);
+      if (data.title) {
+        setBlogTitle(data.title);
+        setBlogSlug(data.slug || data.title.toLowerCase().replace(/[^a-z0-9]+/g, '-'));
+        const cat = data.category || 'AI Guides';
+        setBlogCategory(cat);
+        if (!customCategories.includes(cat)) {
+          const updatedCats = [...customCategories, cat];
+          setCustomCategories(updatedCats);
+          if (typeof window !== 'undefined') localStorage.setItem(CATEGORIES_KEY, JSON.stringify(updatedCats));
+        }
+        setBlogExcerpt(data.excerpt || '');
+        setBlogContent(data.content || '');
+        if (visualContentRef.current) visualContentRef.current.innerHTML = data.content || '';
+        showNotify('Full Hindi article generated successfully by AI Supervisor!');
+      } else {
+        alert('Failed to generate article.');
       }
-      if (data.excerpt) setBlogExcerpt(data.excerpt);
-      if (data.category && customCategories.includes(data.category)) {
-        setBlogCategory(data.category);
-      }
-      if (data.content) {
-        const parsed = parseHtmlToBlocks(data.content);
-        setBlocks(parsed);
-        pushHistory(parsed);
-      }
-      showNotify('AI successfully generated complete post from keyword!');
     } catch (err) {
-      alert('AI Generation error: ' + (err as Error).message);
+      alert('Error generating article: ' + (err as Error).message);
     } finally {
       setIsGeneratingAi(false);
     }
   };
 
   const handleAiAnalyzePost = async () => {
-    if (!blogTitle.trim()) {
-      alert('Please provide an article title first.');
+    if (!blogTitle.trim() || !blogContent.trim()) {
+      alert('Please enter a title and content to analyze.');
       return;
     }
-
     setIsAnalyzingAi(true);
     try {
-      const currentHtml = serializeBlocksToHtml(blocks);
       const res = await fetch('/api/ai-supervisor', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'analyze', title: blogTitle, content: currentHtml })
+        body: JSON.stringify({ action: 'analyze', keywordOrTitle: blogTitle, content: blogContent })
       });
       const data = await res.json();
-      if (data.error) throw new Error(data.error);
-
-      setAnalysisResult(data.analysis);
-      showNotify('AI Supervisor audit completed successfully!');
+      if (data.seoScore !== undefined) {
+        setAnalysisResult(data);
+        showNotify('AI Supervisor analysis complete!');
+      } else {
+        alert('Failed to analyze article.');
+      }
     } catch (err) {
-      alert('AI Audit error: ' + (err as Error).message);
+      alert('Error analyzing article: ' + (err as Error).message);
     } finally {
       setIsAnalyzingAi(false);
     }
   };
 
   const handleAiOptimizePost = async () => {
-    if (!blogTitle.trim()) {
-      alert('Please provide an article title first.');
+    if (!blogTitle.trim() || !blogContent.trim()) {
+      alert('Please enter a title and content to optimize.');
       return;
     }
-
     setIsOptimizingAi(true);
     try {
-      const currentHtml = serializeBlocksToHtml(blocks);
       const res = await fetch('/api/ai-supervisor', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'optimize', title: blogTitle, content: currentHtml })
+        body: JSON.stringify({ action: 'optimize', keywordOrTitle: blogTitle, content: blogContent })
       });
       const data = await res.json();
-      if (data.error) throw new Error(data.error);
-
-      if (data.optimizedTitle) setBlogTitle(data.optimizedTitle);
-      if (data.optimizedExcerpt) setBlogExcerpt(data.optimizedExcerpt);
-      if (data.optimizedContent) {
-        const parsed = parseHtmlToBlocks(data.optimizedContent);
-        setBlocks(parsed);
-        pushHistory(parsed);
+      if (data.title && data.content) {
+        setBlogTitle(data.title);
+        if (data.excerpt) setBlogExcerpt(data.excerpt);
+        setBlogContent(data.content);
+        if (visualContentRef.current) visualContentRef.current.innerHTML = data.content;
+        showNotify('Content successfully optimized by AI Supervisor! Mistakes fixed & SEO boosted.');
+      } else {
+        alert('Failed to optimize article.');
       }
-      showNotify('AI successfully optimized your existing content!');
     } catch (err) {
-      alert('AI Optimization error: ' + (err as Error).message);
+      alert('Error optimizing article: ' + (err as Error).message);
     } finally {
       setIsOptimizingAi(false);
     }
   };
 
-  // Save Blog handler
-  const handleSaveBlog = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!blogTitle.trim() || !blogSlug.trim()) {
-      alert('Please fill in Article Title and Slug.');
-      return;
-    }
+  const handleExportBackup = () => {
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(posts, null, 2));
+    const downloadAnchor = document.createElement('a');
+    downloadAnchor.setAttribute("href", dataStr);
+    downloadAnchor.setAttribute("download", `aitoolhindi-backup-${new Date().toISOString().slice(0, 10)}.json`);
+    document.body.appendChild(downloadAnchor);
+    downloadAnchor.click();
+    downloadAnchor.remove();
+    showNotify('All site articles backup exported successfully!');
+  };
 
-    try {
-      const finalHtml = editorMode === 'html' ? rawHtmlContent : serializeBlocksToHtml(blocks);
-      const postData: BlogPost = {
-        id: editingBlogId || ('post-' + Date.now()),
-        title: blogTitle.trim(),
-        slug: blogSlug.trim().toLowerCase().replace(/[^a-z0-9-]/g, '-'),
-        excerpt: blogExcerpt.trim() || blogTitle.trim(),
-        content: finalHtml,
-        category: blogCategory,
-        author: blogAuthor || 'Anwar',
-        image: blogImage,
-        date: new Date().toLocaleDateString('hi-IN', { day: 'numeric', month: 'long', year: 'numeric' }),
-        status: blogStatus,
-        faqs: faqs.length > 0 ? faqs : undefined
-      };
+  const handleImportBackup = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
 
-      await saveBlogPostToFirestore(postData);
-      await loadData(true);
-      setIsEditingBlog(false);
-      showNotify('Tutorial successfully saved & published to Firebase!');
-    } catch (err) {
-      alert('Error saving post: ' + (err as Error).message);
-    }
+    const reader = new FileReader();
+    reader.onload = async (uploadEvent) => {
+      try {
+        const content = uploadEvent.target?.result as string;
+        const importedPosts: BlogPost[] = JSON.parse(content);
+        if (!Array.isArray(importedPosts)) {
+          alert('Invalid backup format. Must be an array of articles.');
+          return;
+        }
+
+        if (confirm(`Are you sure you want to restore ${importedPosts.length} articles? This will sync them to Firestore and update existing items.`)) {
+          for (const post of importedPosts) {
+            await saveBlogPostToFirestore(post);
+          }
+          await loadData(true);
+          showNotify(`Successfully restored ${importedPosts.length} articles!`);
+        }
+      } catch (err) {
+        console.error(err);
+        alert('Failed to parse backup JSON file.');
+      } finally {
+        if (restoreFileInputRef.current) restoreFileInputRef.current.value = '';
+      }
+    };
+    reader.readAsText(file);
   };
 
   const handleOpenNewBlog = () => {
@@ -650,81 +464,95 @@ export default function AdminPanelPage() {
     setBlogSlug('');
     setIsSlugManual(false);
     setBlogExcerpt('');
+    setBlogContent('<h1 class="text-3xl font-extrabold text-black mt-6 mb-4">Article Title</h1>\n<p class="mb-6 text-slate-700 leading-relaxed text-lg">Start writing your tutorial here with proper spacing...</p>');
     setBlogCategory(customCategories[0] || 'AI Guides');
+    setIsNewCategoryMode(false);
+    setNewCategoryName('');
     setBlogAuthor('Anwar');
-    setBlogImage('https://picsum.photos/seed/blogdefault/800/450');
-    setBlogImageAlt('');
+    setBlogImage('https://picsum.photos/seed/newpost/800/450');
+    setBlogImageAlt('AI tutorial featured image');
     setBlogStatus('published');
-    const initialBlocks: EditorBlock[] = [
-      { id: 'b-' + Math.random().toString(36).substring(2, 8), type: 'h1', content: 'New Article Title' },
-      { id: 'b-' + Math.random().toString(36).substring(2, 8), type: 'p', content: 'Start writing your amazing tutorial here...' }
-    ];
-    setBlocks(initialBlocks);
-    setHistory([initialBlocks]);
-    setHistoryIndex(0);
-    setSelectedBlockId(initialBlocks[0].id);
-    setRawHtmlContent(serializeBlocksToHtml(initialBlocks));
+    setArticleImages([]);
     setFaqs([]);
     setAnalysisResult(null);
+    setEditorMode('visual');
+    setShowPostSettings(true);
     setIsEditingBlog(true);
   };
 
-  const handleOpenEditBlog = (post: BlogPost) => {
-    setEditingBlogId(post.id);
-    setBlogTitle(post.title);
-    setBlogSlug(post.slug);
+  const handleOpenEditBlog = (b: BlogPost) => {
+    setEditingBlogId(b.id);
+    setBlogTitle(b.title);
+    setBlogSlug(b.slug);
     setIsSlugManual(true);
-    setBlogExcerpt(post.excerpt || '');
-    setBlogCategory(post.category || 'AI Guides');
-    setBlogAuthor(post.author || 'Anwar');
-    setBlogImage(post.image || 'https://picsum.photos/seed/blogdefault/800/450');
-    setBlogImageAlt('');
-    setBlogStatus(post.status || 'published');
-    const parsedBlocks = parseHtmlToBlocks(post.content || '');
-    setBlocks(parsedBlocks);
-    setHistory([parsedBlocks]);
-    setHistoryIndex(0);
-    setSelectedBlockId(parsedBlocks.length > 0 ? parsedBlocks[0].id : null);
-    setRawHtmlContent(post.content || '');
-    setFaqs(post.faqs || []);
+    setBlogExcerpt(b.excerpt);
+    setBlogContent(b.content);
+    const cat = b.category || 'AI Guides';
+    if (!customCategories.includes(cat)) {
+      setCustomCategories(prev => [...prev, cat]);
+    }
+    setBlogCategory(cat);
+    setIsNewCategoryMode(false);
+    setNewCategoryName('');
+    setBlogAuthor(b.author || 'Anwar');
+    setBlogImage(b.image);
+    setBlogImageAlt(b.imageAlt || '');
+    setBlogStatus(b.status || 'published');
+    setArticleImages([]);
+    setFaqs([]);
     setAnalysisResult(null);
+    setEditorMode('visual');
+    setShowPostSettings(false); // collapsed by default on edit so user can focus on content
     setIsEditingBlog(true);
   };
 
-  const handleExportBackup = () => {
-    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(posts, null, 2));
-    const downloadAnchor = document.createElement('a');
-    downloadAnchor.setAttribute("href", dataStr);
-    downloadAnchor.setAttribute("download", `aitoolhindi_backup_${new Date().toISOString().slice(0, 10)}.json`);
-    document.body.appendChild(downloadAnchor);
-    downloadAnchor.click();
-    downloadAnchor.remove();
-    showNotify('All articles backup downloaded successfully!');
-  };
+  const handleSaveBlog = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!blogTitle.trim() || !blogSlug.trim()) return;
 
-  const handleImportBackup = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = async (event) => {
-      try {
-        const json = JSON.parse(event.target?.result as string);
-        if (Array.isArray(json)) {
-          for (const p of json) {
-            await saveBlogPostToFirestore(p);
-          }
-          await loadData(true);
-          showNotify(`Successfully restored ${json.length} articles from backup!`);
-        } else {
-          alert('Invalid backup JSON format.');
-        }
-      } catch (err) {
-        alert('Error restoring backup: ' + (err as Error).message);
+    let finalCategory = blogCategory;
+    if (isNewCategoryMode && newCategoryName.trim()) {
+      finalCategory = newCategoryName.trim();
+      if (!customCategories.includes(finalCategory)) {
+        const updatedCats = [...customCategories, finalCategory];
+        setCustomCategories(updatedCats);
+        if (typeof window !== 'undefined') localStorage.setItem(CATEGORIES_KEY, JSON.stringify(updatedCats));
       }
+    }
+
+    if (visualContentRef.current) {
+      visualContentRef.current.querySelectorAll('.editor-selected-block').forEach(el => {
+        el.classList.remove('ring-2', 'ring-blue-400', 'bg-blue-50/20', 'rounded-xl', 'p-2', 'editor-selected-block');
+      });
+    }
+
+    const finalHtmlContent = visualContentRef.current ? visualContentRef.current.innerHTML : blogContent;
+    const formattedSlug = blogSlug.toLowerCase().replace(/\s+/g, '-');
+    const postId = editingBlogId || ('blog-' + formattedSlug);
+
+    const postToSave: BlogPost = {
+      id: postId,
+      title: blogTitle,
+      slug: formattedSlug,
+      excerpt: blogExcerpt,
+      content: finalHtmlContent,
+      category: finalCategory,
+      author: blogAuthor || 'Anwar',
+      date: new Date().toLocaleDateString('hi-IN', { day: 'numeric', month: 'short', year: 'numeric' }),
+      readTime: '5 min read',
+      image: blogImage,
+      imageAlt: blogImageAlt,
+      status: blogStatus
     };
-    reader.readAsText(file);
-    if (restoreFileInputRef.current) restoreFileInputRef.current.value = '';
+
+    try {
+      await saveBlogPostToFirestore(postToSave);
+      await loadData(true);
+      showNotify(editingBlogId ? 'Tutorial updated & synced with Firebase!' : 'New tutorial published to Firebase!');
+      setIsEditingBlog(false);
+    } catch (err) {
+      alert('Error saving to Firebase: ' + (err as Error).message);
+    }
   };
 
   const handleDeleteBlog = async (id: string) => {
@@ -740,28 +568,48 @@ export default function AdminPanelPage() {
   };
 
   // ==========================================
-  // RENDER SEAMLESS WORDPRESS BLOCK EDITOR
+  // RENDER CONTINUOUS VISUAL EDITOR (Admin without Header/Footer)
   // ==========================================
   if (isEditingBlog) {
     return (
       <div className="min-h-screen bg-slate-100 flex flex-col">
+        {/* Minimal Admin Header Bar */}
+        <header className="bg-slate-900 text-white px-4 py-3 flex items-center justify-between border-b border-slate-800">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setIsEditingBlog(false)}
+              className="inline-flex items-center gap-2 text-xs font-bold text-slate-300 hover:text-white transition-colors"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              <span>Back to Admin Dashboard</span>
+            </button>
+            <span className="text-slate-600">|</span>
+            <span className="text-xs font-bold text-orange-400">Anwar&apos;s Article Studio</span>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <span className="text-xs font-bold text-slate-300">Status:</span>
+            <select
+              value={blogStatus}
+              onChange={(e) => setBlogStatus(e.target.value as any)}
+              className="px-3 py-1 bg-slate-800 rounded-lg text-xs font-bold text-white border border-slate-700"
+            >
+              <option value="published">Published</option>
+              <option value="draft">Draft</option>
+            </select>
+          </div>
+        </header>
+
         {/* Admin panel screen spacing: just 10px spacing on left and right side */}
         <main className="flex-1 max-w-full px-[10px] py-6 space-y-6">
           <div className="bg-white rounded-3xl border border-slate-200 p-4 sm:p-8 shadow-sm space-y-8">
             <div className="flex items-center justify-between flex-wrap gap-4">
               <div className="space-y-1">
-                <button
-                  onClick={() => setIsEditingBlog(false)}
-                  className="inline-flex items-center gap-2 text-xs font-bold text-orange-600 hover:text-orange-700 transition-colors mb-2"
-                >
-                  <ArrowLeft className="w-4 h-4" />
-                  <span>Back to Admin Dashboard</span>
-                </button>
                 <h1 className="text-2xl font-extrabold text-black tracking-tight">
-                  {editingBlogId ? 'WordPress Seamless Block Editor (Edit Post)' : 'WordPress Seamless Block Editor (New Post)'}
+                  {editingBlogId ? 'WordPress Visual Editor (Edit Post)' : 'WordPress Visual Editor (New Post)'}
                 </h1>
                 <p className="text-black text-sm font-medium">
-                  Click any block below to select it and apply formatting instantly. Every block is fully editable.
+                  All blocks are fully editable. Use Post Settings toggle below to collapse or expand post metadata.
                 </p>
               </div>
 
@@ -1052,7 +900,7 @@ export default function AdminPanelPage() {
               {showWpImporter && (
                 <div className="space-y-3 pt-2">
                   <p className="text-xs text-black leading-relaxed font-medium">
-                    अपने पुराने WordPress पोस्ट का HTML या Gutenberg ब्लॉक कोड यहाँ पेस्ट करें। &ldquo;Convert &amp; Insert&rdquo; पर क्लिक करते ही यह ब्लॉक एडिटर में कन्वर्ट हो जाएगा।
+                    अपने पुराने WordPress पोस्ट का HTML या Gutenberg ब्लॉक कोड यहाँ पेस्ट करें। &ldquo;Convert &amp; Insert&rdquo; पर क्लिक करते ही यह विजुअल एडिटर में आ जाएगा।
                   </p>
                   <textarea
                     rows={5}
@@ -1067,7 +915,7 @@ export default function AdminPanelPage() {
                     className="px-5 py-2.5 bg-orange-600 hover:bg-orange-700 text-white font-bold rounded-xl text-xs inline-flex items-center gap-2 shadow-sm"
                   >
                     <Wand2 className="w-3.5 h-3.5" />
-                    <span>Convert into Blocks</span>
+                    <span>Convert & Insert into Editor</span>
                   </button>
                 </div>
               )}
@@ -1075,34 +923,26 @@ export default function AdminPanelPage() {
 
             <form onSubmit={handleSaveBlog} className="space-y-6">
               {/* ========================================== */}
-              {/* SEAMLESS WORDPRESS BLOCK EDITOR */}
+              {/* CONTINUOUS VISUAL EDITOR & STICKY TOOLBAR */}
               {/* ========================================== */}
               <div className="space-y-4">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                  <label className="text-sm font-extrabold text-black">WordPress Seamless Block Editor (Click any block to select & format)</label>
+                  <label className="text-sm font-extrabold text-black">WordPress Visual Editor (Fully Editable Document)</label>
                   
                   <div className="flex items-center gap-2 bg-slate-100 p-1 rounded-xl">
                     <button
                       type="button"
-                      onClick={() => {
-                        if (editorMode === 'html') {
-                          setBlocks(parseHtmlToBlocks(rawHtmlContent));
-                        }
-                        setEditorMode('block');
-                      }}
+                      onClick={() => setEditorMode('visual')}
                       className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-                        editorMode === 'block' ? 'bg-white text-orange-600 shadow-sm' : 'text-black hover:text-orange-600'
+                        editorMode === 'visual' ? 'bg-white text-orange-600 shadow-sm' : 'text-black hover:text-orange-600'
                       }`}
                     >
                       <Eye className="w-3.5 h-3.5" />
-                      <span>Seamless Block Mode</span>
+                      <span>Visual Editor (Normal)</span>
                     </button>
                     <button
                       type="button"
-                      onClick={() => {
-                        setRawHtmlContent(serializeBlocksToHtml(blocks));
-                        setEditorMode('html');
-                      }}
+                      onClick={() => setEditorMode('html')}
                       className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
                         editorMode === 'html' ? 'bg-white text-orange-600 shadow-sm' : 'text-black hover:text-orange-600'
                       }`}
@@ -1113,43 +953,43 @@ export default function AdminPanelPage() {
                   </div>
                 </div>
 
-                {/* Sticky Formatting Toolbar with Instant Block Formatting */}
-                <div className="sticky top-4 z-20 bg-white/95 backdrop-blur-md p-3.5 rounded-2xl border border-slate-200 shadow-lg flex flex-wrap items-center gap-2">
-                  <button type="button" onClick={() => handleFormatSelectedBlock('h1')} className="px-3 py-1.5 bg-slate-100 hover:bg-orange-50 hover:text-orange-600 rounded-lg text-xs font-bold text-black transition-colors flex items-center gap-1" title="Format selected block as H1">
+                {/* Sticky Formatting Toolbar with Undo, Redo, List & Table */}
+                <div className="sticky top-12 z-20 bg-white/95 backdrop-blur-md p-3.5 rounded-2xl border border-slate-200 shadow-lg flex flex-wrap items-center gap-2">
+                  <button type="button" onClick={() => applyFormatting('undo')} className="px-3 py-1.5 bg-slate-100 hover:bg-orange-50 hover:text-orange-600 rounded-lg text-xs font-bold text-black transition-colors flex items-center gap-1" title="Undo">
+                    <Undo className="w-3.5 h-3.5" /> Undo
+                  </button>
+                  <button type="button" onClick={() => applyFormatting('redo')} className="px-3 py-1.5 bg-slate-100 hover:bg-orange-50 hover:text-orange-600 rounded-lg text-xs font-bold text-black transition-colors flex items-center gap-1" title="Redo">
+                    <Redo className="w-3.5 h-3.5" /> Redo
+                  </button>
+                  <span className="text-slate-300">|</span>
+                  <button type="button" onClick={() => insertTag('<h1 class="text-3xl font-extrabold text-black mt-6 mb-4">', '</h1>')} className="px-3 py-1.5 bg-slate-100 hover:bg-orange-50 hover:text-orange-600 rounded-lg text-xs font-bold text-black transition-colors flex items-center gap-1">
                     <Heading1 className="w-3.5 h-3.5" /> H1
                   </button>
-                  <button type="button" onClick={() => handleFormatSelectedBlock('h2')} className="px-3 py-1.5 bg-slate-100 hover:bg-orange-50 hover:text-orange-600 rounded-lg text-xs font-bold text-black transition-colors flex items-center gap-1" title="Format selected block as H2">
+                  <button type="button" onClick={() => insertTag('<h2 class="text-2xl font-bold text-black mt-6 mb-3">', '</h2>')} className="px-3 py-1.5 bg-slate-100 hover:bg-orange-50 hover:text-orange-600 rounded-lg text-xs font-bold text-black transition-colors flex items-center gap-1">
                     <Heading2 className="w-3.5 h-3.5" /> H2
                   </button>
-                  <button type="button" onClick={() => handleFormatSelectedBlock('h3')} className="px-3 py-1.5 bg-slate-100 hover:bg-orange-50 hover:text-orange-600 rounded-lg text-xs font-bold text-black transition-colors flex items-center gap-1" title="Format selected block as H3">
+                  <button type="button" onClick={() => insertTag('<h3 class="text-xl font-semibold text-black mt-4 mb-2">', '</h3>')} className="px-3 py-1.5 bg-slate-100 hover:bg-orange-50 hover:text-orange-600 rounded-lg text-xs font-bold text-black transition-colors flex items-center gap-1">
                     <Heading3 className="w-3.5 h-3.5" /> H3
                   </button>
                   <span className="text-slate-300">|</span>
-                  <button type="button" onClick={() => handleFormatSelectedBlock('p')} className="px-3 py-1.5 bg-slate-100 hover:bg-orange-50 hover:text-orange-600 rounded-lg text-xs font-bold text-black transition-colors">
+                  <button type="button" onClick={() => insertTag('<p class="mb-6 text-slate-700 leading-relaxed text-lg">', '</p>')} className="px-3 py-1.5 bg-slate-100 hover:bg-orange-50 hover:text-orange-600 rounded-lg text-xs font-bold text-black transition-colors">
                     Paragraph
                   </button>
-                  <button type="button" onClick={() => handleFormatSelectedBlock('bold')} className="px-3 py-1.5 bg-slate-100 hover:bg-orange-50 hover:text-orange-600 rounded-lg text-xs font-bold text-black transition-colors flex items-center gap-1" title="Apply bold to selected block">
+                  <button type="button" onClick={() => applyFormatting('bold')} className="px-3 py-1.5 bg-slate-100 hover:bg-orange-50 hover:text-orange-600 rounded-lg text-xs font-bold text-black transition-colors flex items-center gap-1">
                     <Bold className="w-3.5 h-3.5" /> Bold
                   </button>
-                  <button type="button" onClick={() => handleFormatSelectedBlock('italic')} className="px-3 py-1.5 bg-slate-100 hover:bg-orange-50 hover:text-orange-600 rounded-lg text-xs font-bold text-black transition-colors flex items-center gap-1" title="Apply italic to selected block">
+                  <button type="button" onClick={() => applyFormatting('italic')} className="px-3 py-1.5 bg-slate-100 hover:bg-orange-50 hover:text-orange-600 rounded-lg text-xs font-bold text-black transition-colors flex items-center gap-1">
                     <Italic className="w-3.5 h-3.5" /> Italic
                   </button>
                   <span className="text-slate-300">|</span>
-                  <button type="button" onClick={() => handleFormatSelectedBlock('link')} className="px-3 py-1.5 bg-slate-100 hover:bg-orange-50 hover:text-orange-600 rounded-lg text-xs font-bold text-black transition-colors flex items-center gap-1">
+                  <button type="button" onClick={handleInsertLink} className="px-3 py-1.5 bg-slate-100 hover:bg-orange-50 hover:text-orange-600 rounded-lg text-xs font-bold text-black transition-colors flex items-center gap-1">
                     <LinkIcon className="w-3.5 h-3.5" /> Insert Link
                   </button>
-                  <button type="button" onClick={insertListBlock} className="px-3 py-1.5 bg-slate-100 hover:bg-orange-50 hover:text-orange-600 rounded-lg text-xs font-bold text-black transition-colors flex items-center gap-1">
+                  <button type="button" onClick={insertList} className="px-3 py-1.5 bg-slate-100 hover:bg-orange-50 hover:text-orange-600 rounded-lg text-xs font-bold text-black transition-colors flex items-center gap-1">
                     <List className="w-3.5 h-3.5" /> Insert List
                   </button>
-                  <button type="button" onClick={insertTableBlock} className="px-3 py-1.5 bg-slate-100 hover:bg-orange-50 hover:text-orange-600 rounded-lg text-xs font-bold text-black transition-colors flex items-center gap-1">
+                  <button type="button" onClick={insertTable} className="px-3 py-1.5 bg-slate-100 hover:bg-orange-50 hover:text-orange-600 rounded-lg text-xs font-bold text-black transition-colors flex items-center gap-1">
                     <Table className="w-3.5 h-3.5" /> Insert Table
-                  </button>
-                  <span className="text-slate-300">|</span>
-                  <button type="button" onClick={handleUndo} disabled={historyIndex <= 0} className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 rounded-lg text-xs font-bold text-black transition-colors disabled:opacity-30 flex items-center gap-1" title="Undo">
-                    <Undo className="w-3.5 h-3.5" /> Undo
-                  </button>
-                  <button type="button" onClick={handleRedo} disabled={historyIndex >= history.length - 1} className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 rounded-lg text-xs font-bold text-black transition-colors disabled:opacity-30 flex items-center gap-1" title="Redo">
-                    <Redo className="w-3.5 h-3.5" /> Redo
                   </button>
                   <span className="text-slate-300">|</span>
                   <input
@@ -1158,122 +998,33 @@ export default function AdminPanelPage() {
                     ref={contentImageInputRef}
                     onChange={handleContentImageUpload}
                     className="hidden"
-                    id="stickyImgUpload"
+                    id="visualImgUpload"
                   />
                   <label
-                    htmlFor="stickyImgUpload"
+                    htmlFor="visualImgUpload"
                     className="px-3.5 py-1.5 bg-orange-600 hover:bg-orange-700 text-white rounded-lg text-xs font-bold shadow-md inline-flex items-center gap-1.5 cursor-pointer transition-colors"
                   >
                     <Upload className="w-3.5 h-3.5" />
-                    <span>+ Image Block</span>
+                    <span>+ Insert Image</span>
                   </label>
                 </div>
 
-                {/* Seamless Blocks Container or HTML Code Mode */}
-                {editorMode === 'block' ? (
-                  <div className="space-y-3 bg-slate-50 border border-slate-200 rounded-2xl p-4 sm:p-6">
-                    {blocks.map((block, index) => {
-                      const isSelected = selectedBlockId === block.id;
-                      return (
-                        <div
-                          key={block.id}
-                          onClick={() => setSelectedBlockId(block.id)}
-                          onFocus={() => setSelectedBlockId(block.id)}
-                          tabIndex={0}
-                          className={`p-3 rounded-xl transition-all cursor-pointer relative group outline-none ${
-                            isSelected 
-                              ? 'ring-2 ring-blue-400 bg-blue-50/30 border border-blue-300 shadow-sm' 
-                              : 'bg-white border border-slate-200 hover:border-orange-300'
-                          }`}
-                        >
-                          <div className="flex items-center justify-between pb-1 mb-2 border-b border-slate-100">
-                            <span className="text-[10px] font-extrabold uppercase bg-orange-100 text-orange-700 px-2 py-0.5 rounded">
-                              #{index + 1} ({block.type.toUpperCase()})
-                            </span>
-                            <div className="flex items-center gap-1 opacity-80 group-hover:opacity-100">
-                              <button
-                                type="button"
-                                onClick={(e) => { e.stopPropagation(); handleMoveBlock(index, 'up'); }}
-                                disabled={index === 0}
-                                className="p-1 bg-slate-100 hover:bg-slate-200 rounded text-slate-700 disabled:opacity-30 text-xs font-bold"
-                                title="Move Up"
-                              >
-                                ▲
-                              </button>
-                              <button
-                                type="button"
-                                onClick={(e) => { e.stopPropagation(); handleMoveBlock(index, 'down'); }}
-                                disabled={index === blocks.length - 1}
-                                className="p-1 bg-slate-100 hover:bg-slate-200 rounded text-slate-700 disabled:opacity-30 text-xs font-bold"
-                                title="Move Down"
-                              >
-                                ▼
-                              </button>
-                              <button
-                                type="button"
-                                onClick={(e) => { e.stopPropagation(); handleDeleteBlock(block.id); }}
-                                className="p-1 bg-red-50 hover:bg-red-100 rounded text-red-600 font-bold text-xs"
-                                title="Delete Block"
-                              >
-                                ✕
-                              </button>
-                            </div>
-                          </div>
-
-                          {block.type === 'img' ? (
-                            <div className="space-y-2">
-                              <div className="w-full h-40 relative rounded-xl overflow-hidden bg-slate-200">
-                                <Image src={block.src || ''} alt={block.alt || ''} fill className="object-cover" referrerPolicy="no-referrer" />
-                              </div>
-                              <input
-                                type="text"
-                                value={block.alt || ''}
-                                onClick={(e) => { e.stopPropagation(); setSelectedBlockId(block.id); }}
-                                onChange={(e) => {
-                                  const alt = e.target.value;
-                                  const slug = alt.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
-                                  const updated = blocks.map(b => b.id === block.id ? { ...b, alt, slug } : b);
-                                  setBlocks(updated);
-                                  pushHistory(updated);
-                                }}
-                                placeholder="Image Alt Text..."
-                                className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs text-black font-medium"
-                              />
-                            </div>
-                          ) : (
-                            <textarea
-                              rows={block.type === 'p' ? 3 : 2}
-                              value={block.content}
-                              onClick={(e) => { e.stopPropagation(); setSelectedBlockId(block.id); }}
-                              onChange={(e) => handleUpdateBlockContent(block.id, e.target.value)}
-                              className={`w-full p-2 bg-transparent text-black font-medium focus:outline-none resize-y ${
-                                block.type === 'h1' ? 'text-2xl font-extrabold' :
-                                block.type === 'h2' ? 'text-xl font-bold' :
-                                block.type === 'h3' ? 'text-lg font-bold' : 'text-base'
-                              }`}
-                            />
-                          )}
-                        </div>
-                      );
-                    })}
-
-                    <div className="pt-3 flex flex-wrap gap-2">
-                      <button type="button" onClick={() => handleAddBlock('p')} className="px-4 py-2 bg-orange-600 text-white rounded-xl text-xs font-bold hover:bg-orange-700 transition-colors">
-                        + Add Paragraph Block
-                      </button>
-                      <button type="button" onClick={() => handleAddBlock('h2')} className="px-4 py-2 bg-slate-800 text-white rounded-xl text-xs font-bold hover:bg-slate-900 transition-colors">
-                        + Add Heading Block
-                      </button>
-                      <button type="button" onClick={insertListBlock} className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-black rounded-xl text-xs font-bold transition-colors">
-                        + Add List Block
-                      </button>
-                    </div>
-                  </div>
+                {/* Continuous Visual Editor or HTML Code Mode */}
+                {editorMode === 'visual' ? (
+                  <div
+                    ref={visualContentRef}
+                    contentEditable={true}
+                    suppressContentEditableWarning={true}
+                    onInput={(e) => setBlogContent(e.currentTarget.innerHTML)}
+                    onClick={handleVisualClick}
+                    dangerouslySetInnerHTML={{ __html: blogContent }}
+                    className="w-full min-h-[550px] p-6 sm:p-10 bg-slate-50 border border-slate-200 rounded-2xl text-black font-medium focus:outline-none focus:ring-2 focus:ring-orange-600/20 prose max-w-none [&>h1]:text-3xl [&>h1]:font-extrabold [&>h1]:mt-6 [&>h1]:mb-4 [&>h2]:text-2xl [&>h2]:font-bold [&>h2]:mt-6 [&>h2]:mb-3 [&>h3]:text-xl [&>h3]:font-semibold [&>h3]:mt-4 [&>h3]:mb-2 [&>p]:mb-6 [&>p]:leading-relaxed [&>p]:text-lg [&>img]:w-full [&>img]:rounded-2xl [&>img]:my-6 [&>img]:shadow-md [&>img]:object-cover cursor-text"
+                  />
                 ) : (
                   <textarea
                     rows={20}
-                    value={rawHtmlContent}
-                    onChange={(e) => setRawHtmlContent(e.target.value)}
+                    value={blogContent}
+                    onChange={(e) => setBlogContent(e.target.value)}
                     className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-mono text-black font-medium focus:ring-2 focus:ring-orange-600/20"
                   />
                 )}
@@ -1353,6 +1104,28 @@ export default function AdminPanelPage() {
 
   return (
     <div className="min-h-screen bg-slate-100 flex flex-col">
+      {/* Minimal Admin Header Bar */}
+      <header className="bg-slate-900 text-white px-4 py-3 flex items-center justify-between border-b border-slate-800">
+        <div className="flex items-center gap-3">
+          <Link href="/" className="inline-flex items-center gap-2 text-xs font-bold text-slate-300 hover:text-white transition-colors">
+            <ArrowLeft className="w-4 h-4" />
+            <span>View Live Site</span>
+          </Link>
+          <span className="text-slate-600">|</span>
+          <span className="text-xs font-bold text-orange-400">Anwar&apos;s Admin Dashboard</span>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <button
+            onClick={handleClearCacheAndRefresh}
+            className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-xs font-bold inline-flex items-center gap-1.5 border border-slate-700"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+            <span>Clear Cache</span>
+          </button>
+        </div>
+      </header>
+
       {/* Admin panel screen spacing: just 10px spacing on left and right side */}
       <main className="flex-1 max-w-full px-[10px] py-6 space-y-6">
         {/* Admin Dashboard Header */}
@@ -1392,13 +1165,6 @@ export default function AdminPanelPage() {
               <Upload className="w-4 h-4" />
               <span>Restore Backup</span>
             </label>
-            <button
-              onClick={handleClearCacheAndRefresh}
-              className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-bold inline-flex items-center gap-2 border border-slate-700 shadow-md"
-            >
-              <RefreshCw className="w-3.5 h-3.5" />
-              <span>Clear Cache</span>
-            </button>
           </div>
         </div>
 
