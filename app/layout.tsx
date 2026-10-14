@@ -2,17 +2,17 @@ import type {Metadata} from 'next';
 import './globals.css'; // Global styles
 
 export const metadata: Metadata = {
-  title: 'Aitoolhindi.online – Hindi AI Tools Directory & Blog',
-  description: 'Explore top AI tools in Hindi, read informational AI tutorials, and submit new AI tools. Migrated seamlessly from WordPress.',
+  title: 'Aitoolhindi.online – भारत का नंबर 1 हिंदी AI ट्यूटोरियल और टूल्स गाइड',
+  description: 'हिंदी में सीखें आर्टिफिशियल इंटेलिजेंस, ChatGPT, Midjourney, AI टूल्स और प्रॉम्प्ट इंजीनियरिंग की पूरी जानकारी।',
   openGraph: {
-    title: 'Aitoolhindi.online – Hindi AI Tools Directory & Blog',
-    description: 'Explore top AI tools in Hindi, read informational AI tutorials, and submit new AI tools.',
+    title: 'Aitoolhindi.online – भारत का नंबर 1 हिंदी AI ट्यूटोरियल और टूल्स गाइड',
+    description: 'हिंदी में सीखें आर्टिफिशियल इंटेलिजेंस, ChatGPT, Midjourney, AI टूल्स और प्रॉम्प्ट इंजीनियरिंग की पूरी जानकारी।',
     type: 'website',
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Aitoolhindi.online – Hindi AI Tools Directory & Blog',
-    description: 'Explore top AI tools in Hindi, read informational AI tutorials, and submit new AI tools.',
+    title: 'Aitoolhindi.online – भारत का नंबर 1 हिंदी AI ट्यूटोरियल और टूल्स गाइड',
+    description: 'हिंदी में सीखें आर्टिफिशियल इंटेलिजेंस, ChatGPT, Midjourney, AI टूल्स और प्रॉम्प्ट इंजीनियरिंग की पूरी जानकारी।',
   },
 };
 

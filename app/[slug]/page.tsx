@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
-import { ArrowLeft, Clock, Calendar, User, Share2, Sparkles, Folder } from 'lucide-react';
+import { ArrowLeft, Clock, Calendar, User, Share2, Folder } from 'lucide-react';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import { fetchBlogPostsFromFirestore, getStoredBlogPostsSync } from '@/lib/storage';
@@ -38,7 +38,7 @@ export default function SlugPage() {
       <>
         <Navbar />
         <main className="flex-1 max-w-4xl mx-auto px-4 sm:px-6 py-24 text-center text-black font-medium">
-          Loading from Firebase...
+          Loading tutorial...
         </main>
         <Footer />
       </>
@@ -177,12 +177,9 @@ export default function SlugPage() {
             />
             <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-slate-950/30 to-transparent"></div>
             <div className="absolute bottom-6 left-6 right-6 text-white space-y-3">
-              <Link 
-                href={`/${post.category.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '')}`}
-                className="inline-block px-3.5 py-1.5 bg-orange-600 text-white font-bold text-xs rounded-full hover:bg-orange-700 transition-colors"
-              >
+              <span className="inline-block px-3.5 py-1.5 bg-orange-600 text-white font-bold text-xs rounded-full">
                 {post.category}
-              </Link>
+              </span>
               <h1 className="text-2xl md:text-4xl font-extrabold tracking-tight leading-tight text-white">
                 {post.title}
               </h1>
@@ -263,14 +260,6 @@ export default function SlugPage() {
                 <p className="text-xs sm:text-sm text-black leading-relaxed font-medium">
                   Anwar, AI टूल्स और प्रॉम्प्ट इंजीनियरिंग के क्षेत्र में 5 वर्षों से ज़्यादा का अनुभव रखते हैं, इन्होंने 1000+ हज़ारों AI Tools को analyse और test किया है जिसकी झलक आप इनके हिंदी AI tutorials में भी देख सकते हैं। इनके tutorials से हज़ारों हिंदी readers ने ChatGPT, Gemini, Midjourney, AI image generation और AI video generation जैसी टेक्नोलॉजी का इस्तेमाल सीखा है।
                 </p>
-              </div>
-            </div>
-
-            {/* WordPress URL preservation note */}
-            <div className="p-6 bg-slate-50 border border-slate-200/80 rounded-2xl flex items-center gap-4 text-xs text-black font-medium mt-8">
-              <Sparkles className="w-6 h-6 text-orange-600 shrink-0" />
-              <div>
-                <span className="font-bold text-black">WordPress SEO & Firebase Note:</span> This tutorial is served at its exact original WordPress slug (<code className="bg-slate-200 px-1.5 py-0.5 rounded font-mono text-black font-bold">/{post.slug}</code>) and synced with Firebase Firestore.
               </div>
             </div>
           </div>

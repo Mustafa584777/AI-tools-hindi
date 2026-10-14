@@ -17,7 +17,6 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     '/fact-checking-policy',
     '/dmca-policy',
     '/dnpa-code-of-ethics',
-    '/admin-panel',
   ];
 
   const staticPages = staticRoutes.map((route) => ({
@@ -34,20 +33,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     blogPosts = getStoredBlogPostsSync();
   }
 
-  const categories = Array.from(new Set(blogPosts.map(p => p.category).filter(Boolean)));
-  const categoryPages = categories.map((cat: any) => ({
-    url: `${baseUrl}/${cat.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '')}`,
-    lastModified: new Date(),
-    changeFrequency: 'weekly' as const,
-    priority: 0.85,
-  }));
-
-  const blogUrls = blogPosts.map((post) => ({
+  const blogUrls = blogPosts.filter(p => p.status !== 'draft').map((post) => ({
     url: `${baseUrl}/${post.slug}`,
     lastModified: new Date(),
     changeFrequency: 'weekly' as const,
     priority: 0.9,
   }));
 
-  return [...staticPages, ...categoryPages, ...blogUrls];
+  return [...staticPages, ...blogUrls];
 }
