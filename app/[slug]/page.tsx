@@ -10,6 +10,8 @@ import Footer from '@/components/Footer';
 import { fetchBlogPostsFromFirestore, getStoredBlogPostsSync } from '@/lib/storage';
 import { BlogPost } from '@/lib/types';
 
+export const dynamic = 'force-dynamic';
+
 export default function BlogPostPage() {
   const params = useParams();
   const slug = params?.slug as string;

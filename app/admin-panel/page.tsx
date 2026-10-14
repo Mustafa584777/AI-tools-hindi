@@ -46,10 +46,6 @@ export default function AdminPanelPage() {
 
   const [notification, setNotification] = useState<string | null>(null);
 
-  useEffect(() => {
-    loadData();
-  }, []);
-
   const loadData = async () => {
     try {
       const data = await fetchBlogPostsFromFirestore();
@@ -60,6 +56,11 @@ export default function AdminPanelPage() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    loadData();
+  }, []);
 
   const showNotify = (msg: string) => {
     setNotification(msg);
@@ -288,7 +289,7 @@ export default function AdminPanelPage() {
               {showWpImporter && (
                 <div className="space-y-3 pt-2">
                   <p className="text-xs text-black leading-relaxed font-medium">
-                    अपने पुराने WordPress पोस्ट का HTML या Gutenberg ब्लॉक कोड यहाँ पेस्ट करें। "Convert & Insert" पर क्लिक करते ही यह साफ HTML फॉर्मेट में नीचे एडिटर में आ जाएगा।
+                    अपने पुराने WordPress पोस्ट का HTML या Gutenberg ब्लॉक कोड यहाँ पेस्ट करें। &ldquo;Convert &amp; Insert&rdquo; पर क्लिक करते ही यह साफ HTML फॉर्मेट में नीचे एडिटर में आ जाएगा।
                   </p>
                   <textarea
                     rows={5}

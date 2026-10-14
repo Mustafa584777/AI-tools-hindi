@@ -1,11 +1,10 @@
 import Link from 'next/link';
-import { Sparkles } from 'lucide-react';
 
 export default function Footer() {
   return (
     <footer className="mt-auto bg-slate-900 text-slate-300 border-t border-slate-800">
-      <div className="max-w-7xl mx-auto px-6 py-12 grid grid-cols-1 md:grid-cols-3 gap-8">
-        <div className="space-y-4">
+      <div className="max-w-7xl mx-auto px-6 py-12 grid grid-cols-1 md:grid-cols-4 gap-8">
+        <div className="space-y-4 md:col-span-1">
           <div className="flex items-center gap-2.5 text-white font-bold text-lg tracking-tight">
             <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-orange-600 to-amber-500 flex items-center justify-center text-white">
               <span className="text-xs font-bold">हिं</span>
@@ -23,14 +22,33 @@ export default function Footer() {
             <li><Link href="/" className="hover:text-white transition-colors">Home</Link></li>
             <li><Link href="/blog" className="hover:text-white transition-colors">Informational Blog & Tutorials</Link></li>
             <li><Link href="/admin-panel" className="hover:text-white transition-colors">Admin Panel (CRUD)</Link></li>
+            <li><Link href="/about-us" className="hover:text-white transition-colors">About Us</Link></li>
+            <li><Link href="/contact-us" className="hover:text-white transition-colors">Contact Us</Link></li>
           </ul>
         </div>
 
         <div className="space-y-3">
-          <h4 className="text-white font-semibold text-sm">SEO & Migration</h4>
-          <p className="text-xs text-slate-400 leading-relaxed">
-            All original WordPress tutorial URLs are preserved 100% to protect search engine rankings and organic traffic.
-          </p>
+          <h4 className="text-white font-semibold text-sm">Policies & Legal</h4>
+          <ul className="space-y-2 text-sm text-slate-300">
+            <li><Link href="/privacy-policy" className="hover:text-white transition-colors">Privacy Policy</Link></li>
+            <li><Link href="/terms-conditions" className="hover:text-white transition-colors">Terms & Conditions</Link></li>
+            <li><Link href="/disclaimer" className="hover:text-white transition-colors">Disclaimer</Link></li>
+            <li><Link href="/correction-policy" className="hover:text-white transition-colors">Correction Policy</Link></li>
+            <li><Link href="/fact-checking-policy" className="hover:text-white transition-colors">Fact-Checking Policy</Link></li>
+          </ul>
+        </div>
+
+        <div className="space-y-3">
+          <h4 className="text-white font-semibold text-sm">Ethics & Compliance</h4>
+          <ul className="space-y-2 text-sm text-slate-300">
+            <li><Link href="/dmca-policy" className="hover:text-white transition-colors">DMCA Policy</Link></li>
+            <li><Link href="/dnpa-code-of-ethics" className="hover:text-white transition-colors">DNPA Code of Ethics</Link></li>
+          </ul>
+          <div className="pt-2">
+            <p className="text-xs text-slate-400 leading-relaxed">
+              All original WordPress tutorial URLs are preserved 100% to protect search engine rankings.
+            </p>
+          </div>
         </div>
       </div>
 
