@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { Plus, Edit, Trash2, Database, CheckCircle, ExternalLink, Sparkles, FileText, ArrowLeft, Image as ImageIcon, Link as LinkIcon, Bold, Italic, Heading1, Heading2, Heading3, Code, Wand2, Upload, X, RefreshCw, Eye, Code2 } from 'lucide-react';
+import { Plus, Edit, Trash2, Database, CheckCircle, ExternalLink, Sparkles, FileText, ArrowLeft, Image as ImageIcon, Link as LinkIcon, Bold, Italic, Heading1, Heading2, Heading3, Code, Wand2, Upload, X, RefreshCw, Eye, Code2, HelpCircle } from 'lucide-react';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import { 
@@ -20,6 +20,11 @@ interface ArticleImage {
   base64: string;
   alt: string;
   slug: string;
+}
+
+interface FAQItem {
+  question: string;
+  answer: string;
 }
 
 export default function AdminPanelPage() {
@@ -40,12 +45,20 @@ export default function AdminPanelPage() {
   const [blogImageAlt, setBlogImageAlt] = useState('');
   const [blogStatus, setBlogStatus] = useState<'published' | 'draft'>('published');
 
-  // Editor Mode: Visual (Normal WYSIWYG live) vs HTML Code Mode
+  // Editor Mode: Visual vs HTML Code Mode
   const [editorMode, setEditorMode] = useState<'visual' | 'html'>('visual');
 
-  // Article Media Library for Mid-Article Images
+  // Floating Selection Toolbar State for Visual Editor
+  const [floatingToolbarPos, setFloatingToolbarPos] = useState<{ top: number; left: number } | null>(null);
+
+  // Article Media Library & Image Editing Modal
   const [articleImages, setArticleImages] = useState<ArticleImage[]>([]);
   const [selectedImageForEdit, setSelectedImageForEdit] = useState<ArticleImage | null>(null);
+
+  // FAQ Builder State
+  const [faqs, setFaqs] = useState<FAQItem[]>([]);
+  const [newFaqQ, setNewFaqQ] = useState('');
+  const [newFaqA, setNewFaqA] = useState('');
 
   // WordPress Code Importer State
   const [wpRawCode, setWpRawCode] = useState('');
@@ -60,6 +73,7 @@ export default function AdminPanelPage() {
   const visualContentRef = useRef<HTMLDivElement>(null);
   const contentImageInputRef = useRef<HTMLInputElement>(null);
   const featuredImageInputRef = useRef<HTMLInputElement>(null);
+  const replaceImageFileInputRef = useRef<HTMLInputElement>(null);
   const restoreFileInputRef = useRef<HTMLInputElement>(null);
 
   const [notification, setNotification] = useState<string | null>(null);
@@ -101,6 +115,33 @@ export default function AdminPanelPage() {
     }
   };
 
+  // Selection change listener for floating text formatting toolbar
+  const handleSelectionChange = () => {
+    if (editorMode !== 'visual') return;
+    const selection = window.getSelection();
+    if (!selection || selection.isCollapsed || !selection.toString().trim()) {
+      setFloatingToolbarPos(null);
+      return;
+    }
+    const range = selection.getRangeAt(0);
+    const rect = range.getBoundingClientRect();
+    const editorRect = visualContentRef.current?.getBoundingClientRect();
+
+    if (editorRect && rect.top) {
+      setFloatingToolbarPos({
+        top: rect.top - editorRect.top - 45,
+        left: rect.left - editorRect.left + (rect.width / 2) - 60
+      });
+    }
+  };
+
+  const applyFormatting = (command: string, value: string = '') => {
+    document.execCommand(command, false, value);
+    if (visualContentRef.current) {
+      setBlogContent(visualContentRef.current.innerHTML);
+    }
+  };
+
   const insertTag = (tagOpen: string, tagClose: string = '') => {
     if (editorMode === 'html') {
       const textarea = contentRef.current;
@@ -113,9 +154,9 @@ export default function AdminPanelPage() {
       const newContent = text.substring(0, start) + replacement + text.substring(end);
       setBlogContent(newContent);
     } else {
-      // In Visual mode, append or wrap selection if possible or append at bottom
       const replacement = `${tagOpen}Text here${tagClose}`;
       setBlogContent(prev => prev + '\n' + replacement);
+      if (visualContentRef.current) visualContentRef.current.innerHTML = blogContent + '\n' + replacement;
     }
   };
 
@@ -140,32 +181,69 @@ export default function AdminPanelPage() {
 
       setArticleImages(prev => [...prev, newImg]);
 
-      const imgHtml = `<img src="${base64String}" alt="${cleanAlt}" data-img-id="${newImg.id}" class="w-full rounded-2xl my-4 shadow-md object-cover" />\n`;
+      const imgHtml = `<img src="${base64String}" alt="${cleanAlt}" data-img-id="${newImg.id}" data-img-slug="${imgSlug}" class="w-full rounded-2xl my-4 shadow-md object-cover cursor-pointer" />\n`;
       setBlogContent(prev => prev + '\n' + imgHtml);
+      if (visualContentRef.current) visualContentRef.current.innerHTML = blogContent + '\n' + imgHtml;
       showNotify('Mid-article image uploaded and inserted cleanly!');
     };
     reader.readAsDataURL(file);
     if (contentImageInputRef.current) contentImageInputRef.current.value = '';
   };
 
-  // Update Image Alt Text & Slug from Media Library Manager
-  const handleUpdateImageMetadata = (id: string, newAlt: string, newSlug: string) => {
-    setArticleImages(prev => prev.map(img => img.id === id ? { ...img, alt: newAlt, slug: newSlug } : img));
-    // Update matching img tags in blogContent
-    setBlogContent(prev => {
-      // replace alt and slug references in html
-      return prev.replace(new RegExp(`data-img-id="${id}"[^>]*>`, 'g'), (match) => {
-        let updated = match.replace(/alt="[^"]*"/, `alt="${newAlt}"`);
-        if (!updated.includes('data-img-slug=')) {
-          updated = updated.replace('>', ` data-img-slug="${newSlug}">`);
-        } else {
-          updated = updated.replace(/data-img-slug="[^"]*"/, `data-img-slug="${newSlug}"`);
-        }
-        return updated;
-      });
+  // Handle clicking an image inside visual editor to edit Alt text, Slug, or Replace
+  const handleVisualEditorClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    const target = e.target as HTMLElement;
+    if (target.tagName === 'IMG') {
+      const imgId = target.getAttribute('data-img-id');
+      const found = articleImages.find(img => img.id === imgId);
+      if (found) {
+        setSelectedImageForEdit(found);
+      } else {
+        // If image wasn't in state list, create temporary state
+        const tempImg: ArticleImage = {
+          id: imgId || ('img-' + Date.now()),
+          base64: target.getAttribute('src') || '',
+          alt: target.getAttribute('alt') || 'Tutorial image',
+          slug: target.getAttribute('data-img-slug') || 'tutorial-image'
+        };
+        setSelectedImageForEdit(tempImg);
+      }
+    }
+  };
+
+  // Update Image Metadata (Alt text, slug, replace image)
+  const handleUpdateImageMetadata = (id: string, newAlt: string, newSlug: string, newBase64?: string) => {
+    setArticleImages(prev => {
+      const exists = prev.some(img => img.id === id);
+      if (exists) {
+        return prev.map(img => img.id === id ? { ...img, alt: newAlt, slug: newSlug, ...(newBase64 ? { base64: newBase64 } : {}) } : img);
+      } else {
+        return [...prev, { id, base64: newBase64 || '', alt: newAlt, slug: newSlug }];
+      }
     });
+
+    setBlogContent(prev => {
+      // update html content
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(prev, 'text/html');
+      const imgs = doc.querySelectorAll('img');
+      imgs.forEach(img => {
+        if (img.getAttribute('data-img-id') === id || img.getAttribute('src') === selectedImageForEdit?.base64) {
+          img.setAttribute('alt', newAlt);
+          img.setAttribute('data-img-slug', newSlug);
+          if (newBase64) img.setAttribute('src', newBase64);
+          img.setAttribute('data-img-id', id);
+        }
+      });
+      return doc.body.innerHTML;
+    });
+
+    if (visualContentRef.current) {
+      visualContentRef.current.innerHTML = blogContent;
+    }
+
     setSelectedImageForEdit(null);
-    showNotify('Image alt text and slug updated successfully!');
+    showNotify('Image successfully updated!');
   };
 
   // Local Featured Image Upload
@@ -195,8 +273,12 @@ export default function AdminPanelPage() {
     if (!linkInputUrl.trim()) return;
 
     const anchorText = linkInputText.trim() || linkInputUrl;
-    const linkHtml = `<a href="${linkInputUrl}" target="_blank" rel="noopener noreferrer" class="text-orange-600 underline font-bold">${anchorText}</a>`;
-    setBlogContent(prev => prev + ' ' + linkHtml);
+    if (editorMode === 'visual') {
+      applyFormatting('createLink', linkInputUrl);
+    } else {
+      const linkHtml = `<a href="${linkInputUrl}" target="_blank" rel="noopener noreferrer" class="text-orange-600 underline font-bold">${anchorText}</a>`;
+      setBlogContent(prev => prev + ' ' + linkHtml);
+    }
     setShowLinkModal(false);
   };
 
@@ -216,9 +298,65 @@ export default function AdminPanelPage() {
     }
 
     setBlogContent(prev => (prev ? prev + '\n\n' + cleaned : cleaned));
+    if (visualContentRef.current) visualContentRef.current.innerHTML = blogContent + '\n\n' + cleaned;
     setWpRawCode('');
     setShowWpImporter(false);
     showNotify('WordPress code successfully converted and inserted into editor!');
+  };
+
+  // FAQ Builder Handlers
+  const handleAddFaq = () => {
+    if (!newFaqQ.trim() || !newFaqA.trim()) return;
+    const updatedFaqs = [...faqs, { question: newFaqQ.trim(), answer: newFaqA.trim() }];
+    setFaqs(updatedFaqs);
+    setNewFaqQ('');
+    setNewFaqA('');
+    updateContentWithFaqs(updatedFaqs);
+    showNotify('FAQ added and Schema automatically generated!');
+  };
+
+  const handleDeleteFaq = (index: number) => {
+    const updatedFaqs = faqs.filter((_, i) => i !== index);
+    setFaqs(updatedFaqs);
+    updateContentWithFaqs(updatedFaqs);
+  };
+
+  const updateContentWithFaqs = (currentFaqs: FAQItem[]) => {
+    if (currentFaqs.length === 0) return;
+
+    let faqHtml = `\n<div class="my-8 p-6 bg-slate-50 border border-slate-200 rounded-3xl space-y-4">\n  <h3 class="text-xl font-bold text-black">Frequently Asked Questions (FAQs)</h3>\n  <div class="space-y-3">\n`;
+
+    currentFaqs.forEach((faq) => {
+      faqHtml += `    <div class="p-4 bg-white border border-slate-200 rounded-2xl space-y-1.5">\n      <h4 class="font-bold text-black text-base">${faq.question}</h4>\n      <p class="text-black text-sm font-medium">${faq.answer}</p>\n    </div>\n`;
+    });
+
+    faqHtml += `  </div>\n</div>\n`;
+
+    // FAQ Schema JSON-LD
+    const schemaData = {
+      "@context": "https://schema.org",
+      "@type": "FAQPage",
+      "mainEntity": currentFaqs.map(f => ({
+        "@type": "Question",
+        "name": f.question,
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": f.answer
+        }
+      }))
+    };
+
+    const schemaScript = `<script type="application/ld+json">\n${JSON.stringify(schemaData, null, 2)}\n</script>`;
+
+    setBlogContent(prev => {
+      // Remove existing FAQ block / schema if any, then append
+      const cleanPrev = prev.replace(/<div class="my-8 p-6 bg-slate-50[^>]*>[\s\S]*?<\/script>/g, '').trim();
+      return cleanPrev + '\n\n' + faqHtml + '\n\n' + schemaScript;
+    });
+
+    if (visualContentRef.current) {
+      visualContentRef.current.innerHTML = blogContent;
+    }
   };
 
   const handleExportBackup = () => {
@@ -276,6 +414,7 @@ export default function AdminPanelPage() {
     setBlogImageAlt('AI tutorial featured image');
     setBlogStatus('published');
     setArticleImages([]);
+    setFaqs([]);
     setEditorMode('visual');
     setIsEditingBlog(true);
   };
@@ -293,6 +432,7 @@ export default function AdminPanelPage() {
     setBlogImageAlt(b.imageAlt || '');
     setBlogStatus(b.status || 'published');
     setArticleImages([]);
+    setFaqs([]);
     setEditorMode('visual');
     setIsEditingBlog(true);
   };
@@ -377,7 +517,7 @@ export default function AdminPanelPage() {
                 {editingBlogId ? 'Edit Tutorial Post (Anwar)' : 'Create New Tutorial Post (Anwar)'}
               </h1>
               <p className="text-black text-sm font-medium">
-                Switch between Visual Mode (live rendered view) and HTML Code Mode. Upload mid-article images with automatic alt-text slugging.
+                Click any image in visual editor to edit alt/slug. Select any text to trigger floating formatting toolbar. Add FAQs with automated Schema generator.
               </p>
             </div>
 
@@ -517,11 +657,7 @@ export default function AdminPanelPage() {
                   <input
                     type="text"
                     value={blogImageAlt}
-                    onChange={(e) => {
-                      const alt = e.target.value;
-                      setBlogImageAlt(alt);
-                      // also auto update slug if empty or match
-                    }}
+                    onChange={(e) => setBlogImageAlt(e.target.value)}
                     placeholder="उदा: AI tutorial banner image"
                     className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-black font-medium"
                   />
@@ -538,32 +674,58 @@ export default function AdminPanelPage() {
                 />
               </div>
 
-              {/* Mid-Article Images Manager / Library Bar */}
-              {articleImages.length > 0 && (
-                <div className="p-4 bg-orange-50/60 border border-orange-200 rounded-2xl space-y-3">
-                  <div className="text-xs font-bold text-black">Uploaded Mid-Article Images ({articleImages.length}) - Click to Edit Alt Text & Slug:</div>
-                  <div className="flex flex-wrap gap-3">
-                    {articleImages.map((img) => (
-                      <div
-                        key={img.id}
-                        onClick={() => setSelectedImageForEdit(img)}
-                        className="bg-white border border-orange-200 rounded-xl p-2 flex items-center gap-3 cursor-pointer hover:shadow-md transition-shadow"
-                      >
-                        <div className="w-12 h-12 relative rounded-lg overflow-hidden bg-slate-200 shrink-0">
-                          <Image src={img.base64} alt={img.alt} fill className="object-cover" referrerPolicy="no-referrer" />
+              {/* FAQ Builder Section */}
+              <div className="space-y-4 bg-orange-50/50 border border-orange-200 p-6 rounded-2xl">
+                <div className="flex items-center gap-2 text-black font-bold text-sm">
+                  <HelpCircle className="w-4 h-4 text-orange-600" />
+                  <span>FAQ Builder & Schema Generator (FAQ Schema)</span>
+                </div>
+                <p className="text-xs text-black font-medium">Add frequently asked questions. They will automatically be formatted into the article and include Google FAQ JSON-LD Schema.</p>
+
+                <div className="space-y-3">
+                  <input
+                    type="text"
+                    value={newFaqQ}
+                    onChange={(e) => setNewFaqQ(e.target.value)}
+                    placeholder="FAQ Question (उदा: What is ChatGPT in Hindi?)"
+                    className="w-full px-4 py-2.5 bg-white border border-orange-200 rounded-xl text-xs text-black font-medium"
+                  />
+                  <textarea
+                    rows={2}
+                    value={newFaqA}
+                    onChange={(e) => setNewFaqA(e.target.value)}
+                    placeholder="FAQ Answer..."
+                    className="w-full px-4 py-2.5 bg-white border border-orange-200 rounded-xl text-xs text-black font-medium"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleAddFaq}
+                    className="px-5 py-2 bg-orange-600 hover:bg-orange-700 text-white font-bold rounded-xl text-xs shadow-sm transition-colors"
+                  >
+                    + Add FAQ & Generate Schema
+                  </button>
+                </div>
+
+                {faqs.length > 0 && (
+                  <div className="space-y-2 pt-3 border-t border-orange-200">
+                    <div className="text-xs font-bold text-black">Added FAQs ({faqs.length}):</div>
+                    {faqs.map((f, idx) => (
+                      <div key={idx} className="bg-white p-3 rounded-xl border border-orange-200 flex items-center justify-between gap-4 text-xs">
+                        <div>
+                          <strong className="text-black">{f.question}</strong>
+                          <p className="text-slate-600 line-clamp-1">{f.answer}</p>
                         </div>
-                        <div className="text-xs">
-                          <div className="font-bold text-black truncate max-w-[120px]">{img.alt}</div>
-                          <div className="text-orange-600 font-mono text-[10px] truncate max-w-[120px]">/{img.slug}</div>
-                        </div>
+                        <button type="button" onClick={() => handleDeleteFaq(idx)} className="text-red-600 hover:text-red-800 font-bold shrink-0">
+                          Delete
+                        </button>
                       </div>
                     ))}
                   </div>
-                </div>
-              )}
+                )}
+              </div>
 
-              {/* Dual Mode Editor: Visual (Normal live view) vs HTML Code Mode */}
-              <div className="space-y-3">
+              {/* Dual Mode Editor: Visual vs HTML Code Mode */}
+              <div className="space-y-3 relative">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                   <label className="text-xs font-bold text-black">Article Content Editor</label>
                   
@@ -633,14 +795,36 @@ export default function AdminPanelPage() {
                   </label>
                 </div>
 
+                {/* Floating Selection Toolbar for Text Formatting */}
+                {floatingToolbarPos && editorMode === 'visual' && (
+                  <div
+                    style={{ top: floatingToolbarPos.top, left: floatingToolbarPos.left }}
+                    className="absolute z-30 bg-slate-900 text-white shadow-2xl rounded-xl px-3 py-1.5 flex items-center gap-2 text-xs font-bold animate-fadeIn"
+                  >
+                    <button type="button" onClick={() => applyFormatting('bold')} className="hover:text-orange-400 p-1">
+                      <Bold className="w-3.5 h-3.5" />
+                    </button>
+                    <button type="button" onClick={() => applyFormatting('italic')} className="hover:text-orange-400 p-1">
+                      <Italic className="w-3.5 h-3.5" />
+                    </button>
+                    <button type="button" onClick={handleOpenLinkModal} className="hover:text-orange-400 p-1">
+                      <LinkIcon className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                )}
+
                 {/* Editor Content Area */}
                 {editorMode === 'visual' ? (
                   <div
+                    ref={visualContentRef}
                     contentEditable
                     suppressContentEditableWarning
                     onInput={(e) => setBlogContent(e.currentTarget.innerHTML)}
+                    onMouseUp={handleSelectionChange}
+                    onKeyUp={handleSelectionChange}
+                    onClick={handleVisualEditorClick}
                     dangerouslySetInnerHTML={{ __html: blogContent }}
-                    className="w-full min-h-[420px] p-6 bg-slate-50 border border-slate-200 rounded-2xl text-black font-medium focus:outline-none focus:ring-2 focus:ring-orange-600/20 prose max-w-none [&>h1]:text-2xl [&>h1]:font-extrabold [&>h2]:text-xl [&>h2]:font-bold [&>h3]:text-lg [&>h3]:font-bold [&>img]:rounded-2xl [&>img]:my-4"
+                    className="w-full min-h-[420px] p-6 bg-slate-50 border border-slate-200 rounded-2xl text-black font-medium focus:outline-none focus:ring-2 focus:ring-orange-600/20 prose max-w-none [&>h1]:text-2xl [&>h1]:font-extrabold [&>h2]:text-xl [&>h2]:font-bold [&>h3]:text-lg [&>h3]:font-bold [&>img]:rounded-2xl [&>img]:my-4 [&>img]:cursor-pointer [&>img]:hover:ring-4 [&>img]:hover:ring-orange-500/50"
                   />
                 ) : (
                   <textarea
@@ -674,12 +858,12 @@ export default function AdminPanelPage() {
           </div>
         </main>
 
-        {/* Edit Image Alt Text & Slug Modal */}
+        {/* Edit Image Modal (Replace, Alt text, Slug) */}
         {selectedImageForEdit && (
           <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4">
             <div className="bg-white rounded-3xl max-w-md w-full p-8 space-y-6 shadow-2xl">
               <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                <h3 className="text-lg font-bold text-black">Edit Image Alt Text & Slug</h3>
+                <h3 className="text-lg font-bold text-black">Edit Image Settings</h3>
                 <button onClick={() => setSelectedImageForEdit(null)} className="text-slate-400 hover:text-black">
                   <X className="w-5 h-5" />
                 </button>
@@ -688,6 +872,30 @@ export default function AdminPanelPage() {
               <div className="space-y-4">
                 <div className="w-full h-36 relative rounded-2xl overflow-hidden bg-slate-100 border border-slate-200">
                   <Image src={selectedImageForEdit.base64} alt={selectedImageForEdit.alt} fill className="object-cover" referrerPolicy="no-referrer" />
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    ref={replaceImageFileInputRef}
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      const reader = new FileReader();
+                      reader.onload = (evt) => {
+                        const newBase64 = evt.target?.result as string;
+                        handleUpdateImageMetadata(selectedImageForEdit.id, selectedImageForEdit.alt, selectedImageForEdit.slug, newBase64);
+                      };
+                      reader.readAsDataURL(file);
+                    }}
+                    className="hidden"
+                    id="replaceImgInput"
+                  />
+                  <label htmlFor="replaceImgInput" className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-black font-bold rounded-xl text-xs cursor-pointer inline-flex items-center gap-1.5 transition-colors">
+                    <Upload className="w-3.5 h-3.5" />
+                    <span>Replace Image File</span>
+                  </label>
                 </div>
 
                 <form
@@ -718,14 +926,14 @@ export default function AdminPanelPage() {
                   </div>
 
                   <div>
-                    <label className="block text-xs font-bold text-black mb-1">Image Slug (Auto-generated)</label>
+                    <label className="block text-xs font-bold text-black mb-1">Image File Name / Slug (Auto-generated)</label>
                     <input
                       type="text"
                       name="imgSlug"
                       id="editImgSlugInput"
                       defaultValue={selectedImageForEdit.slug}
                       required
-                      className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono text-orange-600 font-bold focus:ring-2 focus:ring-orange-600/20"
+                      className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-mono text-orange-600 font-bold focus:ring-2 focus:ring-orange-600/20"
                     />
                   </div>
 
@@ -741,7 +949,7 @@ export default function AdminPanelPage() {
                       type="submit"
                       className="px-5 py-2.5 bg-orange-600 hover:bg-orange-700 text-white font-bold rounded-xl text-xs shadow-md"
                     >
-                      Update Image
+                      Save Changes
                     </button>
                   </div>
                 </form>
