@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { Plus, Edit, Trash2, Database, CheckCircle, ExternalLink, Sparkles, FileText, ArrowLeft, Image as ImageIcon, Link as LinkIcon, Bold, Italic, Heading1, Heading2, Heading3, Code, Wand2, Upload, X, RefreshCw, Eye, Code2, HelpCircle } from 'lucide-react';
+import { Plus, Edit, Trash2, Database, CheckCircle, ExternalLink, Sparkles, FileText, ArrowLeft, Image as ImageIcon, Link as LinkIcon, Bold, Italic, Heading1, Heading2, Heading3, Code, Wand2, Upload, X, RefreshCw, Eye, Code2, HelpCircle, Bot, AlertTriangle, TrendingUp, Award } from 'lucide-react';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import { 
@@ -25,6 +25,14 @@ interface ArticleImage {
 interface FAQItem {
   question: string;
   answer: string;
+}
+
+interface AIAnalysis {
+  seoScore: number;
+  eeatScore: number;
+  rankingChances: string;
+  mistakes: string[];
+  competitorComparison: string;
 }
 
 export default function AdminPanelPage() {
@@ -59,6 +67,12 @@ export default function AdminPanelPage() {
   const [faqs, setFaqs] = useState<FAQItem[]>([]);
   const [newFaqQ, setNewFaqQ] = useState('');
   const [newFaqA, setNewFaqA] = useState('');
+
+  // AI Supervisor State
+  const [aiKeyword, setAiKeyword] = useState('');
+  const [isGeneratingAi, setIsGeneratingAi] = useState(false);
+  const [isAnalyzingAi, setIsAnalyzingAi] = useState(false);
+  const [analysisResult, setAnalysisResult] = useState<AIAnalysis | null>(null);
 
   // WordPress Code Importer State
   const [wpRawCode, setWpRawCode] = useState('');
@@ -115,7 +129,7 @@ export default function AdminPanelPage() {
     }
   };
 
-  // Selection change listener for floating text formatting toolbar
+  // Stable selection change listener for floating text formatting toolbar without scroll jumps
   const handleSelectionChange = () => {
     if (editorMode !== 'visual') return;
     const selection = window.getSelection();
@@ -123,15 +137,19 @@ export default function AdminPanelPage() {
       setFloatingToolbarPos(null);
       return;
     }
-    const range = selection.getRangeAt(0);
-    const rect = range.getBoundingClientRect();
-    const editorRect = visualContentRef.current?.getBoundingClientRect();
+    try {
+      const range = selection.getRangeAt(0);
+      const rect = range.getBoundingClientRect();
+      const editorRect = visualContentRef.current?.getBoundingClientRect();
 
-    if (editorRect && rect.top) {
-      setFloatingToolbarPos({
-        top: rect.top - editorRect.top - 45,
-        left: rect.left - editorRect.left + (rect.width / 2) - 60
-      });
+      if (editorRect && rect) {
+        setFloatingToolbarPos({
+          top: Math.max(5, rect.top - editorRect.top - 40),
+          left: Math.max(10, rect.left - editorRect.left + (rect.width / 2) - 50)
+        });
+      }
+    } catch {
+      setFloatingToolbarPos(null);
     }
   };
 
@@ -190,7 +208,7 @@ export default function AdminPanelPage() {
     if (contentImageInputRef.current) contentImageInputRef.current.value = '';
   };
 
-  // Handle clicking an image inside visual editor to edit Alt text, Slug, or Replace
+  // Handle clicking an image inside visual editor to edit Alt text, Slug, Replace, or Remove
   const handleVisualEditorClick = (e: React.MouseEvent<HTMLDivElement>) => {
     const target = e.target as HTMLElement;
     if (target.tagName === 'IMG') {
@@ -199,7 +217,6 @@ export default function AdminPanelPage() {
       if (found) {
         setSelectedImageForEdit(found);
       } else {
-        // If image wasn't in state list, create temporary state
         const tempImg: ArticleImage = {
           id: imgId || ('img-' + Date.now()),
           base64: target.getAttribute('src') || '',
@@ -223,7 +240,6 @@ export default function AdminPanelPage() {
     });
 
     setBlogContent(prev => {
-      // update html content
       const parser = new DOMParser();
       const doc = parser.parseFromString(prev, 'text/html');
       const imgs = doc.querySelectorAll('img');
@@ -244,6 +260,28 @@ export default function AdminPanelPage() {
 
     setSelectedImageForEdit(null);
     showNotify('Image successfully updated!');
+  };
+
+  // Remove Image option from popup
+  const handleRemoveImage = (id: string) => {
+    if (!confirm('Are you sure you want to remove this image from the article?')) return;
+    setArticleImages(prev => prev.filter(img => img.id !== id));
+    setBlogContent(prev => {
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(prev, 'text/html');
+      const imgs = doc.querySelectorAll('img');
+      imgs.forEach(img => {
+        if (img.getAttribute('data-img-id') === id || img.getAttribute('src') === selectedImageForEdit?.base64) {
+          img.remove();
+        }
+      });
+      return doc.body.innerHTML;
+    });
+    if (visualContentRef.current) {
+      visualContentRef.current.innerHTML = blogContent;
+    }
+    setSelectedImageForEdit(null);
+    showNotify('Image removed from article.');
   };
 
   // Local Featured Image Upload
@@ -332,7 +370,6 @@ export default function AdminPanelPage() {
 
     faqHtml += `  </div>\n</div>\n`;
 
-    // FAQ Schema JSON-LD
     const schemaData = {
       "@context": "https://schema.org",
       "@type": "FAQPage",
@@ -349,13 +386,67 @@ export default function AdminPanelPage() {
     const schemaScript = `<script type="application/ld+json">\n${JSON.stringify(schemaData, null, 2)}\n</script>`;
 
     setBlogContent(prev => {
-      // Remove existing FAQ block / schema if any, then append
       const cleanPrev = prev.replace(/<div class="my-8 p-6 bg-slate-50[^>]*>[\s\S]*?<\/script>/g, '').trim();
       return cleanPrev + '\n\n' + faqHtml + '\n\n' + schemaScript;
     });
 
     if (visualContentRef.current) {
       visualContentRef.current.innerHTML = blogContent;
+    }
+  };
+
+  // AI Supervisor Actions
+  const handleAiGeneratePost = async () => {
+    if (!aiKeyword.trim()) return;
+    setIsGeneratingAi(true);
+    try {
+      const res = await fetch('/api/ai-supervisor', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'generate', keywordOrTitle: aiKeyword })
+      });
+      const data = await res.json();
+      if (data.title) {
+        setBlogTitle(data.title);
+        setBlogSlug(data.slug || data.title.toLowerCase().replace(/[^a-z0-9]+/g, '-'));
+        setBlogCategory(data.category || 'AI Guides');
+        setBlogExcerpt(data.excerpt || '');
+        setBlogContent(data.content || '');
+        if (visualContentRef.current) visualContentRef.current.innerHTML = data.content || '';
+        showNotify('Full Hindi article generated successfully by AI Supervisor!');
+      } else {
+        alert('Failed to generate article.');
+      }
+    } catch (err) {
+      alert('Error generating article: ' + (err as Error).message);
+    } finally {
+      setIsGeneratingAi(false);
+    }
+  };
+
+  const handleAiAnalyzePost = async () => {
+    if (!blogTitle.trim() || !blogContent.trim()) {
+      alert('Please enter a title and content to analyze.');
+      return;
+    }
+    setIsAnalyzingAi(true);
+    try {
+      const res = await fetch('/api/ai-supervisor', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'analyze', keywordOrTitle: blogTitle, content: blogContent })
+      });
+      const data = await res.json();
+      if (data.seoScore !== undefined) {
+        setAnalysisResult(data);
+        showNotify('AI Supervisor analysis complete!');
+      } else {
+        alert('Failed to analyze article.');
+      }
+    } catch (err) {
+      alert('Error analyzing article: ' + (err as Error).message);
+    } finally {
+      setIsAnalyzingAi(false);
     }
   };
 
@@ -415,6 +506,7 @@ export default function AdminPanelPage() {
     setBlogStatus('published');
     setArticleImages([]);
     setFaqs([]);
+    setAnalysisResult(null);
     setEditorMode('visual');
     setIsEditingBlog(true);
   };
@@ -433,6 +525,7 @@ export default function AdminPanelPage() {
     setBlogStatus(b.status || 'published');
     setArticleImages([]);
     setFaqs([]);
+    setAnalysisResult(null);
     setEditorMode('visual');
     setIsEditingBlog(true);
   };
@@ -517,8 +610,89 @@ export default function AdminPanelPage() {
                 {editingBlogId ? 'Edit Tutorial Post (Anwar)' : 'Create New Tutorial Post (Anwar)'}
               </h1>
               <p className="text-black text-sm font-medium">
-                Click any image in visual editor to edit alt/slug. Select any text to trigger floating formatting toolbar. Add FAQs with automated Schema generator.
+                AI Supervisor enabled for post generation, SEO analysis, E-E-A-T score, and competitor ranking comparison.
               </p>
+            </div>
+
+            {/* AI Supervisor Widget */}
+            <div className="bg-gradient-to-br from-orange-600 to-amber-600 text-white rounded-2xl p-6 sm:p-8 shadow-lg space-y-6">
+              <div className="flex items-center gap-2 font-bold text-lg">
+                <Bot className="w-6 h-6 text-amber-200" />
+                <span>AI Supervisor & SEO Auditor</span>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="block text-xs font-bold text-white/90">Generate Post from Keyword / Title</label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={aiKeyword}
+                      onChange={(e) => setAiKeyword(e.target.value)}
+                      placeholder="उदा: ChatGPT se time table kaise banaye"
+                      className="w-full px-4 py-2.5 bg-white/10 backdrop-blur-md border border-white/30 rounded-xl text-xs text-white placeholder-white/70 font-medium focus:outline-none"
+                    />
+                    <button
+                      type="button"
+                      disabled={isGeneratingAi}
+                      onClick={handleAiGeneratePost}
+                      className="px-5 py-2.5 bg-white text-orange-600 hover:bg-orange-50 font-bold rounded-xl text-xs shadow-md transition-colors shrink-0 disabled:opacity-50"
+                    >
+                      {isGeneratingAi ? 'Generating...' : 'Generate Post'}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="space-y-2 flex flex-col justify-end">
+                  <label className="block text-xs font-bold text-white/90">Analyze Current Article Quality & SEO</label>
+                  <button
+                    type="button"
+                    disabled={isAnalyzingAi}
+                    onClick={handleAiAnalyzePost}
+                    className="w-full py-2.5 bg-black/30 hover:bg-black/40 text-white border border-white/30 font-bold rounded-xl text-xs shadow-md transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+                  >
+                    <Award className="w-4 h-4 text-amber-200" />
+                    <span>{isAnalyzingAi ? 'Analyzing...' : 'Run AI Quality & SEO Audit'}</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Analysis Results Box */}
+              {analysisResult && (
+                <div className="mt-6 p-6 bg-white/10 backdrop-blur-md border border-white/25 rounded-2xl space-y-4 text-white">
+                  <div className="flex flex-wrap items-center justify-between gap-4 border-b border-white/20 pb-4">
+                    <div>
+                      <div className="text-xs text-amber-200 font-bold">SEO Score</div>
+                      <div className="text-2xl font-extrabold">{analysisResult.seoScore} / 100</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-amber-200 font-bold">E-E-A-T Score</div>
+                      <div className="text-2xl font-extrabold">{analysisResult.eeatScore} / 100</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-amber-200 font-bold">Ranking Chances</div>
+                      <div className="text-xl font-bold">{analysisResult.rankingChances}</div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="text-xs font-bold text-amber-200 flex items-center gap-1.5">
+                      <AlertTriangle className="w-4 h-4" />
+                      <span>Identified Mistakes & Recommendations:</span>
+                    </div>
+                    <ul className="list-disc pl-5 space-y-1 text-xs text-white/90">
+                      {analysisResult.mistakes.map((m, idx) => (
+                        <li key={idx}>{m}</li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  <div className="space-y-1 pt-2 border-t border-white/20">
+                    <div className="text-xs font-bold text-amber-200">Competitor Comparison & Outranking Strategy:</div>
+                    <p className="text-xs text-white/90 leading-relaxed">{analysisResult.competitorComparison}</p>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* WordPress Code Importer Widget */}
@@ -674,55 +848,29 @@ export default function AdminPanelPage() {
                 />
               </div>
 
-              {/* FAQ Builder Section */}
-              <div className="space-y-4 bg-orange-50/50 border border-orange-200 p-6 rounded-2xl">
-                <div className="flex items-center gap-2 text-black font-bold text-sm">
-                  <HelpCircle className="w-4 h-4 text-orange-600" />
-                  <span>FAQ Builder & Schema Generator (FAQ Schema)</span>
-                </div>
-                <p className="text-xs text-black font-medium">Add frequently asked questions. They will automatically be formatted into the article and include Google FAQ JSON-LD Schema.</p>
-
-                <div className="space-y-3">
-                  <input
-                    type="text"
-                    value={newFaqQ}
-                    onChange={(e) => setNewFaqQ(e.target.value)}
-                    placeholder="FAQ Question (उदा: What is ChatGPT in Hindi?)"
-                    className="w-full px-4 py-2.5 bg-white border border-orange-200 rounded-xl text-xs text-black font-medium"
-                  />
-                  <textarea
-                    rows={2}
-                    value={newFaqA}
-                    onChange={(e) => setNewFaqA(e.target.value)}
-                    placeholder="FAQ Answer..."
-                    className="w-full px-4 py-2.5 bg-white border border-orange-200 rounded-xl text-xs text-black font-medium"
-                  />
-                  <button
-                    type="button"
-                    onClick={handleAddFaq}
-                    className="px-5 py-2 bg-orange-600 hover:bg-orange-700 text-white font-bold rounded-xl text-xs shadow-sm transition-colors"
-                  >
-                    + Add FAQ & Generate Schema
-                  </button>
-                </div>
-
-                {faqs.length > 0 && (
-                  <div className="space-y-2 pt-3 border-t border-orange-200">
-                    <div className="text-xs font-bold text-black">Added FAQs ({faqs.length}):</div>
-                    {faqs.map((f, idx) => (
-                      <div key={idx} className="bg-white p-3 rounded-xl border border-orange-200 flex items-center justify-between gap-4 text-xs">
-                        <div>
-                          <strong className="text-black">{f.question}</strong>
-                          <p className="text-slate-600 line-clamp-1">{f.answer}</p>
+              {/* Mid-Article Images Manager / Library Bar */}
+              {articleImages.length > 0 && (
+                <div className="p-4 bg-orange-50/60 border border-orange-200 rounded-2xl space-y-3">
+                  <div className="text-xs font-bold text-black">Uploaded Mid-Article Images ({articleImages.length}) - Click to Edit Alt Text & Slug:</div>
+                  <div className="flex flex-wrap gap-3">
+                    {articleImages.map((img) => (
+                      <div
+                        key={img.id}
+                        onClick={() => setSelectedImageForEdit(img)}
+                        className="bg-white border border-orange-200 rounded-xl p-2 flex items-center gap-3 cursor-pointer hover:shadow-md transition-shadow"
+                      >
+                        <div className="w-12 h-12 relative rounded-lg overflow-hidden bg-slate-200 shrink-0">
+                          <Image src={img.base64} alt={img.alt} fill className="object-cover" referrerPolicy="no-referrer" />
                         </div>
-                        <button type="button" onClick={() => handleDeleteFaq(idx)} className="text-red-600 hover:text-red-800 font-bold shrink-0">
-                          Delete
-                        </button>
+                        <div className="text-xs">
+                          <div className="font-bold text-black truncate max-w-[120px]">{img.alt}</div>
+                          <div className="text-orange-600 font-mono text-[10px] truncate max-w-[120px]">/{img.slug}</div>
+                        </div>
                       </div>
                     ))}
                   </div>
-                )}
-              </div>
+                </div>
+              )}
 
               {/* Dual Mode Editor: Visual vs HTML Code Mode */}
               <div className="space-y-3 relative">
@@ -795,19 +943,19 @@ export default function AdminPanelPage() {
                   </label>
                 </div>
 
-                {/* Floating Selection Toolbar for Text Formatting */}
+                {/* Fixed Non-Jumping Floating Selection Toolbar for Text Formatting */}
                 {floatingToolbarPos && editorMode === 'visual' && (
                   <div
-                    style={{ top: floatingToolbarPos.top, left: floatingToolbarPos.left }}
-                    className="absolute z-30 bg-slate-900 text-white shadow-2xl rounded-xl px-3 py-1.5 flex items-center gap-2 text-xs font-bold animate-fadeIn"
+                    style={{ top: `${floatingToolbarPos.top}px`, left: `${floatingToolbarPos.left}px` }}
+                    className="absolute z-30 bg-slate-900 text-white shadow-2xl rounded-xl px-3 py-1.5 flex items-center gap-2 text-xs font-bold pointer-events-auto"
                   >
-                    <button type="button" onClick={() => applyFormatting('bold')} className="hover:text-orange-400 p-1">
+                    <button type="button" onMouseDown={(e) => { e.preventDefault(); applyFormatting('bold'); }} className="hover:text-orange-400 p-1">
                       <Bold className="w-3.5 h-3.5" />
                     </button>
-                    <button type="button" onClick={() => applyFormatting('italic')} className="hover:text-orange-400 p-1">
+                    <button type="button" onMouseDown={(e) => { e.preventDefault(); applyFormatting('italic'); }} className="hover:text-orange-400 p-1">
                       <Italic className="w-3.5 h-3.5" />
                     </button>
-                    <button type="button" onClick={handleOpenLinkModal} className="hover:text-orange-400 p-1">
+                    <button type="button" onMouseDown={(e) => { e.preventDefault(); handleOpenLinkModal(); }} className="hover:text-orange-400 p-1">
                       <LinkIcon className="w-3.5 h-3.5" />
                     </button>
                   </div>
@@ -839,6 +987,56 @@ export default function AdminPanelPage() {
                 )}
               </div>
 
+              {/* FAQ Builder Section (Placed AFTER article editor per request) */}
+              <div className="space-y-4 bg-orange-50/50 border border-orange-200 p-6 rounded-2xl">
+                <div className="flex items-center gap-2 text-black font-bold text-sm">
+                  <HelpCircle className="w-4 h-4 text-orange-600" />
+                  <span>FAQ Builder & Schema Generator (FAQ Schema)</span>
+                </div>
+                <p className="text-xs text-black font-medium">Add frequently asked questions at the end of the article. They will automatically be formatted and include Google FAQ JSON-LD Schema.</p>
+
+                <div className="space-y-3">
+                  <input
+                    type="text"
+                    value={newFaqQ}
+                    onChange={(e) => setNewFaqQ(e.target.value)}
+                    placeholder="FAQ Question (उदा: What is ChatGPT in Hindi?)"
+                    className="w-full px-4 py-2.5 bg-white border border-orange-200 rounded-xl text-xs text-black font-medium"
+                  />
+                  <textarea
+                    rows={2}
+                    value={newFaqA}
+                    onChange={(e) => setNewFaqA(e.target.value)}
+                    placeholder="FAQ Answer..."
+                    className="w-full px-4 py-2.5 bg-white border border-orange-200 rounded-xl text-xs text-black font-medium"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleAddFaq}
+                    className="px-5 py-2 bg-orange-600 hover:bg-orange-700 text-white font-bold rounded-xl text-xs shadow-sm transition-colors"
+                  >
+                    + Add FAQ & Generate Schema
+                  </button>
+                </div>
+
+                {faqs.length > 0 && (
+                  <div className="space-y-2 pt-3 border-t border-orange-200">
+                    <div className="text-xs font-bold text-black">Added FAQs ({faqs.length}):</div>
+                    {faqs.map((f, idx) => (
+                      <div key={idx} className="bg-white p-3 rounded-xl border border-orange-200 flex items-center justify-between gap-4 text-xs">
+                        <div>
+                          <strong className="text-black">{f.question}</strong>
+                          <p className="text-slate-600 line-clamp-1">{f.answer}</p>
+                        </div>
+                        <button type="button" onClick={() => handleDeleteFaq(idx)} className="text-red-600 hover:text-red-800 font-bold shrink-0">
+                          Delete
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               <div className="flex items-center justify-end gap-4 pt-6 border-t border-slate-100">
                 <button
                   type="button"
@@ -858,7 +1056,7 @@ export default function AdminPanelPage() {
           </div>
         </main>
 
-        {/* Edit Image Modal (Replace, Alt text, Slug) */}
+        {/* Edit Image Modal (Replace, Alt text, Slug, Remove Image) */}
         {selectedImageForEdit && (
           <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4">
             <div className="bg-white rounded-3xl max-w-md w-full p-8 space-y-6 shadow-2xl">
@@ -874,7 +1072,7 @@ export default function AdminPanelPage() {
                   <Image src={selectedImageForEdit.base64} alt={selectedImageForEdit.alt} fill className="object-cover" referrerPolicy="no-referrer" />
                 </div>
 
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-2">
                   <input
                     type="file"
                     accept="image/*"
@@ -894,8 +1092,17 @@ export default function AdminPanelPage() {
                   />
                   <label htmlFor="replaceImgInput" className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-black font-bold rounded-xl text-xs cursor-pointer inline-flex items-center gap-1.5 transition-colors">
                     <Upload className="w-3.5 h-3.5" />
-                    <span>Replace Image File</span>
+                    <span>Replace Image</span>
                   </label>
+
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveImage(selectedImageForEdit.id)}
+                    className="px-4 py-2 bg-red-50 hover:bg-red-100 text-red-700 font-bold rounded-xl text-xs inline-flex items-center gap-1.5 transition-colors"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Remove Image</span>
+                  </button>
                 </div>
 
                 <form
@@ -933,7 +1140,7 @@ export default function AdminPanelPage() {
                       id="editImgSlugInput"
                       defaultValue={selectedImageForEdit.slug}
                       required
-                      className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-mono text-orange-600 font-bold focus:ring-2 focus:ring-orange-600/20"
+                      className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono text-orange-600 font-bold focus:ring-2 focus:ring-orange-600/20"
                     />
                   </div>
 
