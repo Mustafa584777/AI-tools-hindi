@@ -65,7 +65,7 @@ export default function AdminPanelPage() {
 
   // Editor Mode: Visual vs HTML Code Mode
   const [editorMode, setEditorMode] = useState<'visual' | 'html'>('visual');
-  const [, setSelectedBlockElement] = useState<HTMLElement | null>(null);
+  const selectedBlockElementRef = useRef<HTMLElement | null>(null);
 
   // Article Media Library
   const [articleImages, setArticleImages] = useState<ArticleImage[]>([]);
@@ -121,6 +121,15 @@ export default function AdminPanelPage() {
     loadData();
   }, []);
 
+  // Sync contentEditable div HTML when blogContent changes or editing starts
+  useEffect(() => {
+    if (editorMode === 'visual' && visualContentRef.current) {
+      if (visualContentRef.current.innerHTML !== blogContent) {
+        visualContentRef.current.innerHTML = blogContent;
+      }
+    }
+  }, [blogContent, editorMode, isEditingBlog]);
+
   const showNotify = (msg: string) => {
     setNotification(msg);
     setTimeout(() => setNotification(null), 3500);
@@ -173,11 +182,65 @@ export default function AdminPanelPage() {
     }
   };
 
-  const insertTag = (tagOpen: string, tagClose: string = '') => {
-    const selection = window.getSelection();
-    const selectedText = selection ? selection.toString() : 'Text here';
-    const wrapped = `${tagOpen}${selectedText}${tagClose}`;
-    applyFormatting('insertHTML', wrapped);
+  // Apply formatting directly to the actively selected block element across the entire document using ref or selection fallback
+  const applyBlockFormatting = (type: 'H1' | 'H2' | 'H3' | 'P' | 'bold' | 'italic' | 'link') => {
+    let el = selectedBlockElementRef.current;
+
+    // Fallback: If no block is currently selected, find the block enclosing the current selection / caret
+    if (!el || !visualContentRef.current?.contains(el)) {
+      const selection = window.getSelection();
+      if (selection && selection.rangeCount > 0) {
+        let node = selection.anchorNode;
+        if (node && node.nodeType === Node.TEXT_NODE) node = node.parentNode;
+        if (node && node instanceof HTMLElement) {
+          el = node.closest('p, h1, h2, h3, blockquote, ul, li, table, tr, div') as HTMLElement;
+        }
+      }
+    }
+
+    if (!el || !visualContentRef.current?.contains(el) || el === visualContentRef.current) {
+      el = visualContentRef.current?.querySelector('p, h1, h2, h3, li') as HTMLElement;
+    }
+
+    if (!el && visualContentRef.current) {
+      const p = document.createElement('p');
+      p.className = 'mb-6 text-slate-700 leading-relaxed text-lg';
+      p.innerHTML = visualContentRef.current.innerHTML || 'New paragraph';
+      visualContentRef.current.appendChild(p);
+      el = p;
+    }
+
+    if (!el) {
+      alert('कृपया एडिटर में पहले किसी भी पैराग्राफ या हेडिंग ब्लॉक पर क्लिक करें!');
+      return;
+    }
+
+    if (type === 'H1' || type === 'H2' || type === 'H3' || type === 'P') {
+      const tag = type === 'H1' ? 'h1' : type === 'H2' ? 'h2' : type === 'H3' ? 'h3' : 'p';
+      const newEl = document.createElement(tag);
+      newEl.innerHTML = el.innerHTML;
+      newEl.className = tag === 'h1' ? 'text-3xl font-extrabold text-black mt-6 mb-4' :
+                        tag === 'h2' ? 'text-2xl font-bold text-black mt-6 mb-3' :
+                        tag === 'h3' ? 'text-xl font-semibold text-black mt-4 mb-2' :
+                        'mb-6 text-slate-700 leading-relaxed text-lg';
+      el.replaceWith(newEl);
+      newEl.classList.add('ring-2', 'ring-blue-400', 'bg-blue-50/20', 'rounded-xl', 'p-2', 'editor-selected-block');
+      selectedBlockElementRef.current = newEl;
+    } else if (type === 'bold') {
+      el.innerHTML = `<strong>${el.innerHTML}</strong>`;
+    } else if (type === 'italic') {
+      el.innerHTML = `<em>${el.innerHTML}</em>`;
+    } else if (type === 'link') {
+      const url = prompt('Enter URL (Link):', 'https://');
+      if (url) {
+        el.innerHTML = `<a href="${url}" target="_blank" rel="noopener noreferrer" class="text-orange-600 underline font-bold">${el.innerHTML}</a>`;
+      }
+    }
+
+    if (visualContentRef.current) {
+      setBlogContent(visualContentRef.current.innerHTML);
+      showNotify('Formatting applied to block successfully!');
+    }
   };
 
   const insertList = () => {
@@ -191,21 +254,19 @@ export default function AdminPanelPage() {
   };
 
   const handleInsertLink = () => {
-    const url = prompt('Enter URL (Link):', 'https://');
-    if (!url) return;
-    applyFormatting('createLink', url);
+    applyBlockFormatting('link');
   };
 
-  // Click handler to select block and highlight with light blue border across all blocks
+  // Click handler to select ANY block element across the entire document and highlight with light blue border
   const handleVisualClick = (e: React.MouseEvent<HTMLDivElement>) => {
     const target = e.target as HTMLElement;
-    const blockEl = target.closest('p, h1, h2, h3, blockquote, ul, table, li, div') as HTMLElement;
+    const blockEl = target.closest('p, h1, h2, h3, blockquote, ul, table, li, tr') as HTMLElement;
     if (blockEl && visualContentRef.current?.contains(blockEl) && blockEl !== visualContentRef.current) {
       visualContentRef.current.querySelectorAll('.editor-selected-block').forEach(el => {
         el.classList.remove('ring-2', 'ring-blue-400', 'bg-blue-50/20', 'rounded-xl', 'p-2', 'editor-selected-block');
       });
       blockEl.classList.add('ring-2', 'ring-blue-400', 'bg-blue-50/20', 'rounded-xl', 'p-2', 'editor-selected-block');
-      setSelectedBlockElement(blockEl);
+      selectedBlockElementRef.current = blockEl;
     }
   };
 
@@ -266,9 +327,10 @@ export default function AdminPanelPage() {
         .join('\n');
     }
 
-    setBlogContent(prev => (prev ? prev + '\n\n' + cleaned : cleaned));
+    const updated = blogContent ? blogContent + '\n\n' + cleaned : cleaned;
+    setBlogContent(updated);
     if (visualContentRef.current) {
-      visualContentRef.current.innerHTML = blogContent + '\n\n' + cleaned;
+      visualContentRef.current.innerHTML = updated;
     }
     setWpRawCode('');
     setShowWpImporter(false);
@@ -362,7 +424,8 @@ export default function AdminPanelPage() {
   };
 
   const handleAiAnalyzePost = async () => {
-    if (!blogTitle.trim() || !blogContent.trim()) {
+    const currentContent = visualContentRef.current ? visualContentRef.current.innerHTML : blogContent;
+    if (!blogTitle.trim() || !currentContent.trim()) {
       alert('Please enter a title and content to analyze.');
       return;
     }
@@ -371,7 +434,7 @@ export default function AdminPanelPage() {
       const res = await fetch('/api/ai-supervisor', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'analyze', keywordOrTitle: blogTitle, content: blogContent })
+        body: JSON.stringify({ action: 'analyze', keywordOrTitle: blogTitle, content: currentContent })
       });
       const data = await res.json();
       if (data.seoScore !== undefined) {
@@ -388,7 +451,8 @@ export default function AdminPanelPage() {
   };
 
   const handleAiOptimizePost = async () => {
-    if (!blogTitle.trim() || !blogContent.trim()) {
+    const currentContent = visualContentRef.current ? visualContentRef.current.innerHTML : blogContent;
+    if (!blogTitle.trim() || !currentContent.trim()) {
       alert('Please enter a title and content to optimize.');
       return;
     }
@@ -397,7 +461,7 @@ export default function AdminPanelPage() {
       const res = await fetch('/api/ai-supervisor', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'optimize', keywordOrTitle: blogTitle, content: blogContent })
+        body: JSON.stringify({ action: 'optimize', keywordOrTitle: blogTitle, content: currentContent })
       });
       const data = await res.json();
       if (data.title && data.content) {
@@ -464,7 +528,9 @@ export default function AdminPanelPage() {
     setBlogSlug('');
     setIsSlugManual(false);
     setBlogExcerpt('');
-    setBlogContent('<h1 class="text-3xl font-extrabold text-black mt-6 mb-4">Article Title</h1>\n<p class="mb-6 text-slate-700 leading-relaxed text-lg">Start writing your tutorial here with proper spacing...</p>');
+    const defaultNewContent = '<h1 class="text-3xl font-extrabold text-black mt-6 mb-4">Article Title</h1>\n<p class="mb-6 text-slate-700 leading-relaxed text-lg">Start writing your tutorial here with proper spacing...</p>';
+    setBlogContent(defaultNewContent);
+    if (visualContentRef.current) visualContentRef.current.innerHTML = defaultNewContent;
     setBlogCategory(customCategories[0] || 'AI Guides');
     setIsNewCategoryMode(false);
     setNewCategoryName('');
@@ -487,6 +553,7 @@ export default function AdminPanelPage() {
     setIsSlugManual(true);
     setBlogExcerpt(b.excerpt);
     setBlogContent(b.content);
+    if (visualContentRef.current) visualContentRef.current.innerHTML = b.content;
     const cat = b.category || 'AI Guides';
     if (!customCategories.includes(cat)) {
       setCustomCategories(prev => [...prev, cat]);
@@ -502,7 +569,7 @@ export default function AdminPanelPage() {
     setFaqs([]);
     setAnalysisResult(null);
     setEditorMode('visual');
-    setShowPostSettings(false); // collapsed by default on edit so user can focus on content
+    setShowPostSettings(false);
     setIsEditingBlog(true);
   };
 
@@ -568,7 +635,7 @@ export default function AdminPanelPage() {
   };
 
   // ==========================================
-  // RENDER CONTINUOUS VISUAL EDITOR (Admin without Header/Footer)
+  // RENDER CONTINUOUS VISUAL EDITOR
   // ==========================================
   if (isEditingBlog) {
     return (
@@ -600,7 +667,6 @@ export default function AdminPanelPage() {
           </div>
         </header>
 
-        {/* Admin panel screen spacing: just 10px spacing on left and right side */}
         <main className="flex-1 max-w-full px-[10px] py-6 space-y-6">
           <div className="bg-white rounded-3xl border border-slate-200 p-4 sm:p-8 shadow-sm space-y-8">
             <div className="flex items-center justify-between flex-wrap gap-4">
@@ -609,7 +675,7 @@ export default function AdminPanelPage() {
                   {editingBlogId ? 'WordPress Visual Editor (Edit Post)' : 'WordPress Visual Editor (New Post)'}
                 </h1>
                 <p className="text-black text-sm font-medium">
-                  All blocks are fully editable. Use Post Settings toggle below to collapse or expand post metadata.
+                  Click any paragraph or heading anywhere in the document to select it, then click formatting buttons above to apply formatting instantly.
                 </p>
               </div>
 
@@ -962,23 +1028,23 @@ export default function AdminPanelPage() {
                     <Redo className="w-3.5 h-3.5" /> Redo
                   </button>
                   <span className="text-slate-300">|</span>
-                  <button type="button" onClick={() => insertTag('<h1 class="text-3xl font-extrabold text-black mt-6 mb-4">', '</h1>')} className="px-3 py-1.5 bg-slate-100 hover:bg-orange-50 hover:text-orange-600 rounded-lg text-xs font-bold text-black transition-colors flex items-center gap-1">
+                  <button type="button" onClick={() => applyBlockFormatting('H1')} className="px-3 py-1.5 bg-slate-100 hover:bg-orange-50 hover:text-orange-600 rounded-lg text-xs font-bold text-black transition-colors flex items-center gap-1">
                     <Heading1 className="w-3.5 h-3.5" /> H1
                   </button>
-                  <button type="button" onClick={() => insertTag('<h2 class="text-2xl font-bold text-black mt-6 mb-3">', '</h2>')} className="px-3 py-1.5 bg-slate-100 hover:bg-orange-50 hover:text-orange-600 rounded-lg text-xs font-bold text-black transition-colors flex items-center gap-1">
+                  <button type="button" onClick={() => applyBlockFormatting('H2')} className="px-3 py-1.5 bg-slate-100 hover:bg-orange-50 hover:text-orange-600 rounded-lg text-xs font-bold text-black transition-colors flex items-center gap-1">
                     <Heading2 className="w-3.5 h-3.5" /> H2
                   </button>
-                  <button type="button" onClick={() => insertTag('<h3 class="text-xl font-semibold text-black mt-4 mb-2">', '</h3>')} className="px-3 py-1.5 bg-slate-100 hover:bg-orange-50 hover:text-orange-600 rounded-lg text-xs font-bold text-black transition-colors flex items-center gap-1">
+                  <button type="button" onClick={() => applyBlockFormatting('H3')} className="px-3 py-1.5 bg-slate-100 hover:bg-orange-50 hover:text-orange-600 rounded-lg text-xs font-bold text-black transition-colors flex items-center gap-1">
                     <Heading3 className="w-3.5 h-3.5" /> H3
                   </button>
                   <span className="text-slate-300">|</span>
-                  <button type="button" onClick={() => insertTag('<p class="mb-6 text-slate-700 leading-relaxed text-lg">', '</p>')} className="px-3 py-1.5 bg-slate-100 hover:bg-orange-50 hover:text-orange-600 rounded-lg text-xs font-bold text-black transition-colors">
+                  <button type="button" onClick={() => applyBlockFormatting('P')} className="px-3 py-1.5 bg-slate-100 hover:bg-orange-50 hover:text-orange-600 rounded-lg text-xs font-bold text-black transition-colors">
                     Paragraph
                   </button>
-                  <button type="button" onClick={() => applyFormatting('bold')} className="px-3 py-1.5 bg-slate-100 hover:bg-orange-50 hover:text-orange-600 rounded-lg text-xs font-bold text-black transition-colors flex items-center gap-1">
+                  <button type="button" onClick={() => applyBlockFormatting('bold')} className="px-3 py-1.5 bg-slate-100 hover:bg-orange-50 hover:text-orange-600 rounded-lg text-xs font-bold text-black transition-colors flex items-center gap-1">
                     <Bold className="w-3.5 h-3.5" /> Bold
                   </button>
-                  <button type="button" onClick={() => applyFormatting('italic')} className="px-3 py-1.5 bg-slate-100 hover:bg-orange-50 hover:text-orange-600 rounded-lg text-xs font-bold text-black transition-colors flex items-center gap-1">
+                  <button type="button" onClick={() => applyBlockFormatting('italic')} className="px-3 py-1.5 bg-slate-100 hover:bg-orange-50 hover:text-orange-600 rounded-lg text-xs font-bold text-black transition-colors flex items-center gap-1">
                     <Italic className="w-3.5 h-3.5" /> Italic
                   </button>
                   <span className="text-slate-300">|</span>
@@ -1015,10 +1081,8 @@ export default function AdminPanelPage() {
                     ref={visualContentRef}
                     contentEditable={true}
                     suppressContentEditableWarning={true}
-                    onInput={(e) => setBlogContent(e.currentTarget.innerHTML)}
                     onClick={handleVisualClick}
-                    dangerouslySetInnerHTML={{ __html: blogContent }}
-                    className="w-full min-h-[550px] p-6 sm:p-10 bg-slate-50 border border-slate-200 rounded-2xl text-black font-medium focus:outline-none focus:ring-2 focus:ring-orange-600/20 prose max-w-none [&>h1]:text-3xl [&>h1]:font-extrabold [&>h1]:mt-6 [&>h1]:mb-4 [&>h2]:text-2xl [&>h2]:font-bold [&>h2]:mt-6 [&>h2]:mb-3 [&>h3]:text-xl [&>h3]:font-semibold [&>h3]:mt-4 [&>h3]:mb-2 [&>p]:mb-6 [&>p]:leading-relaxed [&>p]:text-lg [&>img]:w-full [&>img]:rounded-2xl [&>img]:my-6 [&>img]:shadow-md [&>img]:object-cover cursor-text"
+                    className="w-full min-h-[550px] p-6 sm:p-10 bg-slate-50 border border-slate-200 rounded-2xl text-black font-medium focus:outline-none focus:ring-2 focus:ring-orange-600/20 prose max-w-none [&>*]:cursor-text [&>*]:select-text [&>h1]:text-3xl [&>h1]:font-extrabold [&>h1]:mt-6 [&>h1]:mb-4 [&>h2]:text-2xl [&>h2]:font-bold [&>h2]:mt-6 [&>h2]:mb-3 [&>h3]:text-xl [&>h3]:font-semibold [&>h3]:mt-4 [&>h3]:mb-2 [&>p]:mb-6 [&>p]:leading-relaxed [&>p]:text-lg [&>img]:w-full [&>img]:rounded-2xl [&>img]:my-6 [&>img]:shadow-md [&>img]:object-cover"
                   />
                 ) : (
                   <textarea
@@ -1126,7 +1190,6 @@ export default function AdminPanelPage() {
         </div>
       </header>
 
-      {/* Admin panel screen spacing: just 10px spacing on left and right side */}
       <main className="flex-1 max-w-full px-[10px] py-6 space-y-6">
         {/* Admin Dashboard Header */}
         <div className="bg-gradient-to-r from-orange-600 to-amber-600 rounded-3xl p-6 sm:p-10 text-white shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
@@ -1323,10 +1386,11 @@ export default function AdminPanelPage() {
                         ) : (
                           <ul className="space-y-1">
                             {catPosts.map(p => (
-                              <li key={p.id} className="text-xs font-medium text-black truncate flex items-center justify-between">
-                                <Link href={`/${p.slug}`} target="_blank" className="hover:text-orange-600 truncate flex-1">
+                              <li key={p.id} className="text-xs text-slate-700 font-medium flex items-center justify-between">
+                                <Link href={`/${p.slug}`} target="_blank" className="hover:text-orange-600 truncate max-w-[220px]">
                                   • {p.title}
                                 </Link>
+                                <span className="text-[10px] text-slate-400 font-mono">/{p.slug}</span>
                               </li>
                             ))}
                           </ul>
@@ -1334,12 +1398,11 @@ export default function AdminPanelPage() {
                       </div>
                     </div>
 
-                    <div className="pt-4 border-t border-slate-100 flex items-center justify-between text-xs font-bold">
+                    <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs font-bold text-slate-500">
+                      <span>Total Tutorials: {catPosts.length}</span>
                       <Link href={`/${catSlug}`} target="_blank" className="text-orange-600 hover:underline inline-flex items-center gap-1">
-                        <span>View Archive Page</span>
-                        <ExternalLink className="w-3.5 h-3.5" />
+                        View Archive <ExternalLink className="w-3 h-3" />
                       </Link>
-                      <span className="text-slate-500">{catPosts.length} posts</span>
                     </div>
                   </div>
                 );
@@ -1348,6 +1411,14 @@ export default function AdminPanelPage() {
           </div>
         )}
       </main>
+
+      {/* Floating Notification Toast */}
+      {notification && (
+        <div className="fixed bottom-6 right-6 z-50 bg-slate-900 text-white px-5 py-3 rounded-2xl shadow-2xl border border-slate-800 text-xs font-bold animate-bounce flex items-center gap-2">
+          <CheckCircle className="w-4 h-4 text-emerald-400" />
+          <span>{notification}</span>
+        </div>
+      )}
     </div>
   );
 }
