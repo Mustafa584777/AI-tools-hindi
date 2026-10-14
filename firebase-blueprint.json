@@ -1,0 +1,30 @@
+{
+  "entities": {
+    "BlogPost": {
+      "title": "Blog Post Entity",
+      "description": "Informational AI tutorial blog post migrated from WordPress",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "slug": { "type": "string", "maxLength": 128, "pattern": "^[a-z0-9\\-]+$" },
+        "title": { "type": "string", "maxLength": 255 },
+        "excerpt": { "type": "string", "maxLength": 500 },
+        "content": { "type": "string", "maxLength": 50000 },
+        "category": { "type": "string", "maxLength": 64 },
+        "author": { "type": "string", "maxLength": 64 },
+        "date": { "type": "string", "maxLength": 64 },
+        "readTime": { "type": "string", "maxLength": 32 },
+        "image": { "type": "string", "format": "uri" },
+        "imageAlt": { "type": "string", "maxLength": 255 },
+        "status": { "type": "string", "enum": ["published", "draft"] }
+      },
+      "required": ["id", "slug", "title", "content", "status"]
+    }
+  },
+  "firestore": {
+    "/blogPosts/{postId}": {
+      "schema": "BlogPost",
+      "description": "Collection of all WordPress tutorial blog posts"
+    }
+  }
+}

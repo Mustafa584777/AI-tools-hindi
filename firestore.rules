@@ -1,0 +1,15 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    match /blogPosts/{postId} {
+      // Allow public read and write so admin panel works without login gating per user request
+      allow read, write: if true;
+    }
+  }
+}

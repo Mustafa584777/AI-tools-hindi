@@ -1,0 +1,6 @@
+{
+  "name": "Aitoolhindi.online – Hindi AI Tools Directory & Blog",
+  "description": "Migrated WordPress site for Hindi AI tools directory and informational AI tutorial blog posts with dynamic admin panel.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
