@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { Plus, Edit, Trash2, Database, CheckCircle, ExternalLink, Sparkles, FileText, ArrowLeft, Image as ImageIcon, Link as LinkIcon, Bold, Italic, Heading1, Heading2, Heading3, Code, Wand2, Upload, X, RefreshCw, Eye, Code2, HelpCircle, Bot, AlertTriangle, TrendingUp, Award } from 'lucide-react';
+import { Plus, Edit, Trash2, Database, CheckCircle, ExternalLink, Sparkles, FileText, ArrowLeft, Image as ImageIcon, Link as LinkIcon, Bold, Italic, Heading1, Heading2, Heading3, Code, Wand2, Upload, X, RefreshCw, Eye, Code2, HelpCircle, Bot, AlertTriangle, TrendingUp, Award, Folder } from 'lucide-react';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import { 
@@ -35,9 +35,16 @@ interface AIAnalysis {
   competitorComparison: string;
 }
 
+const CATEGORIES_KEY = 'aitoolhindi_categories_v1';
+
 export default function AdminPanelPage() {
   const [posts, setPosts] = useState<BlogPost[]>([]);
   const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<'tutorials' | 'categories'>('tutorials');
+
+  // Categories list state
+  const [customCategories, setCustomCategories] = useState<string[]>(['AI Guides', 'Image Tutorials', 'Video Tutorials', 'ChatGPT Guides']);
+  const [newCatInput, setNewCatInput] = useState('');
 
   // Full-page Editor View State for Blog
   const [isEditingBlog, setIsEditingBlog] = useState(false);
@@ -48,6 +55,8 @@ export default function AdminPanelPage() {
   const [blogExcerpt, setBlogExcerpt] = useState('');
   const [blogContent, setBlogContent] = useState('');
   const [blogCategory, setBlogCategory] = useState('AI Guides');
+  const [isNewCategoryMode, setIsNewCategoryMode] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState('');
   const [blogAuthor, setBlogAuthor] = useState('Anwar');
   const [blogImage, setBlogImage] = useState('https://picsum.photos/seed/blogdefault/800/450');
   const [blogImageAlt, setBlogImageAlt] = useState('');
@@ -97,6 +106,18 @@ export default function AdminPanelPage() {
     try {
       const data = await fetchBlogPostsFromFirestore(force);
       setPosts(data);
+
+      // Load custom categories from localstorage
+      if (typeof window !== 'undefined') {
+        const storedCats = localStorage.getItem(CATEGORIES_KEY);
+        const derivedCats = Array.from(new Set(data.map(p => p.category).filter(Boolean)));
+        if (storedCats) {
+          const parsed = JSON.parse(storedCats);
+          setCustomCategories(Array.from(new Set([...parsed, ...derivedCats])));
+        } else {
+          setCustomCategories(Array.from(new Set(['AI Guides', 'Image Tutorials', 'Video Tutorials', ...derivedCats])));
+        }
+      }
     } catch {
       setPosts(getStoredBlogPostsSync());
     } finally {
@@ -120,6 +141,34 @@ export default function AdminPanelPage() {
     showNotify('24-hour cache cleared successfully! Fetched fresh data from Firebase.');
   };
 
+  // Add new category globally
+  const handleAddGlobalCategory = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newCatInput.trim()) return;
+    const trimmed = newCatInput.trim();
+    if (!customCategories.includes(trimmed)) {
+      const updated = [...customCategories, trimmed];
+      setCustomCategories(updated);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(CATEGORIES_KEY, JSON.stringify(updated));
+      }
+      showNotify(`Category "${trimmed}" added successfully!`);
+    }
+    setNewCatInput('');
+  };
+
+  // Remove category globally
+  const handleDeleteGlobalCategory = (catName: string) => {
+    if (confirm(`Are you sure you want to delete category "${catName}"?`)) {
+      const updated = customCategories.filter(c => c !== catName);
+      setCustomCategories(updated);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(CATEGORIES_KEY, JSON.stringify(updated));
+      }
+      showNotify(`Category "${catName}" removed.`);
+    }
+  };
+
   // Auto-slug generator from title
   const handleTitleChange = (val: string) => {
     setBlogTitle(val);
@@ -129,7 +178,6 @@ export default function AdminPanelPage() {
     }
   };
 
-  // Stable selection change listener for floating text formatting toolbar without scroll jumps
   const handleSelectionChange = () => {
     if (editorMode !== 'visual') return;
     const selection = window.getSelection();
@@ -208,7 +256,6 @@ export default function AdminPanelPage() {
     if (contentImageInputRef.current) contentImageInputRef.current.value = '';
   };
 
-  // Handle clicking an image inside visual editor to edit Alt text, Slug, Replace, or Remove
   const handleVisualEditorClick = (e: React.MouseEvent<HTMLDivElement>) => {
     const target = e.target as HTMLElement;
     if (target.tagName === 'IMG') {
@@ -228,7 +275,6 @@ export default function AdminPanelPage() {
     }
   };
 
-  // Update Image Metadata (Alt text, slug, replace image)
   const handleUpdateImageMetadata = (id: string, newAlt: string, newSlug: string, newBase64?: string) => {
     setArticleImages(prev => {
       const exists = prev.some(img => img.id === id);
@@ -262,7 +308,6 @@ export default function AdminPanelPage() {
     showNotify('Image successfully updated!');
   };
 
-  // Remove Image option from popup
   const handleRemoveImage = (id: string) => {
     if (!confirm('Are you sure you want to remove this image from the article?')) return;
     setArticleImages(prev => prev.filter(img => img.id !== id));
@@ -284,7 +329,6 @@ export default function AdminPanelPage() {
     showNotify('Image removed from article.');
   };
 
-  // Local Featured Image Upload
   const handleFeaturedImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -299,7 +343,6 @@ export default function AdminPanelPage() {
     if (featuredImageInputRef.current) featuredImageInputRef.current.value = '';
   };
 
-  // Link Popup Handlers
   const handleOpenLinkModal = () => {
     setLinkInputUrl('https://');
     setLinkInputText('');
@@ -409,7 +452,13 @@ export default function AdminPanelPage() {
       if (data.title) {
         setBlogTitle(data.title);
         setBlogSlug(data.slug || data.title.toLowerCase().replace(/[^a-z0-9]+/g, '-'));
-        setBlogCategory(data.category || 'AI Guides');
+        const cat = data.category || 'AI Guides';
+        setBlogCategory(cat);
+        if (!customCategories.includes(cat)) {
+          const updatedCats = [...customCategories, cat];
+          setCustomCategories(updatedCats);
+          if (typeof window !== 'undefined') localStorage.setItem(CATEGORIES_KEY, JSON.stringify(updatedCats));
+        }
         setBlogExcerpt(data.excerpt || '');
         setBlogContent(data.content || '');
         if (visualContentRef.current) visualContentRef.current.innerHTML = data.content || '';
@@ -499,8 +548,10 @@ export default function AdminPanelPage() {
     setIsSlugManual(false);
     setBlogExcerpt('');
     setBlogContent('<h1>Article Title</h1>\n<p>Start writing your tutorial here...</p>');
-    setBlogCategory('AI Guides');
-    setBlogAuthor('Anwar');
+    setBlogCategory(customCategories[0] || 'AI Guides');
+    setIsNewCategoryMode(false);
+    setNewCategoryName('');
+    setBlogAuthor('Anwar'); // Default author Anwar
     setBlogImage('https://picsum.photos/seed/newpost/800/450');
     setBlogImageAlt('AI tutorial featured image');
     setBlogStatus('published');
@@ -518,7 +569,13 @@ export default function AdminPanelPage() {
     setIsSlugManual(true);
     setBlogExcerpt(b.excerpt);
     setBlogContent(b.content);
-    setBlogCategory(b.category);
+    const cat = b.category || 'AI Guides';
+    if (!customCategories.includes(cat)) {
+      setCustomCategories(prev => [...prev, cat]);
+    }
+    setBlogCategory(cat);
+    setIsNewCategoryMode(false);
+    setNewCategoryName('');
     setBlogAuthor(b.author || 'Anwar');
     setBlogImage(b.image);
     setBlogImageAlt(b.imageAlt || '');
@@ -534,6 +591,16 @@ export default function AdminPanelPage() {
     e.preventDefault();
     if (!blogTitle.trim() || !blogSlug.trim()) return;
 
+    let finalCategory = blogCategory;
+    if (isNewCategoryMode && newCategoryName.trim()) {
+      finalCategory = newCategoryName.trim();
+      if (!customCategories.includes(finalCategory)) {
+        const updatedCats = [...customCategories, finalCategory];
+        setCustomCategories(updatedCats);
+        if (typeof window !== 'undefined') localStorage.setItem(CATEGORIES_KEY, JSON.stringify(updatedCats));
+      }
+    }
+
     const formattedSlug = blogSlug.toLowerCase().replace(/\s+/g, '-');
     const postId = editingBlogId || ('blog-' + Date.now());
 
@@ -543,8 +610,8 @@ export default function AdminPanelPage() {
       slug: formattedSlug,
       excerpt: blogExcerpt,
       content: blogContent,
-      category: blogCategory,
-      author: blogAuthor,
+      category: finalCategory,
+      author: blogAuthor || 'Anwar',
       date: new Date().toLocaleDateString('hi-IN', { day: 'numeric', month: 'short', year: 'numeric' }),
       readTime: '5 min read',
       image: blogImage,
@@ -610,7 +677,7 @@ export default function AdminPanelPage() {
                 {editingBlogId ? 'Edit Tutorial Post (Anwar)' : 'Create New Tutorial Post (Anwar)'}
               </h1>
               <p className="text-black text-sm font-medium">
-                AI Supervisor enabled for post generation, SEO analysis, E-E-A-T score, and competitor ranking comparison.
+                AI Supervisor enabled. Select category or add new category on the fly. Author defaults to Anwar.
               </p>
             </div>
 
@@ -766,20 +833,69 @@ export default function AdminPanelPage() {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
-                  <label className="block text-xs font-bold text-black mb-2">Category (e.g. Image Tutorials, AI Guides)</label>
-                  <input
-                    type="text"
-                    value={blogCategory}
-                    onChange={(e) => setBlogCategory(e.target.value)}
-                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm text-black font-medium"
-                  />
+                  <label className="block text-xs font-bold text-black mb-2">Category *</label>
+                  {!isNewCategoryMode ? (
+                    <div className="flex gap-2">
+                      <select
+                        value={blogCategory}
+                        onChange={(e) => {
+                          if (e.target.value === '__new__') {
+                            setIsNewCategoryMode(true);
+                          } else {
+                            setBlogCategory(e.target.value);
+                          }
+                        }}
+                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm text-black font-medium"
+                      >
+                        {customCategories.map(cat => (
+                          <option key={cat} value={cat}>{cat}</option>
+                        ))}
+                        <option value="__new__">+ Add New Category...</option>
+                      </select>
+                    </div>
+                  ) : (
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={newCategoryName}
+                        onChange={(e) => setNewCategoryName(e.target.value)}
+                        placeholder="Enter new category name..."
+                        className="w-full px-4 py-3 bg-slate-50 border border-orange-300 rounded-xl text-sm text-black font-medium focus:ring-2 focus:ring-orange-600/20"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (newCategoryName.trim()) {
+                            const name = newCategoryName.trim();
+                            if (!customCategories.includes(name)) {
+                              setCustomCategories([...customCategories, name]);
+                            }
+                            setBlogCategory(name);
+                            setIsNewCategoryMode(false);
+                            setNewCategoryName('');
+                          }
+                        }}
+                        className="px-4 py-3 bg-orange-600 hover:bg-orange-700 text-white font-bold rounded-xl text-xs shrink-0"
+                      >
+                        Add
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setIsNewCategoryMode(false)}
+                        className="px-3 py-3 bg-slate-200 hover:bg-slate-300 text-black font-bold rounded-xl text-xs shrink-0"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  )}
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-black mb-2">Author</label>
+                  <label className="block text-xs font-bold text-black mb-2">Author (Default: Anwar)</label>
                   <input
                     type="text"
                     value={blogAuthor}
                     onChange={(e) => setBlogAuthor(e.target.value)}
+                    placeholder="Anwar"
                     className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm text-black font-medium"
                   />
                 </div>
@@ -1226,7 +1342,7 @@ export default function AdminPanelPage() {
   }
 
   // ==========================================
-  // RENDER MAIN ADMIN DASHBOARD
+  // RENDER MAIN ADMIN DASHBOARD (Tutorials + Categories)
   // ==========================================
   return (
     <>
@@ -1240,9 +1356,9 @@ export default function AdminPanelPage() {
               <Database className="w-3.5 h-3.5 text-orange-600" />
               <span>Firebase Firestore + WordPress Admin</span>
             </div>
-            <h1 className="text-3xl font-extrabold text-black tracking-tight">Tutorials Content Management</h1>
+            <h1 className="text-3xl font-extrabold text-black tracking-tight">Content & Category Management</h1>
             <p className="text-black text-sm font-medium">
-              Manage your high-traffic Hindi AI tutorials, 24-hr cache, backup data, and publish instantly to Firebase.
+              Manage Hindi AI tutorials, categories, 24-hr cache, and site backups.
             </p>
           </div>
 
@@ -1273,104 +1389,210 @@ export default function AdminPanelPage() {
           </div>
         )}
 
-        {/* Backup & Restore Section */}
-        <div className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 shadow-sm space-y-4">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div>
-              <h2 className="text-lg font-bold text-black">Site Data Backup & Restore (बैकअप और रीस्टोर)</h2>
-              <p className="text-xs text-black font-medium mt-0.5">Export all tutorial articles as a JSON backup file or restore/import articles into Firebase.</p>
-            </div>
-            <div className="flex flex-wrap items-center gap-3">
-              <button
-                type="button"
-                onClick={handleExportBackup}
-                className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-black font-bold rounded-xl text-xs inline-flex items-center gap-2 transition-colors"
-              >
-                <Upload className="w-4 h-4 rotate-180" />
-                <span>Export JSON Backup</span>
-              </button>
-
-              <input
-                type="file"
-                accept=".json"
-                ref={restoreFileInputRef}
-                onChange={handleImportBackup}
-                className="hidden"
-                id="restoreJsonInput"
-              />
-              <label
-                htmlFor="restoreJsonInput"
-                className="px-4 py-2.5 bg-orange-600 hover:bg-orange-700 text-white font-bold rounded-xl text-xs cursor-pointer inline-flex items-center gap-2 shadow-sm transition-colors"
-              >
-                <Upload className="w-4 h-4" />
-                <span>Restore from Backup</span>
-              </label>
-            </div>
-          </div>
+        {/* Navigation Tabs (Tutorials vs Categories) */}
+        <div className="flex items-center gap-3 border-b border-slate-200 pb-4">
+          <button
+            onClick={() => setActiveTab('tutorials')}
+            className={`px-5 py-2.5 rounded-xl text-sm font-bold transition-all ${
+              activeTab === 'tutorials' ? 'bg-orange-600 text-white shadow-md' : 'bg-white border border-slate-200 text-black hover:bg-slate-50'
+            }`}
+          >
+            Tutorials ({posts.length})
+          </button>
+          <button
+            onClick={() => setActiveTab('categories')}
+            className={`px-5 py-2.5 rounded-xl text-sm font-bold transition-all ${
+              activeTab === 'categories' ? 'bg-orange-600 text-white shadow-md' : 'bg-white border border-slate-200 text-black hover:bg-slate-50'
+            }`}
+          >
+            Categories Management ({customCategories.length})
+          </button>
         </div>
 
-        {/* Posts Table */}
-        <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
-          <div className="p-6 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-            <h2 className="text-lg font-bold text-black">All Tutorial Articles ({posts.length})</h2>
-            <span className="text-xs font-semibold text-slate-500">24-Hour Cached & Synced with Firebase</span>
-          </div>
+        {/* Tab 1: Tutorials */}
+        {activeTab === 'tutorials' && (
+          <div className="space-y-8">
+            {/* Backup & Restore Section */}
+            <div className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 shadow-sm space-y-4">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                  <h2 className="text-lg font-bold text-black">Site Data Backup & Restore (बैकअप और रीस्टोर)</h2>
+                  <p className="text-xs text-black font-medium mt-0.5">Export all tutorial articles as a JSON backup file or restore/import articles into Firebase.</p>
+                </div>
+                <div className="flex flex-wrap items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={handleExportBackup}
+                    className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-black font-bold rounded-xl text-xs inline-flex items-center gap-2 transition-colors"
+                  >
+                    <Upload className="w-4 h-4 rotate-180" />
+                    <span>Export JSON Backup</span>
+                  </button>
 
-          {loading ? (
-            <div className="py-16 text-center text-black font-medium">Loading from Firebase...</div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse text-sm">
-                <thead>
-                  <tr className="bg-slate-50 border-b border-slate-200 text-black font-bold text-xs uppercase tracking-wider">
-                    <th className="py-4 px-6">Title & WordPress Slug</th>
-                    <th className="py-4 px-6">Category</th>
-                    <th className="py-4 px-6">Status</th>
-                    <th className="py-4 px-6">Date</th>
-                    <th className="py-4 px-6 text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {posts.map((p) => (
-                    <tr key={p.id} className="hover:bg-slate-50/50 transition-colors">
-                      <td className="py-4 px-6">
-                        <div className="font-bold text-black line-clamp-1">{p.title}</div>
-                        <div className="text-xs font-mono text-orange-600 font-bold mt-0.5">/{p.slug}</div>
-                      </td>
-                      <td className="py-4 px-6 text-black font-medium">
-                        <Link href={`/${p.category.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '')}`} className="hover:text-orange-600 underline">
-                          {p.category}
-                        </Link>
-                      </td>
-                      <td className="py-4 px-6">
-                        <span className={`px-2.5 py-1 text-xs font-bold rounded-full ${
-                          p.status === 'draft' ? 'bg-amber-50 text-amber-800 border border-amber-200' : 'bg-emerald-50 text-emerald-800 border border-emerald-200'
-                        }`}>
-                          {p.status === 'draft' ? 'Draft' : 'Published'}
-                        </span>
-                      </td>
-                      <td className="py-4 px-6 text-black/75 text-xs font-medium">{p.date}</td>
-                      <td className="py-4 px-6 text-right space-x-2 whitespace-nowrap">
-                        <button
-                          onClick={() => handleOpenEditBlog(p)}
-                          className="px-3 py-1.5 bg-slate-100 hover:bg-orange-50 hover:text-orange-600 text-black font-bold rounded-lg text-xs transition-colors"
-                        >
-                          Edit
-                        </button>
-                        <button
-                          onClick={() => handleDeleteBlog(p.id)}
-                          className="px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 font-bold rounded-lg text-xs transition-colors"
-                        >
-                          Delete
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                  <input
+                    type="file"
+                    accept=".json"
+                    ref={restoreFileInputRef}
+                    onChange={handleImportBackup}
+                    className="hidden"
+                    id="restoreJsonInput"
+                  />
+                  <label
+                    htmlFor="restoreJsonInput"
+                    className="px-4 py-2.5 bg-orange-600 hover:bg-orange-700 text-white font-bold rounded-xl text-xs cursor-pointer inline-flex items-center gap-2 shadow-sm transition-colors"
+                  >
+                    <Upload className="w-4 h-4" />
+                    <span>Restore from Backup</span>
+                  </label>
+                </div>
+              </div>
             </div>
-          )}
-        </div>
+
+            {/* Posts Table */}
+            <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+              <div className="p-6 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <h2 className="text-lg font-bold text-black">All Tutorial Articles ({posts.length})</h2>
+                <span className="text-xs font-semibold text-slate-500">24-Hour Cached & Synced with Firebase</span>
+              </div>
+
+              {loading ? (
+                <div className="py-16 text-center text-black font-medium">Loading from Firebase...</div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse text-sm">
+                    <thead>
+                      <tr className="bg-slate-50 border-b border-slate-200 text-black font-bold text-xs uppercase tracking-wider">
+                        <th className="py-4 px-6">Title & WordPress Slug</th>
+                        <th className="py-4 px-6">Category</th>
+                        <th className="py-4 px-6">Status</th>
+                        <th className="py-4 px-6">Date</th>
+                        <th className="py-4 px-6 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {posts.map((p) => (
+                        <tr key={p.id} className="hover:bg-slate-50/50 transition-colors">
+                          <td className="py-4 px-6">
+                            <div className="font-bold text-black line-clamp-1">{p.title}</div>
+                            <div className="text-xs font-mono text-orange-600 font-bold mt-0.5">/{p.slug}</div>
+                          </td>
+                          <td className="py-4 px-6 text-black font-medium">
+                            <Link href={`/${p.category.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '')}`} className="hover:text-orange-600 underline">
+                              {p.category}
+                            </Link>
+                          </td>
+                          <td className="py-4 px-6">
+                            <span className={`px-2.5 py-1 text-xs font-bold rounded-full ${
+                              p.status === 'draft' ? 'bg-amber-50 text-amber-800 border border-amber-200' : 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                            }`}>
+                              {p.status === 'draft' ? 'Draft' : 'Published'}
+                            </span>
+                          </td>
+                          <td className="py-4 px-6 text-black/75 text-xs font-medium">{p.date}</td>
+                          <td className="py-4 px-6 text-right space-x-2 whitespace-nowrap">
+                            <button
+                              onClick={() => handleOpenEditBlog(p)}
+                              className="px-3 py-1.5 bg-slate-100 hover:bg-orange-50 hover:text-orange-600 text-black font-bold rounded-lg text-xs transition-colors"
+                            >
+                              Edit
+                            </button>
+                            <button
+                              onClick={() => handleDeleteBlog(p.id)}
+                              className="px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 font-bold rounded-lg text-xs transition-colors"
+                            >
+                              Delete
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Tab 2: Categories Management */}
+        {activeTab === 'categories' && (
+          <div className="space-y-8">
+            {/* Add Category Form */}
+            <div className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 shadow-sm space-y-4">
+              <h2 className="text-lg font-bold text-black">Add New Category (नई कैटेगरी जोड़ें)</h2>
+              <form onSubmit={handleAddGlobalCategory} className="flex flex-col sm:flex-row gap-3">
+                <input
+                  type="text"
+                  value={newCatInput}
+                  onChange={(e) => setNewCatInput(e.target.value)}
+                  placeholder="Category Name (उदा: Prompt Engineering)..."
+                  className="flex-1 px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm text-black font-medium focus:ring-2 focus:ring-orange-600/20"
+                />
+                <button
+                  type="submit"
+                  className="px-6 py-3 bg-orange-600 hover:bg-orange-700 text-white font-bold rounded-xl text-sm shadow-md transition-colors"
+                >
+                  Add Category
+                </button>
+              </form>
+            </div>
+
+            {/* Categories List with Articles inside them */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {customCategories.map((cat) => {
+                const catSlug = cat.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+                const catPosts = posts.filter(p => p.category?.toLowerCase() === cat.toLowerCase());
+                return (
+                  <div key={cat} className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm space-y-4 flex flex-col justify-between">
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Folder className="w-5 h-5 text-orange-600" />
+                          <h3 className="font-extrabold text-black text-lg">{cat}</h3>
+                        </div>
+                        <button
+                          onClick={() => handleDeleteGlobalCategory(cat)}
+                          className="p-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-xl text-xs font-bold transition-colors"
+                          title="Delete Category"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+
+                      <div className="text-xs text-orange-600 font-mono font-bold">
+                        Archive URL: /{catSlug}
+                      </div>
+
+                      <div className="space-y-1.5 pt-2 border-t border-slate-100">
+                        <div className="text-xs font-bold text-black/70">Articles in this category ({catPosts.length}):</div>
+                        {catPosts.length === 0 ? (
+                          <div className="text-xs text-slate-400 italic">No articles assigned yet.</div>
+                        ) : (
+                          <ul className="space-y-1">
+                            {catPosts.map(p => (
+                              <li key={p.id} className="text-xs font-medium text-black truncate flex items-center justify-between">
+                                <Link href={`/${p.slug}`} target="_blank" className="hover:text-orange-600 truncate flex-1">
+                                  • {p.title}
+                                </Link>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="pt-4 border-t border-slate-100 flex items-center justify-between text-xs font-bold">
+                      <Link href={`/${catSlug}`} target="_blank" className="text-orange-600 hover:underline inline-flex items-center gap-1">
+                        <span>View Archive Page</span>
+                        <ExternalLink className="w-3.5 h-3.5" />
+                      </Link>
+                      <span className="text-slate-500">{catPosts.length} posts</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </main>
 
       <Footer />
