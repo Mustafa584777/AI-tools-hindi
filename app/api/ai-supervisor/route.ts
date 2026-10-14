@@ -88,6 +88,39 @@ Provide a detailed SEO and quality analysis in JSON format with:
       return NextResponse.json(json);
     }
 
+    if (action === 'optimize') {
+      const prompt = `You are a professional Hindi AI content writer and SEO optimization expert for Aitoolhindi.online.
+Review and fully optimize the following Hindi article title and content to fix all SEO, grammar, and formatting mistakes, improve readability, maximize EEAT score, and ensure top Google ranking in India.
+Title: ${keywordOrTitle}
+Content: ${content}
+
+Return ONLY a valid JSON object with:
+- title: optimized Hindi title
+- excerpt: optimized 2-sentence summary in Hindi
+- content: fully optimized HTML formatted article content in Hindi with proper headings (<h1>, <h2>, <h3>), paragraphs (<p> with proper spacing classes or clean HTML tags), and bold text (<strong>).
+`;
+
+      const response = await ai.models.generateContent({
+        model: "gemini-3.8-flash",
+        contents: prompt,
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              title: { type: Type.STRING },
+              excerpt: { type: Type.STRING },
+              content: { type: Type.STRING }
+            },
+            required: ["title", "excerpt", "content"]
+          }
+        }
+      });
+
+      const json = JSON.parse(response.text || '{}');
+      return NextResponse.json(json);
+    }
+
     return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
   } catch (error) {
     console.error('AI Supervisor error:', error);
