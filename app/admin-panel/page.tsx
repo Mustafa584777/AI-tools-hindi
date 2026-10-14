@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { Plus, Edit, Trash2, Database, CheckCircle, ExternalLink, Sparkles, FileText, ArrowLeft, Image as ImageIcon, Link as LinkIcon, Bold, Italic, Heading1, Heading2, Heading3, Code, Wand2, Upload, X, RefreshCw, Eye, Code2, HelpCircle, Bot, AlertTriangle, TrendingUp, Award, Folder, ArrowUp, ArrowDown, Copy } from 'lucide-react';
+import { Plus, Edit, Trash2, Database, CheckCircle, ExternalLink, Sparkles, FileText, ArrowLeft, Image as ImageIcon, Link as LinkIcon, Bold, Italic, Heading1, Heading2, Heading3, Code, Wand2, Upload, X, RefreshCw, Eye, Code2, HelpCircle, Bot, AlertTriangle, TrendingUp, Award, Folder } from 'lucide-react';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import { 
@@ -35,15 +35,6 @@ interface AIAnalysis {
   competitorComparison: string;
 }
 
-interface EditorBlock {
-  id: string;
-  type: 'p' | 'h1' | 'h2' | 'h3' | 'quote' | 'ul' | 'img';
-  content: string;
-  src?: string;
-  alt?: string;
-  slug?: string;
-}
-
 const CATEGORIES_KEY = 'aitoolhindi_categories_v1';
 
 export default function AdminPanelPage() {
@@ -62,6 +53,7 @@ export default function AdminPanelPage() {
   const [blogSlug, setBlogSlug] = useState('');
   const [isSlugManual, setIsSlugManual] = useState(false);
   const [blogExcerpt, setBlogExcerpt] = useState('');
+  const [blogContent, setBlogContent] = useState('');
   const [blogCategory, setBlogCategory] = useState('AI Guides');
   const [isNewCategoryMode, setIsNewCategoryMode] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
@@ -70,17 +62,10 @@ export default function AdminPanelPage() {
   const [blogImageAlt, setBlogImageAlt] = useState('');
   const [blogStatus, setBlogStatus] = useState<'published' | 'draft'>('published');
 
-  // WordPress Block Editor State
-  const [blocks, setBlocks] = useState<EditorBlock[]>([
-    { id: 'b-1', type: 'h1', content: 'Article Title' },
-    { id: 'b-2', type: 'p', content: 'Start writing your tutorial here with proper spacing...' }
-  ]);
+  // Editor Mode: Visual vs HTML Code Mode
+  const [editorMode, setEditorMode] = useState<'visual' | 'html'>('visual');
 
-  // Editor Mode: Block vs HTML Code Mode
-  const [editorMode, setEditorMode] = useState<'block' | 'html'>('block');
-  const [rawHtmlContent, setRawHtmlContent] = useState('');
-
-  // Article Media Library & Image Editing Modal
+  // Article Media Library
   const [articleImages, setArticleImages] = useState<ArticleImage[]>([]);
 
   // FAQ Builder State
@@ -99,6 +84,7 @@ export default function AdminPanelPage() {
   const [wpRawCode, setWpRawCode] = useState('');
   const [showWpImporter, setShowWpImporter] = useState(false);
 
+  const visualContentRef = useRef<HTMLDivElement>(null);
   const contentImageInputRef = useRef<HTMLInputElement>(null);
   const featuredImageInputRef = useRef<HTMLInputElement>(null);
   const restoreFileInputRef = useRef<HTMLInputElement>(null);
@@ -144,7 +130,6 @@ export default function AdminPanelPage() {
     showNotify('24-hour cache cleared successfully! Fetched fresh data from Firebase.');
   };
 
-  // Add new category globally
   const handleAddGlobalCategory = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newCatInput.trim()) return;
@@ -179,127 +164,26 @@ export default function AdminPanelPage() {
     }
   };
 
-  // Parse HTML to Block array (Pure helper)
-  const parseHtmlToBlocks = (html: string): EditorBlock[] => {
-    if (!html || !html.trim()) {
-      return [
-        { id: 'b-title', type: 'h1', content: 'Article Title' },
-        { id: 'b-start', type: 'p', content: 'Start writing your tutorial here...' }
-      ];
+  const applyFormatting = (command: string, value: string = '') => {
+    document.execCommand(command, false, value);
+    if (visualContentRef.current) {
+      setBlogContent(visualContentRef.current.innerHTML);
     }
-
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(html, 'text/html');
-    const children = Array.from(doc.body.children);
-    const result: EditorBlock[] = [];
-
-    if (children.length === 0) {
-      return [{ id: 'b-0', type: 'p', content: html }];
-    }
-
-    children.forEach((el, idx) => {
-      const tag = el.tagName.toLowerCase();
-      const text = el.textContent || '';
-      if (tag === 'h1') {
-        result.push({ id: `b-${idx}`, type: 'h1', content: text });
-      } else if (tag === 'h2') {
-        result.push({ id: `b-${idx}`, type: 'h2', content: text });
-      } else if (tag === 'h3') {
-        result.push({ id: `b-${idx}`, type: 'h3', content: text });
-      } else if (tag === 'blockquote') {
-        result.push({ id: `b-${idx}`, type: 'quote', content: text });
-      } else if (tag === 'ul') {
-        const items = Array.from(el.querySelectorAll('li')).map(li => li.textContent || '').join('\n');
-        result.push({ id: `b-${idx}`, type: 'ul', content: items });
-      } else if (tag === 'img') {
-        result.push({
-          id: el.getAttribute('data-img-id') || `b-${idx}`,
-          type: 'img',
-          content: '',
-          src: el.getAttribute('src') || '',
-          alt: el.getAttribute('alt') || '',
-          slug: el.getAttribute('data-img-slug') || ''
-        });
-      } else {
-        result.push({ id: `b-${idx}`, type: 'p', content: el.innerHTML || text });
-      }
-    });
-
-    return result.length > 0 ? result : [{ id: 'b-fallback', type: 'p', content: html }];
   };
 
-  // Serialize blocks to HTML string with proper paragraph spacing (mb-6)
-  const serializeBlocksToHtml = (blocksList: EditorBlock[]): string => {
-    return blocksList.map(block => {
-      switch (block.type) {
-        case 'h1':
-          return `<h1 class="text-3xl font-extrabold text-black mt-6 mb-4">${block.content}</h1>`;
-        case 'h2':
-          return `<h2 class="text-2xl font-bold text-black mt-6 mb-3">${block.content}</h2>`;
-        case 'h3':
-          return `<h3 class="text-xl font-semibold text-black mt-4 mb-2">${block.content}</h3>`;
-        case 'quote':
-          return `<blockquote class="border-l-4 border-orange-500 pl-4 py-3 my-6 italic bg-slate-50 text-slate-800 rounded-r-2xl">${block.content}</blockquote>`;
-        case 'ul':
-          return `<ul class="list-disc pl-6 space-y-2 mb-6 text-slate-700">${block.content.split('\n').filter(Boolean).map(li => `<li>${li}</li>`).join('')}</ul>`;
-        case 'img':
-          return `<img src="${block.src || ''}" alt="${block.alt || 'Tutorial image'}" data-img-slug="${block.slug || 'tutorial-image'}" class="w-full rounded-2xl my-6 shadow-md object-cover cursor-pointer" />`;
-        case 'p':
-        default:
-          return `<p class="mb-6 text-slate-700 leading-relaxed text-lg">${block.content}</p>`;
-      }
-    }).join('\n');
+  const insertTag = (tagOpen: string, tagClose: string = '') => {
+    const selection = window.getSelection();
+    const selectedText = selection ? selection.toString() : 'Text here';
+    const wrapped = `${tagOpen}${selectedText}${tagClose}`;
+    applyFormatting('insertHTML', wrapped);
   };
 
-  // Block management functions
-  const handleAddBlock = (type: EditorBlock['type'] = 'p') => {
-    const newBlock: EditorBlock = {
-      id: 'block-' + (blocks.length + 1),
-      type,
-      content: type === 'img' ? '' : 'New block content...',
-      ...(type === 'img' ? { src: 'https://picsum.photos/seed/newimg/800/450', alt: 'Tutorial illustration', slug: 'tutorial-illustration' } : {})
-    };
-    setBlocks(prev => [...prev, newBlock]);
+  const handleInsertLink = () => {
+    const url = prompt('Enter URL (Link):', 'https://');
+    if (!url) return;
+    applyFormatting('createLink', url);
   };
 
-  const handleUpdateBlockContent = (id: string, content: string) => {
-    setBlocks(prev => prev.map(b => b.id === id ? { ...b, content } : b));
-  };
-
-  const handleUpdateBlockType = (id: string, type: EditorBlock['type']) => {
-    setBlocks(prev => prev.map(b => b.id === id ? { ...b, type } : b));
-  };
-
-  const handleMoveBlock = (index: number, direction: 'up' | 'down') => {
-    const newIndex = direction === 'up' ? index - 1 : index + 1;
-    if (newIndex < 0 || newIndex >= blocks.length) return;
-    const updated = [...blocks];
-    const temp = updated[index];
-    updated[index] = updated[newIndex];
-    updated[newIndex] = temp;
-    setBlocks(updated);
-  };
-
-  const handleDeleteBlock = (id: string) => {
-    if (blocks.length <= 1) {
-      alert('Article must have at least one block.');
-      return;
-    }
-    setBlocks(prev => prev.filter(b => b.id !== id));
-  };
-
-  const handleDuplicateBlock = (block: EditorBlock) => {
-    const duplicated: EditorBlock = {
-      ...block,
-      id: 'block-dup-' + (blocks.length + 1)
-    };
-    const index = blocks.findIndex(b => b.id === block.id);
-    const updated = [...blocks];
-    updated.splice(index + 1, 0, duplicated);
-    setBlocks(updated);
-  };
-
-  // Mid-article Image Upload as a Block
   const handleContentImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -320,17 +204,9 @@ export default function AdminPanelPage() {
 
       setArticleImages(prev => [...prev, newImg]);
 
-      const imageBlock: EditorBlock = {
-        id: newImg.id,
-        type: 'img',
-        content: '',
-        src: base64String,
-        alt: cleanAlt,
-        slug: imgSlug
-      };
-
-      setBlocks(prev => [...prev, imageBlock]);
-      showNotify('Image block added successfully!');
+      const imgHtml = `<img src="${base64String}" alt="${cleanAlt}" data-img-slug="${imgSlug}" class="w-full rounded-2xl my-6 shadow-md object-cover" />\n`;
+      applyFormatting('insertHTML', imgHtml);
+      showNotify('Image inserted into visual editor!');
     };
     reader.readAsDataURL(file);
     if (contentImageInputRef.current) contentImageInputRef.current.value = '';
@@ -361,15 +237,17 @@ export default function AdminPanelPage() {
     if (!cleaned.includes('<p>') && !cleaned.includes('<h1>')) {
       cleaned = cleaned
         .split('\n\n')
-        .map(p => p.trim() ? `<p>${p.trim()}</p>` : '')
+        .map(p => p.trim() ? `<p class="mb-6 text-slate-700 leading-relaxed text-lg">${p.trim()}</p>` : '')
         .join('\n');
     }
 
-    const parsedBlocks = parseHtmlToBlocks(cleaned);
-    setBlocks(prev => [...prev, ...parsedBlocks]);
+    setBlogContent(prev => (prev ? prev + '\n\n' + cleaned : cleaned));
+    if (visualContentRef.current) {
+      visualContentRef.current.innerHTML = blogContent + '\n\n' + cleaned;
+    }
     setWpRawCode('');
     setShowWpImporter(false);
-    showNotify('WordPress code successfully converted into blocks!');
+    showNotify('WordPress code successfully converted and inserted into visual editor!');
   };
 
   // FAQ Builder Handlers
@@ -379,17 +257,17 @@ export default function AdminPanelPage() {
     setFaqs(updatedFaqs);
     setNewFaqQ('');
     setNewFaqA('');
-    updateBlocksWithFaqs(updatedFaqs);
+    updateContentWithFaqs(updatedFaqs);
     showNotify('FAQ added and Schema automatically generated!');
   };
 
   const handleDeleteFaq = (index: number) => {
     const updatedFaqs = faqs.filter((_, i) => i !== index);
     setFaqs(updatedFaqs);
-    updateBlocksWithFaqs(updatedFaqs);
+    updateContentWithFaqs(updatedFaqs);
   };
 
-  const updateBlocksWithFaqs = (currentFaqs: FAQItem[]) => {
+  const updateContentWithFaqs = (currentFaqs: FAQItem[]) => {
     if (currentFaqs.length === 0) return;
 
     let faqHtml = `<div class="my-8 p-6 bg-slate-50 border border-slate-200 rounded-3xl space-y-4">\n  <h3 class="text-xl font-bold text-black">Frequently Asked Questions (FAQs)</h3>\n  <div class="space-y-3">\n`;
@@ -415,16 +293,11 @@ export default function AdminPanelPage() {
 
     const schemaScript = `<script type="application/ld+json">\n${JSON.stringify(schemaData, null, 2)}\n</script>`;
 
-    setBlocks(prev => {
-      const filtered = prev.filter(b => !b.content.includes('Frequently Asked Questions'));
-      return [
-        ...filtered,
-        {
-          id: 'faq-block-' + (prev.length + 1),
-          type: 'p',
-          content: faqHtml + '\n' + schemaScript
-        }
-      ];
+    setBlogContent(prev => {
+      const cleanPrev = prev.replace(/<div class="my-8 p-6 bg-slate-50[^>]*>[\s\S]*?<\/script>/g, '').trim();
+      const updated = cleanPrev + '\n\n' + faqHtml + '\n\n' + schemaScript;
+      if (visualContentRef.current) visualContentRef.current.innerHTML = updated;
+      return updated;
     });
   };
 
@@ -450,8 +323,8 @@ export default function AdminPanelPage() {
           if (typeof window !== 'undefined') localStorage.setItem(CATEGORIES_KEY, JSON.stringify(updatedCats));
         }
         setBlogExcerpt(data.excerpt || '');
-        const newBlocks = parseHtmlToBlocks(data.content || '');
-        setBlocks(newBlocks);
+        setBlogContent(data.content || '');
+        if (visualContentRef.current) visualContentRef.current.innerHTML = data.content || '';
         showNotify('Full Hindi article generated successfully by AI Supervisor!');
       } else {
         alert('Failed to generate article.');
@@ -464,8 +337,7 @@ export default function AdminPanelPage() {
   };
 
   const handleAiAnalyzePost = async () => {
-    const currentHtml = serializeBlocksToHtml(blocks);
-    if (!blogTitle.trim() || !currentHtml.trim()) {
+    if (!blogTitle.trim() || !blogContent.trim()) {
       alert('Please enter a title and content to analyze.');
       return;
     }
@@ -474,7 +346,7 @@ export default function AdminPanelPage() {
       const res = await fetch('/api/ai-supervisor', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'analyze', keywordOrTitle: blogTitle, content: currentHtml })
+        body: JSON.stringify({ action: 'analyze', keywordOrTitle: blogTitle, content: blogContent })
       });
       const data = await res.json();
       if (data.seoScore !== undefined) {
@@ -491,8 +363,7 @@ export default function AdminPanelPage() {
   };
 
   const handleAiOptimizePost = async () => {
-    const currentHtml = serializeBlocksToHtml(blocks);
-    if (!blogTitle.trim() || !currentHtml.trim()) {
+    if (!blogTitle.trim() || !blogContent.trim()) {
       alert('Please enter a title and content to optimize.');
       return;
     }
@@ -501,14 +372,14 @@ export default function AdminPanelPage() {
       const res = await fetch('/api/ai-supervisor', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'optimize', keywordOrTitle: blogTitle, content: currentHtml })
+        body: JSON.stringify({ action: 'optimize', keywordOrTitle: blogTitle, content: blogContent })
       });
       const data = await res.json();
       if (data.title && data.content) {
         setBlogTitle(data.title);
         if (data.excerpt) setBlogExcerpt(data.excerpt);
-        const optimizedBlocks = parseHtmlToBlocks(data.content);
-        setBlocks(optimizedBlocks);
+        setBlogContent(data.content);
+        if (visualContentRef.current) visualContentRef.current.innerHTML = data.content;
         showNotify('Content successfully optimized by AI Supervisor! Mistakes fixed & SEO boosted.');
       } else {
         alert('Failed to optimize article.');
@@ -568,10 +439,7 @@ export default function AdminPanelPage() {
     setBlogSlug('');
     setIsSlugManual(false);
     setBlogExcerpt('');
-    setBlocks([
-      { id: 'b-1', type: 'h1', content: 'Article Title' },
-      { id: 'b-2', type: 'p', content: 'Start writing your tutorial here...' }
-    ]);
+    setBlogContent('<h1 class="text-3xl font-extrabold text-black mt-6 mb-4">Article Title</h1>\n<p class="mb-6 text-slate-700 leading-relaxed text-lg">Start writing your tutorial here with proper spacing...</p>');
     setBlogCategory(customCategories[0] || 'AI Guides');
     setIsNewCategoryMode(false);
     setNewCategoryName('');
@@ -582,7 +450,7 @@ export default function AdminPanelPage() {
     setArticleImages([]);
     setFaqs([]);
     setAnalysisResult(null);
-    setEditorMode('block');
+    setEditorMode('visual');
     setIsEditingBlog(true);
   };
 
@@ -592,8 +460,7 @@ export default function AdminPanelPage() {
     setBlogSlug(b.slug);
     setIsSlugManual(true);
     setBlogExcerpt(b.excerpt);
-    const parsedBlocks = parseHtmlToBlocks(b.content);
-    setBlocks(parsedBlocks);
+    setBlogContent(b.content);
     const cat = b.category || 'AI Guides';
     if (!customCategories.includes(cat)) {
       setCustomCategories(prev => [...prev, cat]);
@@ -608,7 +475,7 @@ export default function AdminPanelPage() {
     setArticleImages([]);
     setFaqs([]);
     setAnalysisResult(null);
-    setEditorMode('block');
+    setEditorMode('visual');
     setIsEditingBlog(true);
   };
 
@@ -626,7 +493,7 @@ export default function AdminPanelPage() {
       }
     }
 
-    const finalHtmlContent = editorMode === 'html' ? rawHtmlContent : serializeBlocksToHtml(blocks);
+    const finalHtmlContent = visualContentRef.current ? visualContentRef.current.innerHTML : blogContent;
     const formattedSlug = blogSlug.toLowerCase().replace(/\s+/g, '-');
     const postId = editingBlogId || ('blog-' + formattedSlug);
 
@@ -668,7 +535,7 @@ export default function AdminPanelPage() {
   };
 
   // ==========================================
-  // RENDER FULL-PAGE BLOCK EDITOR
+  // RENDER CONTINUOUS VISUAL EDITOR (WordPress Classic/Visual Style)
   // ==========================================
   if (isEditingBlog) {
     return (
@@ -701,10 +568,10 @@ export default function AdminPanelPage() {
           <div className="bg-white rounded-3xl border border-slate-200 p-4 sm:p-8 shadow-sm space-y-8">
             <div className="space-y-2">
               <h1 className="text-2xl font-extrabold text-black tracking-tight">
-                {editingBlogId ? 'WordPress Block Editor (Edit Post - Anwar)' : 'WordPress Block Editor (New Post - Anwar)'}
+                {editingBlogId ? 'WordPress Visual Editor (Edit Post - Anwar)' : 'WordPress Visual Editor (New Post - Anwar)'}
               </h1>
               <p className="text-black text-sm font-medium">
-                Every element is an individual block. Ensure proper paragraph spacing and sticky formatting controls.
+                Smooth continuous visual editor (WordPress style). See and edit your entire article effortlessly with sticky formatting toolbar.
               </p>
             </div>
 
@@ -819,7 +686,7 @@ export default function AdminPanelPage() {
               {showWpImporter && (
                 <div className="space-y-3 pt-2">
                   <p className="text-xs text-black leading-relaxed font-medium">
-                    अपने पुराने WordPress पोस्ट का HTML या Gutenberg ब्लॉक कोड यहाँ पेस्ट करें। &ldquo;Convert &amp; Insert&rdquo; पर क्लिक करते ही यह ब्लॉक एडिटर में कन्वर्ट हो जाएगा।
+                    अपने पुराने WordPress पोस्ट का HTML या Gutenberg ब्लॉक कोड यहाँ पेस्ट करें। &ldquo;Convert &amp; Insert&rdquo; पर क्लिक करते ही यह विजुअल एडिटर में आ जाएगा।
                   </p>
                   <textarea
                     rows={5}
@@ -834,7 +701,7 @@ export default function AdminPanelPage() {
                     className="px-5 py-2.5 bg-orange-600 hover:bg-orange-700 text-white font-bold rounded-xl text-xs inline-flex items-center gap-2 shadow-sm"
                   >
                     <Wand2 className="w-3.5 h-3.5" />
-                    <span>Convert into Blocks</span>
+                    <span>Convert & Insert into Editor</span>
                   </button>
                 </div>
               )}
@@ -1003,34 +870,26 @@ export default function AdminPanelPage() {
               </div>
 
               {/* ========================================== */}
-              {/* WORDPRESS BLOCK EDITOR & STICKY TOOLBAR */}
+              {/* CONTINUOUS VISUAL EDITOR & STICKY TOOLBAR */}
               {/* ========================================== */}
               <div className="space-y-4">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                  <label className="text-sm font-extrabold text-black">WordPress Block Editor (हर एलिमेंट एक अलग ब्लॉक)</label>
+                  <label className="text-sm font-extrabold text-black">WordPress Visual Editor (Continuous Document)</label>
                   
                   <div className="flex items-center gap-2 bg-slate-100 p-1 rounded-xl">
                     <button
                       type="button"
-                      onClick={() => {
-                        if (editorMode === 'html') {
-                          setBlocks(parseHtmlToBlocks(rawHtmlContent));
-                        }
-                        setEditorMode('block');
-                      }}
+                      onClick={() => setEditorMode('visual')}
                       className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-                        editorMode === 'block' ? 'bg-white text-orange-600 shadow-sm' : 'text-black hover:text-orange-600'
+                        editorMode === 'visual' ? 'bg-white text-orange-600 shadow-sm' : 'text-black hover:text-orange-600'
                       }`}
                     >
                       <Eye className="w-3.5 h-3.5" />
-                      <span>Block Editor Mode</span>
+                      <span>Visual Editor (Normal)</span>
                     </button>
                     <button
                       type="button"
-                      onClick={() => {
-                        setRawHtmlContent(serializeBlocksToHtml(blocks));
-                        setEditorMode('html');
-                      }}
+                      onClick={() => setEditorMode('html')}
                       className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
                         editorMode === 'html' ? 'bg-white text-orange-600 shadow-sm' : 'text-black hover:text-orange-600'
                       }`}
@@ -1041,173 +900,64 @@ export default function AdminPanelPage() {
                   </div>
                 </div>
 
-                {/* Sticky Formatting & Block Addition Toolbar */}
-                <div className="sticky top-16 z-20 bg-white/95 backdrop-blur-md p-3.5 rounded-2xl border border-slate-200 shadow-lg flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <span className="text-xs font-bold text-black mr-1">Add Block:</span>
-                    <button type="button" onClick={() => handleAddBlock('p')} className="px-3 py-1.5 bg-slate-100 hover:bg-orange-50 hover:text-orange-600 rounded-lg text-xs font-bold text-black transition-colors">
-                      + Paragraph
-                    </button>
-                    <button type="button" onClick={() => handleAddBlock('h1')} className="px-3 py-1.5 bg-slate-100 hover:bg-orange-50 hover:text-orange-600 rounded-lg text-xs font-bold text-black transition-colors flex items-center gap-1">
-                      <Heading1 className="w-3.5 h-3.5" /> H1
-                    </button>
-                    <button type="button" onClick={() => handleAddBlock('h2')} className="px-3 py-1.5 bg-slate-100 hover:bg-orange-50 hover:text-orange-600 rounded-lg text-xs font-bold text-black transition-colors flex items-center gap-1">
-                      <Heading2 className="w-3.5 h-3.5" /> H2
-                    </button>
-                    <button type="button" onClick={() => handleAddBlock('h3')} className="px-3 py-1.5 bg-slate-100 hover:bg-orange-50 hover:text-orange-600 rounded-lg text-xs font-bold text-black transition-colors flex items-center gap-1">
-                      <Heading3 className="w-3.5 h-3.5" /> H3
-                    </button>
-                    <button type="button" onClick={() => handleAddBlock('quote')} className="px-3 py-1.5 bg-slate-100 hover:bg-orange-50 hover:text-orange-600 rounded-lg text-xs font-bold text-black transition-colors">
-                      Quote
-                    </button>
-                    <button type="button" onClick={() => handleAddBlock('ul')} className="px-3 py-1.5 bg-slate-100 hover:bg-orange-50 hover:text-orange-600 rounded-lg text-xs font-bold text-black transition-colors">
-                      List
-                    </button>
-                  </div>
-
-                  <div>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      ref={contentImageInputRef}
-                      onChange={handleContentImageUpload}
-                      className="hidden"
-                      id="stickyImgUpload"
-                    />
-                    <label
-                      htmlFor="stickyImgUpload"
-                      className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-xl text-xs font-bold shadow-md inline-flex items-center gap-1.5 cursor-pointer transition-colors"
-                    >
-                      <Upload className="w-3.5 h-3.5" />
-                      <span>+ Image Block</span>
-                    </label>
-                  </div>
+                {/* Sticky Formatting Toolbar */}
+                <div className="sticky top-16 z-20 bg-white/95 backdrop-blur-md p-3.5 rounded-2xl border border-slate-200 shadow-lg flex flex-wrap items-center gap-2">
+                  <button type="button" onClick={() => insertTag('<h1 class="text-3xl font-extrabold text-black mt-6 mb-4">', '</h1>')} className="px-3 py-1.5 bg-slate-100 hover:bg-orange-50 hover:text-orange-600 rounded-lg text-xs font-bold text-black transition-colors flex items-center gap-1">
+                    <Heading1 className="w-3.5 h-3.5" /> H1
+                  </button>
+                  <button type="button" onClick={() => insertTag('<h2 class="text-2xl font-bold text-black mt-6 mb-3">', '</h2>')} className="px-3 py-1.5 bg-slate-100 hover:bg-orange-50 hover:text-orange-600 rounded-lg text-xs font-bold text-black transition-colors flex items-center gap-1">
+                    <Heading2 className="w-3.5 h-3.5" /> H2
+                  </button>
+                  <button type="button" onClick={() => insertTag('<h3 class="text-xl font-semibold text-black mt-4 mb-2">', '</h3>')} className="px-3 py-1.5 bg-slate-100 hover:bg-orange-50 hover:text-orange-600 rounded-lg text-xs font-bold text-black transition-colors flex items-center gap-1">
+                    <Heading3 className="w-3.5 h-3.5" /> H3
+                  </button>
+                  <span className="text-slate-300">|</span>
+                  <button type="button" onClick={() => insertTag('<p class="mb-6 text-slate-700 leading-relaxed text-lg">', '</p>')} className="px-3 py-1.5 bg-slate-100 hover:bg-orange-50 hover:text-orange-600 rounded-lg text-xs font-bold text-black transition-colors">
+                    Paragraph
+                  </button>
+                  <button type="button" onClick={() => applyFormatting('bold')} className="px-3 py-1.5 bg-slate-100 hover:bg-orange-50 hover:text-orange-600 rounded-lg text-xs font-bold text-black transition-colors flex items-center gap-1">
+                    <Bold className="w-3.5 h-3.5" /> Bold
+                  </button>
+                  <button type="button" onClick={() => applyFormatting('italic')} className="px-3 py-1.5 bg-slate-100 hover:bg-orange-50 hover:text-orange-600 rounded-lg text-xs font-bold text-black transition-colors flex items-center gap-1">
+                    <Italic className="w-3.5 h-3.5" /> Italic
+                  </button>
+                  <span className="text-slate-300">|</span>
+                  <button type="button" onClick={handleInsertLink} className="px-3 py-1.5 bg-slate-100 hover:bg-orange-50 hover:text-orange-600 rounded-lg text-xs font-bold text-black transition-colors flex items-center gap-1">
+                    <LinkIcon className="w-3.5 h-3.5" /> Insert Link
+                  </button>
+                  <span className="text-slate-300">|</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    ref={contentImageInputRef}
+                    onChange={handleContentImageUpload}
+                    className="hidden"
+                    id="visualImgUpload"
+                  />
+                  <label
+                    htmlFor="visualImgUpload"
+                    className="px-3.5 py-1.5 bg-orange-600 hover:bg-orange-700 text-white rounded-lg text-xs font-bold shadow-md inline-flex items-center gap-1.5 cursor-pointer transition-colors"
+                  >
+                    <Upload className="w-3.5 h-3.5" />
+                    <span>+ Insert Image</span>
+                  </label>
                 </div>
 
-                {/* Blocks Container or HTML Code Mode */}
-                {editorMode === 'block' ? (
-                  <div className="space-y-4">
-                    {blocks.map((block, index) => (
-                      <div key={block.id} className="bg-slate-50 border border-slate-200 rounded-2xl p-4 shadow-sm relative group space-y-3">
-                        {/* Block Toolbar */}
-                        <div className="flex items-center justify-between border-b border-slate-200 pb-2">
-                          <div className="flex items-center gap-2">
-                            <span className="text-[10px] font-extrabold uppercase bg-orange-100 text-orange-700 px-2 py-0.5 rounded">
-                              Block #{index + 1} ({block.type})
-                            </span>
-                            <select
-                              value={block.type}
-                              onChange={(e) => handleUpdateBlockType(block.id, e.target.value as any)}
-                              className="px-2 py-1 bg-white border border-slate-300 rounded-lg text-xs font-bold text-black"
-                            >
-                              <option value="p">Paragraph</option>
-                              <option value="h1">Heading 1</option>
-                              <option value="h2">Heading 2</option>
-                              <option value="h3">Heading 3</option>
-                              <option value="quote">Quote</option>
-                              <option value="ul">Bullet List</option>
-                              <option value="img">Image</option>
-                            </select>
-                          </div>
-
-                          <div className="flex items-center gap-1">
-                            <button
-                              type="button"
-                              onClick={() => handleMoveBlock(index, 'up')}
-                              disabled={index === 0}
-                              className="p-1.5 bg-white hover:bg-slate-200 rounded text-slate-700 disabled:opacity-30"
-                              title="Move Up"
-                            >
-                              <ArrowUp className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleMoveBlock(index, 'down')}
-                              disabled={index === blocks.length - 1}
-                              className="p-1.5 bg-white hover:bg-slate-200 rounded text-slate-700 disabled:opacity-30"
-                              title="Move Down"
-                            >
-                              <ArrowDown className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleDuplicateBlock(block)}
-                              className="p-1.5 bg-white hover:bg-slate-200 rounded text-slate-700"
-                              title="Duplicate Block"
-                            >
-                              <Copy className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteBlock(block.id)}
-                              className="p-1.5 bg-red-50 hover:bg-red-100 rounded text-red-600 font-bold"
-                              title="Delete Block"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        </div>
-
-                        {/* Block Content Input */}
-                        {block.type === 'img' ? (
-                          <div className="space-y-3">
-                            <div className="w-full h-40 relative rounded-xl overflow-hidden bg-slate-200 border border-slate-300">
-                              <Image src={block.src || ''} alt={block.alt || ''} fill className="object-cover" referrerPolicy="no-referrer" />
-                            </div>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                              <div>
-                                <label className="block text-[10px] font-bold text-black mb-1">Image Alt Text (SEO)</label>
-                                <input
-                                  type="text"
-                                  value={block.alt || ''}
-                                  onChange={(e) => {
-                                    const alt = e.target.value;
-                                    const slug = alt.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
-                                    setBlocks(prev => prev.map(b => b.id === block.id ? { ...b, alt, slug } : b));
-                                  }}
-                                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs text-black font-medium"
-                                />
-                              </div>
-                              <div>
-                                <label className="block text-[10px] font-bold text-black mb-1">Image URL or Base64</label>
-                                <input
-                                  type="text"
-                                  value={block.src || ''}
-                                  onChange={(e) => {
-                                    const src = e.target.value;
-                                    setBlocks(prev => prev.map(b => b.id === block.id ? { ...b, src } : b));
-                                  }}
-                                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs text-black font-medium"
-                                />
-                              </div>
-                            </div>
-                          </div>
-                        ) : (
-                          <textarea
-                            rows={block.type === 'p' ? 3 : 2}
-                            value={block.content}
-                            onChange={(e) => handleUpdateBlockContent(block.id, e.target.value)}
-                            placeholder={`Enter ${block.type} content here...`}
-                            className="w-full p-3 bg-white border border-slate-200 rounded-xl text-sm text-black font-medium focus:ring-2 focus:ring-orange-600/20"
-                          />
-                        )}
-                      </div>
-                    ))}
-
-                    <div className="pt-2 flex flex-wrap gap-2">
-                      <button type="button" onClick={() => handleAddBlock('p')} className="px-4 py-2 bg-orange-600 text-white rounded-xl text-xs font-bold hover:bg-orange-700 transition-colors">
-                        + Add Paragraph Block
-                      </button>
-                      <button type="button" onClick={() => handleAddBlock('h2')} className="px-4 py-2 bg-slate-800 text-white rounded-xl text-xs font-bold hover:bg-slate-900 transition-colors">
-                        + Add Heading Block
-                      </button>
-                    </div>
-                  </div>
+                {/* Continuous Visual Editor or HTML Code Mode */}
+                {editorMode === 'visual' ? (
+                  <div
+                    ref={visualContentRef}
+                    contentEditable
+                    suppressContentEditableWarning
+                    onInput={(e) => setBlogContent(e.currentTarget.innerHTML)}
+                    dangerouslySetInnerHTML={{ __html: blogContent }}
+                    className="w-full min-h-[500px] p-6 sm:p-8 bg-slate-50 border border-slate-200 rounded-2xl text-black font-medium focus:outline-none focus:ring-2 focus:ring-orange-600/20 prose max-w-none [&>h1]:text-3xl [&>h1]:font-extrabold [&>h1]:mt-6 [&>h1]:mb-4 [&>h2]:text-2xl [&>h2]:font-bold [&>h2]:mt-6 [&>h2]:mb-3 [&>h3]:text-xl [&>h3]:font-semibold [&>h3]:mt-4 [&>h3]:mb-2 [&>p]:mb-6 [&>p]:leading-relaxed [&>p]:text-lg [&>img]:w-full [&>img]:rounded-2xl [&>img]:my-6 [&>img]:shadow-md [&>img]:object-cover"
+                  />
                 ) : (
                   <textarea
-                    rows={16}
-                    value={rawHtmlContent}
-                    onChange={(e) => setRawHtmlContent(e.target.value)}
+                    rows={18}
+                    value={blogContent}
+                    onChange={(e) => setBlogContent(e.target.value)}
                     className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-mono text-black font-medium focus:ring-2 focus:ring-orange-600/20"
                   />
                 )}
