@@ -33,6 +33,22 @@ export default function SlugPage() {
     loadData();
   }, []);
 
+  useEffect(() => {
+    const faqItems = document.querySelectorAll('.faq-item');
+    faqItems.forEach(item => {
+      item.addEventListener('click', () => {
+        const answer = item.querySelector('.faq-answer');
+        const icon = item.querySelector('.faq-icon');
+        if (answer) {
+          answer.classList.toggle('hidden');
+          if (icon) {
+            icon.textContent = answer.classList.contains('hidden') ? '+' : '-';
+          }
+        }
+      });
+    });
+  }, [posts, slug]);
+
   if (loading) {
     return (
       <>

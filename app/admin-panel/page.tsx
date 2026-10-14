@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { Plus, Edit, Trash2, Database, CheckCircle, ExternalLink, Sparkles, FileText, ArrowLeft, Image as ImageIcon, Link as LinkIcon, Bold, Italic, Heading1, Heading2, Heading3, Code, Wand2, Upload, X, RefreshCw, Eye, Code2, HelpCircle, Bot, AlertTriangle, TrendingUp, Award, Folder } from 'lucide-react';
+import { Plus, Edit, Trash2, Database, CheckCircle, ExternalLink, Sparkles, FileText, ArrowLeft, Image as ImageIcon, Link as LinkIcon, Bold, Italic, Heading1, Heading2, Heading3, Code, Wand2, Upload, X, RefreshCw, Eye, Code2, HelpCircle, Bot, AlertTriangle, TrendingUp, Award, Folder, List, Table } from 'lucide-react';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import { 
@@ -64,6 +64,7 @@ export default function AdminPanelPage() {
 
   // Editor Mode: Visual vs HTML Code Mode
   const [editorMode, setEditorMode] = useState<'visual' | 'html'>('visual');
+  const [, setSelectedBlockElement] = useState<HTMLElement | null>(null);
 
   // Article Media Library
   const [articleImages, setArticleImages] = useState<ArticleImage[]>([]);
@@ -178,10 +179,33 @@ export default function AdminPanelPage() {
     applyFormatting('insertHTML', wrapped);
   };
 
+  const insertList = () => {
+    const listHtml = `<ul class="list-disc pl-6 space-y-2 mb-6 text-slate-700"><li>List item 1</li><li>List item 2</li><li>List item 3</li></ul>\n`;
+    applyFormatting('insertHTML', listHtml);
+  };
+
+  const insertTable = () => {
+    const tableHtml = `<div class="overflow-x-auto my-6"><table class="w-full border-collapse border border-slate-300"><thead><tr class="bg-slate-100"><th class="border border-slate-300 p-3 text-left font-bold text-black">Header 1</th><th class="border border-slate-300 p-3 text-left font-bold text-black">Header 2</th></tr></thead><tbody><tr><td class="border border-slate-300 p-3 text-black">Row 1 Cell 1</td><td class="border border-slate-300 p-3 text-black">Row 1 Cell 2</td></tr><tr><td class="border border-slate-300 p-3 text-black">Row 2 Cell 1</td><td class="border border-slate-300 p-3 text-black">Row 2 Cell 2</td></tr></tbody></table></div>\n`;
+    applyFormatting('insertHTML', tableHtml);
+  };
+
   const handleInsertLink = () => {
     const url = prompt('Enter URL (Link):', 'https://');
     if (!url) return;
     applyFormatting('createLink', url);
+  };
+
+  // Click handler to select block and highlight with light blue border
+  const handleVisualClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    const target = e.target as HTMLElement;
+    const blockEl = target.closest('p, h1, h2, h3, blockquote, ul, table, li') as HTMLElement;
+    if (blockEl && visualContentRef.current?.contains(blockEl)) {
+      visualContentRef.current.querySelectorAll('.editor-selected-block').forEach(el => {
+        el.classList.remove('ring-2', 'ring-blue-400', 'bg-blue-50/30', 'rounded-xl', 'p-2', 'editor-selected-block');
+      });
+      blockEl.classList.add('ring-2', 'ring-blue-400', 'bg-blue-50/30', 'rounded-xl', 'p-2', 'editor-selected-block');
+      setSelectedBlockElement(blockEl);
+    }
   };
 
   const handleContentImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -250,7 +274,7 @@ export default function AdminPanelPage() {
     showNotify('WordPress code successfully converted and inserted into visual editor!');
   };
 
-  // FAQ Builder Handlers
+  // FAQ Builder Handlers (Ensuring interactive toggle CSS classes)
   const handleAddFaq = () => {
     if (!newFaqQ.trim() || !newFaqA.trim()) return;
     const updatedFaqs = [...faqs, { question: newFaqQ.trim(), answer: newFaqA.trim() }];
@@ -273,7 +297,7 @@ export default function AdminPanelPage() {
     let faqHtml = `<div class="my-8 p-6 bg-slate-50 border border-slate-200 rounded-3xl space-y-4">\n  <h3 class="text-xl font-bold text-black">Frequently Asked Questions (FAQs)</h3>\n  <div class="space-y-3">\n`;
 
     currentFaqs.forEach((faq) => {
-      faqHtml += `    <div class="p-4 bg-white border border-slate-200 rounded-2xl space-y-1.5">\n      <h4 class="font-bold text-black text-base">${faq.question}</h4>\n      <p class="text-black text-sm font-medium">${faq.answer}</p>\n    </div>\n`;
+      faqHtml += `    <div class="faq-item p-4 bg-white border border-slate-200 rounded-2xl space-y-1.5 cursor-pointer hover:border-orange-400 transition-colors">\n      <h4 class="faq-question font-bold text-black text-base flex items-center justify-between"><span>${faq.question}</span> <span class="faq-icon text-orange-600 font-extrabold text-lg">+</span></h4>\n      <p class="faq-answer hidden text-black text-sm font-medium pt-2 border-t border-slate-100">${faq.answer}</p>\n    </div>\n`;
     });
 
     faqHtml += `  </div>\n</div>\n`;
@@ -493,6 +517,12 @@ export default function AdminPanelPage() {
       }
     }
 
+    if (visualContentRef.current) {
+      visualContentRef.current.querySelectorAll('.editor-selected-block').forEach(el => {
+        el.classList.remove('ring-2', 'ring-blue-400', 'bg-blue-50/30', 'rounded-xl', 'p-2', 'editor-selected-block');
+      });
+    }
+
     const finalHtmlContent = visualContentRef.current ? visualContentRef.current.innerHTML : blogContent;
     const formattedSlug = blogSlug.toLowerCase().replace(/\s+/g, '-');
     const postId = editingBlogId || ('blog-' + formattedSlug);
@@ -535,7 +565,7 @@ export default function AdminPanelPage() {
   };
 
   // ==========================================
-  // RENDER CONTINUOUS VISUAL EDITOR (WordPress Classic/Visual Style)
+  // RENDER CONTINUOUS VISUAL EDITOR
   // ==========================================
   if (isEditingBlog) {
     return (
@@ -571,7 +601,7 @@ export default function AdminPanelPage() {
                 {editingBlogId ? 'WordPress Visual Editor (Edit Post - Anwar)' : 'WordPress Visual Editor (New Post - Anwar)'}
               </h1>
               <p className="text-black text-sm font-medium">
-                Smooth continuous visual editor (WordPress style). See and edit your entire article effortlessly with sticky formatting toolbar.
+                Click any block to highlight with light blue border. Formatting options apply to the entire selected block automatically.
               </p>
             </div>
 
@@ -874,7 +904,7 @@ export default function AdminPanelPage() {
               {/* ========================================== */}
               <div className="space-y-4">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                  <label className="text-sm font-extrabold text-black">WordPress Visual Editor (Continuous Document)</label>
+                  <label className="text-sm font-extrabold text-black">WordPress Visual Editor (Click element to select block)</label>
                   
                   <div className="flex items-center gap-2 bg-slate-100 p-1 rounded-xl">
                     <button
@@ -900,19 +930,19 @@ export default function AdminPanelPage() {
                   </div>
                 </div>
 
-                {/* Sticky Formatting Toolbar */}
+                {/* Sticky Formatting Toolbar with List & Table */}
                 <div className="sticky top-16 z-20 bg-white/95 backdrop-blur-md p-3.5 rounded-2xl border border-slate-200 shadow-lg flex flex-wrap items-center gap-2">
-                  <button type="button" onClick={() => insertTag('<h1 class="text-3xl font-extrabold text-black mt-6 mb-4">', '</h1>')} className="px-3 py-1.5 bg-slate-100 hover:bg-orange-50 hover:text-orange-600 rounded-lg text-xs font-bold text-black transition-colors flex items-center gap-1">
+                  <button type="button" onClick={() => applyFormatting('formatBlock', '<h1>')} className="px-3 py-1.5 bg-slate-100 hover:bg-orange-50 hover:text-orange-600 rounded-lg text-xs font-bold text-black transition-colors flex items-center gap-1">
                     <Heading1 className="w-3.5 h-3.5" /> H1
                   </button>
-                  <button type="button" onClick={() => insertTag('<h2 class="text-2xl font-bold text-black mt-6 mb-3">', '</h2>')} className="px-3 py-1.5 bg-slate-100 hover:bg-orange-50 hover:text-orange-600 rounded-lg text-xs font-bold text-black transition-colors flex items-center gap-1">
+                  <button type="button" onClick={() => applyFormatting('formatBlock', '<h2>')} className="px-3 py-1.5 bg-slate-100 hover:bg-orange-50 hover:text-orange-600 rounded-lg text-xs font-bold text-black transition-colors flex items-center gap-1">
                     <Heading2 className="w-3.5 h-3.5" /> H2
                   </button>
-                  <button type="button" onClick={() => insertTag('<h3 class="text-xl font-semibold text-black mt-4 mb-2">', '</h3>')} className="px-3 py-1.5 bg-slate-100 hover:bg-orange-50 hover:text-orange-600 rounded-lg text-xs font-bold text-black transition-colors flex items-center gap-1">
+                  <button type="button" onClick={() => applyFormatting('formatBlock', '<h3>')} className="px-3 py-1.5 bg-slate-100 hover:bg-orange-50 hover:text-orange-600 rounded-lg text-xs font-bold text-black transition-colors flex items-center gap-1">
                     <Heading3 className="w-3.5 h-3.5" /> H3
                   </button>
                   <span className="text-slate-300">|</span>
-                  <button type="button" onClick={() => insertTag('<p class="mb-6 text-slate-700 leading-relaxed text-lg">', '</p>')} className="px-3 py-1.5 bg-slate-100 hover:bg-orange-50 hover:text-orange-600 rounded-lg text-xs font-bold text-black transition-colors">
+                  <button type="button" onClick={() => applyFormatting('formatBlock', '<p>')} className="px-3 py-1.5 bg-slate-100 hover:bg-orange-50 hover:text-orange-600 rounded-lg text-xs font-bold text-black transition-colors">
                     Paragraph
                   </button>
                   <button type="button" onClick={() => applyFormatting('bold')} className="px-3 py-1.5 bg-slate-100 hover:bg-orange-50 hover:text-orange-600 rounded-lg text-xs font-bold text-black transition-colors flex items-center gap-1">
@@ -924,6 +954,12 @@ export default function AdminPanelPage() {
                   <span className="text-slate-300">|</span>
                   <button type="button" onClick={handleInsertLink} className="px-3 py-1.5 bg-slate-100 hover:bg-orange-50 hover:text-orange-600 rounded-lg text-xs font-bold text-black transition-colors flex items-center gap-1">
                     <LinkIcon className="w-3.5 h-3.5" /> Insert Link
+                  </button>
+                  <button type="button" onClick={insertList} className="px-3 py-1.5 bg-slate-100 hover:bg-orange-50 hover:text-orange-600 rounded-lg text-xs font-bold text-black transition-colors flex items-center gap-1">
+                    <List className="w-3.5 h-3.5" /> Insert List
+                  </button>
+                  <button type="button" onClick={insertTable} className="px-3 py-1.5 bg-slate-100 hover:bg-orange-50 hover:text-orange-600 rounded-lg text-xs font-bold text-black transition-colors flex items-center gap-1">
+                    <Table className="w-3.5 h-3.5" /> Insert Table
                   </button>
                   <span className="text-slate-300">|</span>
                   <input
@@ -950,6 +986,7 @@ export default function AdminPanelPage() {
                     contentEditable
                     suppressContentEditableWarning
                     onInput={(e) => setBlogContent(e.currentTarget.innerHTML)}
+                    onClick={handleVisualClick}
                     dangerouslySetInnerHTML={{ __html: blogContent }}
                     className="w-full min-h-[500px] p-6 sm:p-8 bg-slate-50 border border-slate-200 rounded-2xl text-black font-medium focus:outline-none focus:ring-2 focus:ring-orange-600/20 prose max-w-none [&>h1]:text-3xl [&>h1]:font-extrabold [&>h1]:mt-6 [&>h1]:mb-4 [&>h2]:text-2xl [&>h2]:font-bold [&>h2]:mt-6 [&>h2]:mb-3 [&>h3]:text-xl [&>h3]:font-semibold [&>h3]:mt-4 [&>h3]:mb-2 [&>p]:mb-6 [&>p]:leading-relaxed [&>p]:text-lg [&>img]:w-full [&>img]:rounded-2xl [&>img]:my-6 [&>img]:shadow-md [&>img]:object-cover"
                   />
@@ -969,7 +1006,7 @@ export default function AdminPanelPage() {
                   <HelpCircle className="w-4 h-4 text-orange-600" />
                   <span>FAQ Builder & Schema Generator (FAQ Schema)</span>
                 </div>
-                <p className="text-xs text-black font-medium">Add frequently asked questions at the end of the article. They will automatically be formatted and include Google FAQ JSON-LD Schema.</p>
+                <p className="text-xs text-black font-medium">Add frequently asked questions at the end of the article. They will automatically be formatted as toggle accordions on the frontend and include Google FAQ JSON-LD Schema.</p>
 
                 <div className="space-y-3">
                   <input
