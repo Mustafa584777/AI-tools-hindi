@@ -3,9 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { Plus, Edit, Trash2, Database, CheckCircle, ExternalLink, Sparkles, FileText, ArrowLeft, Image as ImageIcon, Link as LinkIcon, Bold, Italic, Heading1, Heading2, Heading3, Code, Wand2, Upload, X, RefreshCw, Eye, Code2, HelpCircle, Bot, AlertTriangle, TrendingUp, Award, Folder, List, Table } from 'lucide-react';
-import Navbar from '@/components/Navbar';
-import Footer from '@/components/Footer';
+import { Plus, Edit, Trash2, Database, CheckCircle, ExternalLink, Sparkles, FileText, ArrowLeft, Image as ImageIcon, Link as LinkIcon, Bold, Italic, Heading1, Heading2, Heading3, Code, Wand2, Upload, X, RefreshCw, Eye, Code2, HelpCircle, Bot, AlertTriangle, TrendingUp, Award, Folder, List, Table, Undo, Redo, Settings } from 'lucide-react';
 import { 
   fetchBlogPostsFromFirestore, 
   saveBlogPostToFirestore, 
@@ -61,6 +59,9 @@ export default function AdminPanelPage() {
   const [blogImage, setBlogImage] = useState('https://picsum.photos/seed/blogdefault/800/450');
   const [blogImageAlt, setBlogImageAlt] = useState('');
   const [blogStatus, setBlogStatus] = useState<'published' | 'draft'>('published');
+
+  // Post Settings Toggle State
+  const [showPostSettings, setShowPostSettings] = useState(true);
 
   // Editor Mode: Visual vs HTML Code Mode
   const [editorMode, setEditorMode] = useState<'visual' | 'html'>('visual');
@@ -195,15 +196,15 @@ export default function AdminPanelPage() {
     applyFormatting('createLink', url);
   };
 
-  // Click handler to select block and highlight with light blue border
+  // Click handler to select block and highlight with light blue border across all blocks
   const handleVisualClick = (e: React.MouseEvent<HTMLDivElement>) => {
     const target = e.target as HTMLElement;
-    const blockEl = target.closest('p, h1, h2, h3, blockquote, ul, table, li') as HTMLElement;
-    if (blockEl && visualContentRef.current?.contains(blockEl)) {
+    const blockEl = target.closest('p, h1, h2, h3, blockquote, ul, table, li, div') as HTMLElement;
+    if (blockEl && visualContentRef.current?.contains(blockEl) && blockEl !== visualContentRef.current) {
       visualContentRef.current.querySelectorAll('.editor-selected-block').forEach(el => {
-        el.classList.remove('ring-2', 'ring-blue-400', 'bg-blue-50/30', 'rounded-xl', 'p-2', 'editor-selected-block');
+        el.classList.remove('ring-2', 'ring-blue-400', 'bg-blue-50/20', 'rounded-xl', 'p-2', 'editor-selected-block');
       });
-      blockEl.classList.add('ring-2', 'ring-blue-400', 'bg-blue-50/30', 'rounded-xl', 'p-2', 'editor-selected-block');
+      blockEl.classList.add('ring-2', 'ring-blue-400', 'bg-blue-50/20', 'rounded-xl', 'p-2', 'editor-selected-block');
       setSelectedBlockElement(blockEl);
     }
   };
@@ -274,7 +275,7 @@ export default function AdminPanelPage() {
     showNotify('WordPress code successfully converted and inserted into visual editor!');
   };
 
-  // FAQ Builder Handlers (Ensuring interactive toggle CSS classes)
+  // FAQ Builder Handlers
   const handleAddFaq = () => {
     if (!newFaqQ.trim() || !newFaqA.trim()) return;
     const updatedFaqs = [...faqs, { question: newFaqQ.trim(), answer: newFaqA.trim() }];
@@ -475,6 +476,7 @@ export default function AdminPanelPage() {
     setFaqs([]);
     setAnalysisResult(null);
     setEditorMode('visual');
+    setShowPostSettings(true);
     setIsEditingBlog(true);
   };
 
@@ -500,6 +502,7 @@ export default function AdminPanelPage() {
     setFaqs([]);
     setAnalysisResult(null);
     setEditorMode('visual');
+    setShowPostSettings(false); // collapsed by default on edit so user can focus on content
     setIsEditingBlog(true);
   };
 
@@ -519,7 +522,7 @@ export default function AdminPanelPage() {
 
     if (visualContentRef.current) {
       visualContentRef.current.querySelectorAll('.editor-selected-block').forEach(el => {
-        el.classList.remove('ring-2', 'ring-blue-400', 'bg-blue-50/30', 'rounded-xl', 'p-2', 'editor-selected-block');
+        el.classList.remove('ring-2', 'ring-blue-400', 'bg-blue-50/20', 'rounded-xl', 'p-2', 'editor-selected-block');
       });
     }
 
@@ -565,45 +568,226 @@ export default function AdminPanelPage() {
   };
 
   // ==========================================
-  // RENDER CONTINUOUS VISUAL EDITOR
+  // RENDER CONTINUOUS VISUAL EDITOR (Admin without Header/Footer)
   // ==========================================
   if (isEditingBlog) {
     return (
-      <>
-        <Navbar />
-        {/* Admin panel screen spacing: just 10px spacing on left and right side */}
-        <main className="flex-1 max-w-full px-[10px] py-6 space-y-6">
-          <div className="flex items-center justify-between">
+      <div className="min-h-screen bg-slate-100 flex flex-col">
+        {/* Minimal Admin Header Bar */}
+        <header className="bg-slate-900 text-white px-4 py-3 flex items-center justify-between border-b border-slate-800">
+          <div className="flex items-center gap-3">
             <button
               onClick={() => setIsEditingBlog(false)}
-              className="inline-flex items-center gap-2 text-sm font-bold text-black hover:text-orange-600 transition-colors"
+              className="inline-flex items-center gap-2 text-xs font-bold text-slate-300 hover:text-white transition-colors"
             >
               <ArrowLeft className="w-4 h-4" />
-              <span>Back to Dashboard</span>
+              <span>Back to Admin Dashboard</span>
             </button>
-
-            <div className="flex items-center gap-3">
-              <span className="text-xs font-bold text-black">Post Status:</span>
-              <select
-                value={blogStatus}
-                onChange={(e) => setBlogStatus(e.target.value as any)}
-                className="px-3 py-1.5 bg-slate-100 rounded-xl text-xs font-bold text-black"
-              >
-                <option value="published">Published</option>
-                <option value="draft">Draft</option>
-              </select>
-            </div>
+            <span className="text-slate-600">|</span>
+            <span className="text-xs font-bold text-orange-400">Anwar&apos;s Article Studio</span>
           </div>
 
+          <div className="flex items-center gap-3">
+            <span className="text-xs font-bold text-slate-300">Status:</span>
+            <select
+              value={blogStatus}
+              onChange={(e) => setBlogStatus(e.target.value as any)}
+              className="px-3 py-1 bg-slate-800 rounded-lg text-xs font-bold text-white border border-slate-700"
+            >
+              <option value="published">Published</option>
+              <option value="draft">Draft</option>
+            </select>
+          </div>
+        </header>
+
+        {/* Admin panel screen spacing: just 10px spacing on left and right side */}
+        <main className="flex-1 max-w-full px-[10px] py-6 space-y-6">
           <div className="bg-white rounded-3xl border border-slate-200 p-4 sm:p-8 shadow-sm space-y-8">
-            <div className="space-y-2">
-              <h1 className="text-2xl font-extrabold text-black tracking-tight">
-                {editingBlogId ? 'WordPress Visual Editor (Edit Post - Anwar)' : 'WordPress Visual Editor (New Post - Anwar)'}
-              </h1>
-              <p className="text-black text-sm font-medium">
-                Click any block to highlight with light blue border. Formatting options apply to the entire selected block automatically.
-              </p>
+            <div className="flex items-center justify-between flex-wrap gap-4">
+              <div className="space-y-1">
+                <h1 className="text-2xl font-extrabold text-black tracking-tight">
+                  {editingBlogId ? 'WordPress Visual Editor (Edit Post)' : 'WordPress Visual Editor (New Post)'}
+                </h1>
+                <p className="text-black text-sm font-medium">
+                  All blocks are fully editable. Use Post Settings toggle below to collapse or expand post metadata.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setShowPostSettings(!showPostSettings)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-black font-bold rounded-xl text-xs inline-flex items-center gap-2 transition-colors border border-slate-300 shadow-sm"
+              >
+                <Settings className="w-4 h-4 text-orange-600" />
+                <span>{showPostSettings ? '▲ Hide Post Settings' : '▼ Show Post Settings (Title, Slug, Category, Image)'}</span>
+              </button>
             </div>
+
+            {/* Collapsible Post Settings Section */}
+            {showPostSettings && (
+              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-6 space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div>
+                    <label className="block text-xs font-bold text-black mb-2">Article Title *</label>
+                    <input
+                      type="text"
+                      required
+                      value={blogTitle}
+                      onChange={(e) => handleTitleChange(e.target.value)}
+                      placeholder="उदा: Top 10 AI Tools in Hindi"
+                      className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm text-black font-medium focus:ring-2 focus:ring-orange-600/20"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-black mb-2">URL Slug (Auto-generated) *</label>
+                    <input
+                      type="text"
+                      required
+                      value={blogSlug}
+                      onChange={(e) => {
+                        setBlogSlug(e.target.value);
+                        setIsSlugManual(true);
+                      }}
+                      placeholder="top-ai-tools-in-hindi"
+                      className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-mono text-orange-600 font-bold"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div>
+                    <label className="block text-xs font-bold text-black mb-2">Category *</label>
+                    {!isNewCategoryMode ? (
+                      <div className="flex gap-2">
+                        <select
+                          value={blogCategory}
+                          onChange={(e) => {
+                            if (e.target.value === '__new__') {
+                              setIsNewCategoryMode(true);
+                            } else {
+                              setBlogCategory(e.target.value);
+                            }
+                          }}
+                          className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm text-black font-medium"
+                        >
+                          {customCategories.map(cat => (
+                            <option key={cat} value={cat}>{cat}</option>
+                          ))}
+                          <option value="__new__">+ Add New Category...</option>
+                        </select>
+                      </div>
+                    ) : (
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={newCategoryName}
+                          onChange={(e) => setNewCategoryName(e.target.value)}
+                          placeholder="Enter new category name..."
+                          className="w-full px-4 py-3 bg-white border border-orange-300 rounded-xl text-sm text-black font-medium focus:ring-2 focus:ring-orange-600/20"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (newCategoryName.trim()) {
+                              const name = newCategoryName.trim();
+                              if (!customCategories.includes(name)) {
+                                setCustomCategories([...customCategories, name]);
+                              }
+                              setBlogCategory(name);
+                              setIsNewCategoryMode(false);
+                              setNewCategoryName('');
+                            }
+                          }}
+                          className="px-4 py-3 bg-orange-600 hover:bg-orange-700 text-white font-bold rounded-xl text-xs shrink-0"
+                        >
+                          Add
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setIsNewCategoryMode(false)}
+                          className="px-3 py-3 bg-slate-200 hover:bg-slate-300 text-black font-bold rounded-xl text-xs shrink-0"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-black mb-2">Author (Default: Anwar)</label>
+                    <input
+                      type="text"
+                      value={blogAuthor}
+                      onChange={(e) => setBlogAuthor(e.target.value)}
+                      placeholder="Anwar"
+                      className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm text-black font-medium"
+                    />
+                  </div>
+                </div>
+
+                {/* Featured Image Section */}
+                <div className="space-y-3 bg-white border border-slate-200 p-6 rounded-2xl">
+                  <label className="block text-xs font-bold text-black">Featured Image (Local Upload or URL)</label>
+                  <div className="flex flex-col md:flex-row items-start md:items-center gap-4">
+                    <div className="w-32 h-20 relative rounded-xl overflow-hidden bg-slate-200 border border-slate-300 shrink-0">
+                      <Image
+                        src={blogImage}
+                        alt="Featured preview"
+                        fill
+                        sizes="128px"
+                        className="object-cover"
+                        referrerPolicy="no-referrer"
+                      />
+                    </div>
+                    <div className="space-y-2 flex-1 w-full">
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="file"
+                          accept="image/*"
+                          ref={featuredImageInputRef}
+                          onChange={handleFeaturedImageUpload}
+                          className="hidden"
+                          id="featuredImgUploadInput"
+                        />
+                        <label
+                          htmlFor="featuredImgUploadInput"
+                          className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-xl text-xs font-bold cursor-pointer inline-flex items-center gap-1.5 shadow-sm"
+                        >
+                          <Upload className="w-3.5 h-3.5" />
+                          <span>Upload Featured Image</span>
+                        </label>
+                      </div>
+                      <input
+                        type="url"
+                        value={blogImage}
+                        onChange={(e) => setBlogImage(e.target.value)}
+                        placeholder="Or paste image URL here..."
+                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs text-black font-medium"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-black mb-1 mt-2">Image Alt Text & Slug (SEO)</label>
+                    <input
+                      type="text"
+                      value={blogImageAlt}
+                      onChange={(e) => setBlogImageAlt(e.target.value)}
+                      placeholder="उदा: AI tutorial banner image"
+                      className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-black font-medium"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-black mb-2">Excerpt (Short Summary)</label>
+                  <textarea
+                    rows={2}
+                    value={blogExcerpt}
+                    onChange={(e) => setBlogExcerpt(e.target.value)}
+                    className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm text-black font-medium"
+                  />
+                </div>
+              </div>
+            )}
 
             {/* AI Supervisor Widget */}
             <div className="bg-gradient-to-br from-orange-600 to-amber-600 text-white rounded-2xl p-6 shadow-lg space-y-6">
@@ -738,173 +922,12 @@ export default function AdminPanelPage() {
             </div>
 
             <form onSubmit={handleSaveBlog} className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <label className="block text-xs font-bold text-black mb-2">Article Title *</label>
-                  <input
-                    type="text"
-                    required
-                    value={blogTitle}
-                    onChange={(e) => handleTitleChange(e.target.value)}
-                    placeholder="उदा: Top 10 AI Tools in Hindi"
-                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm text-black font-medium focus:ring-2 focus:ring-orange-600/20"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-black mb-2">URL Slug (Auto-generated) *</label>
-                  <input
-                    type="text"
-                    required
-                    value={blogSlug}
-                    onChange={(e) => {
-                      setBlogSlug(e.target.value);
-                      setIsSlugManual(true);
-                    }}
-                    placeholder="top-ai-tools-in-hindi"
-                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono text-orange-600 font-bold"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <label className="block text-xs font-bold text-black mb-2">Category *</label>
-                  {!isNewCategoryMode ? (
-                    <div className="flex gap-2">
-                      <select
-                        value={blogCategory}
-                        onChange={(e) => {
-                          if (e.target.value === '__new__') {
-                            setIsNewCategoryMode(true);
-                          } else {
-                            setBlogCategory(e.target.value);
-                          }
-                        }}
-                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm text-black font-medium"
-                      >
-                        {customCategories.map(cat => (
-                          <option key={cat} value={cat}>{cat}</option>
-                        ))}
-                        <option value="__new__">+ Add New Category...</option>
-                      </select>
-                    </div>
-                  ) : (
-                    <div className="flex gap-2">
-                      <input
-                        type="text"
-                        value={newCategoryName}
-                        onChange={(e) => setNewCategoryName(e.target.value)}
-                        placeholder="Enter new category name..."
-                        className="w-full px-4 py-3 bg-slate-50 border border-orange-300 rounded-xl text-sm text-black font-medium focus:ring-2 focus:ring-orange-600/20"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (newCategoryName.trim()) {
-                            const name = newCategoryName.trim();
-                            if (!customCategories.includes(name)) {
-                              setCustomCategories([...customCategories, name]);
-                            }
-                            setBlogCategory(name);
-                            setIsNewCategoryMode(false);
-                            setNewCategoryName('');
-                          }
-                        }}
-                        className="px-4 py-3 bg-orange-600 hover:bg-orange-700 text-white font-bold rounded-xl text-xs shrink-0"
-                      >
-                        Add
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setIsNewCategoryMode(false)}
-                        className="px-3 py-3 bg-slate-200 hover:bg-slate-300 text-black font-bold rounded-xl text-xs shrink-0"
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  )}
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-black mb-2">Author (Default: Anwar)</label>
-                  <input
-                    type="text"
-                    value={blogAuthor}
-                    onChange={(e) => setBlogAuthor(e.target.value)}
-                    placeholder="Anwar"
-                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm text-black font-medium"
-                  />
-                </div>
-              </div>
-
-              {/* Featured Image Section */}
-              <div className="space-y-3 bg-slate-50 border border-slate-200 p-6 rounded-2xl">
-                <label className="block text-xs font-bold text-black">Featured Image (Local Upload or URL)</label>
-                <div className="flex flex-col md:flex-row items-start md:items-center gap-4">
-                  <div className="w-32 h-20 relative rounded-xl overflow-hidden bg-slate-200 border border-slate-300 shrink-0">
-                    <Image
-                      src={blogImage}
-                      alt="Featured preview"
-                      fill
-                      sizes="128px"
-                      className="object-cover"
-                      referrerPolicy="no-referrer"
-                    />
-                  </div>
-                  <div className="space-y-2 flex-1 w-full">
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="file"
-                        accept="image/*"
-                        ref={featuredImageInputRef}
-                        onChange={handleFeaturedImageUpload}
-                        className="hidden"
-                        id="featuredImgUploadInput"
-                      />
-                      <label
-                        htmlFor="featuredImgUploadInput"
-                        className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-xl text-xs font-bold cursor-pointer inline-flex items-center gap-1.5 shadow-sm"
-                      >
-                        <Upload className="w-3.5 h-3.5" />
-                        <span>Upload Featured Image</span>
-                      </label>
-                    </div>
-                    <input
-                      type="url"
-                      value={blogImage}
-                      onChange={(e) => setBlogImage(e.target.value)}
-                      placeholder="Or paste image URL here..."
-                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs text-black font-medium"
-                    />
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-black mb-1 mt-2">Image Alt Text & Slug (SEO)</label>
-                  <input
-                    type="text"
-                    value={blogImageAlt}
-                    onChange={(e) => setBlogImageAlt(e.target.value)}
-                    placeholder="उदा: AI tutorial banner image"
-                    className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-black font-medium"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-black mb-2">Excerpt (Short Summary)</label>
-                <textarea
-                  rows={2}
-                  value={blogExcerpt}
-                  onChange={(e) => setBlogExcerpt(e.target.value)}
-                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm text-black font-medium"
-                />
-              </div>
-
               {/* ========================================== */}
               {/* CONTINUOUS VISUAL EDITOR & STICKY TOOLBAR */}
               {/* ========================================== */}
               <div className="space-y-4">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                  <label className="text-sm font-extrabold text-black">WordPress Visual Editor (Click element to select block)</label>
+                  <label className="text-sm font-extrabold text-black">WordPress Visual Editor (Fully Editable Document)</label>
                   
                   <div className="flex items-center gap-2 bg-slate-100 p-1 rounded-xl">
                     <button
@@ -930,19 +953,26 @@ export default function AdminPanelPage() {
                   </div>
                 </div>
 
-                {/* Sticky Formatting Toolbar with List & Table */}
-                <div className="sticky top-16 z-20 bg-white/95 backdrop-blur-md p-3.5 rounded-2xl border border-slate-200 shadow-lg flex flex-wrap items-center gap-2">
-                  <button type="button" onClick={() => applyFormatting('formatBlock', '<h1>')} className="px-3 py-1.5 bg-slate-100 hover:bg-orange-50 hover:text-orange-600 rounded-lg text-xs font-bold text-black transition-colors flex items-center gap-1">
+                {/* Sticky Formatting Toolbar with Undo, Redo, List & Table */}
+                <div className="sticky top-12 z-20 bg-white/95 backdrop-blur-md p-3.5 rounded-2xl border border-slate-200 shadow-lg flex flex-wrap items-center gap-2">
+                  <button type="button" onClick={() => applyFormatting('undo')} className="px-3 py-1.5 bg-slate-100 hover:bg-orange-50 hover:text-orange-600 rounded-lg text-xs font-bold text-black transition-colors flex items-center gap-1" title="Undo">
+                    <Undo className="w-3.5 h-3.5" /> Undo
+                  </button>
+                  <button type="button" onClick={() => applyFormatting('redo')} className="px-3 py-1.5 bg-slate-100 hover:bg-orange-50 hover:text-orange-600 rounded-lg text-xs font-bold text-black transition-colors flex items-center gap-1" title="Redo">
+                    <Redo className="w-3.5 h-3.5" /> Redo
+                  </button>
+                  <span className="text-slate-300">|</span>
+                  <button type="button" onClick={() => insertTag('<h1 class="text-3xl font-extrabold text-black mt-6 mb-4">', '</h1>')} className="px-3 py-1.5 bg-slate-100 hover:bg-orange-50 hover:text-orange-600 rounded-lg text-xs font-bold text-black transition-colors flex items-center gap-1">
                     <Heading1 className="w-3.5 h-3.5" /> H1
                   </button>
-                  <button type="button" onClick={() => applyFormatting('formatBlock', '<h2>')} className="px-3 py-1.5 bg-slate-100 hover:bg-orange-50 hover:text-orange-600 rounded-lg text-xs font-bold text-black transition-colors flex items-center gap-1">
+                  <button type="button" onClick={() => insertTag('<h2 class="text-2xl font-bold text-black mt-6 mb-3">', '</h2>')} className="px-3 py-1.5 bg-slate-100 hover:bg-orange-50 hover:text-orange-600 rounded-lg text-xs font-bold text-black transition-colors flex items-center gap-1">
                     <Heading2 className="w-3.5 h-3.5" /> H2
                   </button>
-                  <button type="button" onClick={() => applyFormatting('formatBlock', '<h3>')} className="px-3 py-1.5 bg-slate-100 hover:bg-orange-50 hover:text-orange-600 rounded-lg text-xs font-bold text-black transition-colors flex items-center gap-1">
+                  <button type="button" onClick={() => insertTag('<h3 class="text-xl font-semibold text-black mt-4 mb-2">', '</h3>')} className="px-3 py-1.5 bg-slate-100 hover:bg-orange-50 hover:text-orange-600 rounded-lg text-xs font-bold text-black transition-colors flex items-center gap-1">
                     <Heading3 className="w-3.5 h-3.5" /> H3
                   </button>
                   <span className="text-slate-300">|</span>
-                  <button type="button" onClick={() => applyFormatting('formatBlock', '<p>')} className="px-3 py-1.5 bg-slate-100 hover:bg-orange-50 hover:text-orange-600 rounded-lg text-xs font-bold text-black transition-colors">
+                  <button type="button" onClick={() => insertTag('<p class="mb-6 text-slate-700 leading-relaxed text-lg">', '</p>')} className="px-3 py-1.5 bg-slate-100 hover:bg-orange-50 hover:text-orange-600 rounded-lg text-xs font-bold text-black transition-colors">
                     Paragraph
                   </button>
                   <button type="button" onClick={() => applyFormatting('bold')} className="px-3 py-1.5 bg-slate-100 hover:bg-orange-50 hover:text-orange-600 rounded-lg text-xs font-bold text-black transition-colors flex items-center gap-1">
@@ -983,16 +1013,16 @@ export default function AdminPanelPage() {
                 {editorMode === 'visual' ? (
                   <div
                     ref={visualContentRef}
-                    contentEditable
-                    suppressContentEditableWarning
+                    contentEditable={true}
+                    suppressContentEditableWarning={true}
                     onInput={(e) => setBlogContent(e.currentTarget.innerHTML)}
                     onClick={handleVisualClick}
                     dangerouslySetInnerHTML={{ __html: blogContent }}
-                    className="w-full min-h-[500px] p-6 sm:p-8 bg-slate-50 border border-slate-200 rounded-2xl text-black font-medium focus:outline-none focus:ring-2 focus:ring-orange-600/20 prose max-w-none [&>h1]:text-3xl [&>h1]:font-extrabold [&>h1]:mt-6 [&>h1]:mb-4 [&>h2]:text-2xl [&>h2]:font-bold [&>h2]:mt-6 [&>h2]:mb-3 [&>h3]:text-xl [&>h3]:font-semibold [&>h3]:mt-4 [&>h3]:mb-2 [&>p]:mb-6 [&>p]:leading-relaxed [&>p]:text-lg [&>img]:w-full [&>img]:rounded-2xl [&>img]:my-6 [&>img]:shadow-md [&>img]:object-cover"
+                    className="w-full min-h-[550px] p-6 sm:p-10 bg-slate-50 border border-slate-200 rounded-2xl text-black font-medium focus:outline-none focus:ring-2 focus:ring-orange-600/20 prose max-w-none [&>h1]:text-3xl [&>h1]:font-extrabold [&>h1]:mt-6 [&>h1]:mb-4 [&>h2]:text-2xl [&>h2]:font-bold [&>h2]:mt-6 [&>h2]:mb-3 [&>h3]:text-xl [&>h3]:font-semibold [&>h3]:mt-4 [&>h3]:mb-2 [&>p]:mb-6 [&>p]:leading-relaxed [&>p]:text-lg [&>img]:w-full [&>img]:rounded-2xl [&>img]:my-6 [&>img]:shadow-md [&>img]:object-cover cursor-text"
                   />
                 ) : (
                   <textarea
-                    rows={18}
+                    rows={20}
                     value={blogContent}
                     onChange={(e) => setBlogContent(e.target.value)}
                     className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-mono text-black font-medium focus:ring-2 focus:ring-orange-600/20"
@@ -1068,15 +1098,34 @@ export default function AdminPanelPage() {
             </form>
           </div>
         </main>
-
-        <Footer />
-      </>
+      </div>
     );
   }
 
   return (
-    <>
-      <Navbar />
+    <div className="min-h-screen bg-slate-100 flex flex-col">
+      {/* Minimal Admin Header Bar */}
+      <header className="bg-slate-900 text-white px-4 py-3 flex items-center justify-between border-b border-slate-800">
+        <div className="flex items-center gap-3">
+          <Link href="/" className="inline-flex items-center gap-2 text-xs font-bold text-slate-300 hover:text-white transition-colors">
+            <ArrowLeft className="w-4 h-4" />
+            <span>View Live Site</span>
+          </Link>
+          <span className="text-slate-600">|</span>
+          <span className="text-xs font-bold text-orange-400">Anwar&apos;s Admin Dashboard</span>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <button
+            onClick={handleClearCacheAndRefresh}
+            className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-xs font-bold inline-flex items-center gap-1.5 border border-slate-700"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+            <span>Clear Cache</span>
+          </button>
+        </div>
+      </header>
+
       {/* Admin panel screen spacing: just 10px spacing on left and right side */}
       <main className="flex-1 max-w-full px-[10px] py-6 space-y-6">
         {/* Admin Dashboard Header */}
@@ -1093,13 +1142,6 @@ export default function AdminPanelPage() {
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
-            <button
-              onClick={handleClearCacheAndRefresh}
-              className="px-4 py-2.5 bg-white/20 hover:bg-white/30 backdrop-blur-md border border-white/30 text-white rounded-xl text-xs font-bold inline-flex items-center gap-2 shadow-sm transition-all"
-            >
-              <RefreshCw className="w-4 h-4" />
-              <span>Clear Cache & Refresh</span>
-            </button>
             <button
               onClick={handleExportBackup}
               className="px-4 py-2.5 bg-white text-orange-600 hover:bg-orange-50 rounded-xl text-xs font-bold inline-flex items-center gap-2 shadow-md transition-all"
@@ -1306,8 +1348,6 @@ export default function AdminPanelPage() {
           </div>
         )}
       </main>
-
-      <Footer />
-    </>
+    </div>
   );
 }
