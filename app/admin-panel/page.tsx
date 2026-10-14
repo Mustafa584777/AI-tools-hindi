@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { Plus, Edit, Trash2, Database, CheckCircle, ExternalLink, Sparkles, FileText, ArrowLeft, Image as ImageIcon, Link as LinkIcon, Bold, Italic, Heading1, Heading2, Heading3, Code, Wand2, Upload, X, RefreshCw } from 'lucide-react';
+import { Plus, Edit, Trash2, Database, CheckCircle, ExternalLink, Sparkles, FileText, ArrowLeft, Image as ImageIcon, Link as LinkIcon, Bold, Italic, Heading1, Heading2, Heading3, Code, Wand2, Upload, X, RefreshCw, Eye, Code2 } from 'lucide-react';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import { 
@@ -15,6 +15,13 @@ import {
 } from '@/lib/storage';
 import { BlogPost } from '@/lib/types';
 
+interface ArticleImage {
+  id: string;
+  base64: string;
+  alt: string;
+  slug: string;
+}
+
 export default function AdminPanelPage() {
   const [posts, setPosts] = useState<BlogPost[]>([]);
   const [loading, setLoading] = useState(true);
@@ -24,13 +31,21 @@ export default function AdminPanelPage() {
   const [editingBlogId, setEditingBlogId] = useState<string | null>(null);
   const [blogTitle, setBlogTitle] = useState('');
   const [blogSlug, setBlogSlug] = useState('');
+  const [isSlugManual, setIsSlugManual] = useState(false);
   const [blogExcerpt, setBlogExcerpt] = useState('');
   const [blogContent, setBlogContent] = useState('');
   const [blogCategory, setBlogCategory] = useState('AI Guides');
-  const [blogAuthor, setBlogAuthor] = useState('Admin');
+  const [blogAuthor, setBlogAuthor] = useState('Anwar');
   const [blogImage, setBlogImage] = useState('https://picsum.photos/seed/blogdefault/800/450');
   const [blogImageAlt, setBlogImageAlt] = useState('');
   const [blogStatus, setBlogStatus] = useState<'published' | 'draft'>('published');
+
+  // Editor Mode: Visual (Normal WYSIWYG live) vs HTML Code Mode
+  const [editorMode, setEditorMode] = useState<'visual' | 'html'>('visual');
+
+  // Article Media Library for Mid-Article Images
+  const [articleImages, setArticleImages] = useState<ArticleImage[]>([]);
+  const [selectedImageForEdit, setSelectedImageForEdit] = useState<ArticleImage | null>(null);
 
   // WordPress Code Importer State
   const [wpRawCode, setWpRawCode] = useState('');
@@ -42,6 +57,7 @@ export default function AdminPanelPage() {
   const [linkInputText, setLinkInputText] = useState('');
 
   const contentRef = useRef<HTMLTextAreaElement>(null);
+  const visualContentRef = useRef<HTMLDivElement>(null);
   const contentImageInputRef = useRef<HTMLInputElement>(null);
   const featuredImageInputRef = useRef<HTMLInputElement>(null);
   const restoreFileInputRef = useRef<HTMLInputElement>(null);
@@ -76,24 +92,34 @@ export default function AdminPanelPage() {
     showNotify('24-hour cache cleared successfully! Fetched fresh data from Firebase.');
   };
 
-  const insertTag = (tagOpen: string, tagClose: string = '') => {
-    const textarea = contentRef.current;
-    if (!textarea) return;
-    const start = textarea.selectionStart;
-    const end = textarea.selectionEnd;
-    const text = textarea.value;
-    const selectedText = text.substring(start, end) || 'Text here';
-    const replacement = tagOpen + selectedText + tagClose;
-    
-    const newContent = text.substring(0, start) + replacement + text.substring(end);
-    setBlogContent(newContent);
-    setTimeout(() => {
-      textarea.focus();
-      textarea.setSelectionRange(start + tagOpen.length, start + tagOpen.length + selectedText.length);
-    }, 0);
+  // Auto-slug generator from title
+  const handleTitleChange = (val: string) => {
+    setBlogTitle(val);
+    if (!isSlugManual) {
+      const generated = val.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+      setBlogSlug(generated);
+    }
   };
 
-  // Local Image Upload for Article Content (Mid-article WordPress style)
+  const insertTag = (tagOpen: string, tagClose: string = '') => {
+    if (editorMode === 'html') {
+      const textarea = contentRef.current;
+      if (!textarea) return;
+      const start = textarea.selectionStart;
+      const end = textarea.selectionEnd;
+      const text = textarea.value;
+      const selectedText = text.substring(start, end) || 'Text here';
+      const replacement = tagOpen + selectedText + tagClose;
+      const newContent = text.substring(0, start) + replacement + text.substring(end);
+      setBlogContent(newContent);
+    } else {
+      // In Visual mode, append or wrap selection if possible or append at bottom
+      const replacement = `${tagOpen}Text here${tagClose}`;
+      setBlogContent(prev => prev + '\n' + replacement);
+    }
+  };
+
+  // Mid-article Image Upload with Auto Slug generation from Alt Text
   const handleContentImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -101,12 +127,45 @@ export default function AdminPanelPage() {
     const reader = new FileReader();
     reader.onload = (uploadEvent) => {
       const base64String = uploadEvent.target?.result as string;
-      const alt = prompt('Enter Image Alt Text (for SEO & accessibility):', 'Tutorial illustration image');
-      const imgHtml = `<img src="${base64String}" alt="${alt || 'Tutorial image'}" class="w-full rounded-2xl my-4 shadow-md" />\n`;
-      insertTag(imgHtml, '');
+      const alt = prompt('Enter Image Alt Text (SEO):', 'Tutorial illustration image');
+      const cleanAlt = alt || 'Tutorial image';
+      const imgSlug = cleanAlt.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+
+      const newImg: ArticleImage = {
+        id: 'img-' + Date.now(),
+        base64: base64String,
+        alt: cleanAlt,
+        slug: imgSlug
+      };
+
+      setArticleImages(prev => [...prev, newImg]);
+
+      const imgHtml = `<img src="${base64String}" alt="${cleanAlt}" data-img-id="${newImg.id}" class="w-full rounded-2xl my-4 shadow-md object-cover" />\n`;
+      setBlogContent(prev => prev + '\n' + imgHtml);
+      showNotify('Mid-article image uploaded and inserted cleanly!');
     };
     reader.readAsDataURL(file);
     if (contentImageInputRef.current) contentImageInputRef.current.value = '';
+  };
+
+  // Update Image Alt Text & Slug from Media Library Manager
+  const handleUpdateImageMetadata = (id: string, newAlt: string, newSlug: string) => {
+    setArticleImages(prev => prev.map(img => img.id === id ? { ...img, alt: newAlt, slug: newSlug } : img));
+    // Update matching img tags in blogContent
+    setBlogContent(prev => {
+      // replace alt and slug references in html
+      return prev.replace(new RegExp(`data-img-id="${id}"[^>]*>`, 'g'), (match) => {
+        let updated = match.replace(/alt="[^"]*"/, `alt="${newAlt}"`);
+        if (!updated.includes('data-img-slug=')) {
+          updated = updated.replace('>', ` data-img-slug="${newSlug}">`);
+        } else {
+          updated = updated.replace(/data-img-slug="[^"]*"/, `data-img-slug="${newSlug}"`);
+        }
+        return updated;
+      });
+    });
+    setSelectedImageForEdit(null);
+    showNotify('Image alt text and slug updated successfully!');
   };
 
   // Local Featured Image Upload
@@ -126,12 +185,8 @@ export default function AdminPanelPage() {
 
   // Link Popup Handlers
   const handleOpenLinkModal = () => {
-    const textarea = contentRef.current;
-    if (textarea) {
-      const selected = textarea.value.substring(textarea.selectionStart, textarea.selectionEnd);
-      setLinkInputText(selected || '');
-    }
     setLinkInputUrl('https://');
+    setLinkInputText('');
     setShowLinkModal(true);
   };
 
@@ -141,7 +196,7 @@ export default function AdminPanelPage() {
 
     const anchorText = linkInputText.trim() || linkInputUrl;
     const linkHtml = `<a href="${linkInputUrl}" target="_blank" rel="noopener noreferrer" class="text-orange-600 underline font-bold">${anchorText}</a>`;
-    insertTag(linkHtml, '');
+    setBlogContent(prev => prev + ' ' + linkHtml);
     setShowLinkModal(false);
   };
 
@@ -212,13 +267,16 @@ export default function AdminPanelPage() {
     setEditingBlogId(null);
     setBlogTitle('');
     setBlogSlug('');
+    setIsSlugManual(false);
     setBlogExcerpt('');
     setBlogContent('<h1>Article Title</h1>\n<p>Start writing your tutorial here...</p>');
     setBlogCategory('AI Guides');
-    setBlogAuthor('Admin');
+    setBlogAuthor('Anwar');
     setBlogImage('https://picsum.photos/seed/newpost/800/450');
     setBlogImageAlt('AI tutorial featured image');
     setBlogStatus('published');
+    setArticleImages([]);
+    setEditorMode('visual');
     setIsEditingBlog(true);
   };
 
@@ -226,13 +284,16 @@ export default function AdminPanelPage() {
     setEditingBlogId(b.id);
     setBlogTitle(b.title);
     setBlogSlug(b.slug);
+    setIsSlugManual(true);
     setBlogExcerpt(b.excerpt);
     setBlogContent(b.content);
     setBlogCategory(b.category);
-    setBlogAuthor(b.author);
+    setBlogAuthor(b.author || 'Anwar');
     setBlogImage(b.image);
     setBlogImageAlt(b.imageAlt || '');
     setBlogStatus(b.status || 'published');
+    setArticleImages([]);
+    setEditorMode('visual');
     setIsEditingBlog(true);
   };
 
@@ -313,10 +374,10 @@ export default function AdminPanelPage() {
           <div className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-12 shadow-sm space-y-8">
             <div className="space-y-2">
               <h1 className="text-2xl md:text-3xl font-extrabold text-black tracking-tight">
-                {editingBlogId ? 'Edit WordPress Tutorial Post' : 'Create New WordPress Tutorial Post'}
+                {editingBlogId ? 'Edit Tutorial Post (Anwar)' : 'Create New Tutorial Post (Anwar)'}
               </h1>
               <p className="text-black text-sm font-medium">
-                Write or paste your WordPress article below. Mid-article local image uploads and popup link insertion supported.
+                Switch between Visual Mode (live rendered view) and HTML Code Mode. Upload mid-article images with automatic alt-text slugging.
               </p>
             </div>
 
@@ -368,18 +429,21 @@ export default function AdminPanelPage() {
                     type="text"
                     required
                     value={blogTitle}
-                    onChange={(e) => setBlogTitle(e.target.value)}
+                    onChange={(e) => handleTitleChange(e.target.value)}
                     placeholder="उदा: Top 10 AI Tools in Hindi"
                     className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm text-black font-medium focus:ring-2 focus:ring-orange-600/20"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-black mb-2">Exact WordPress Slug (URL) *</label>
+                  <label className="block text-xs font-bold text-black mb-2">URL Slug (Auto-generated) *</label>
                   <input
                     type="text"
                     required
                     value={blogSlug}
-                    onChange={(e) => setBlogSlug(e.target.value)}
+                    onChange={(e) => {
+                      setBlogSlug(e.target.value);
+                      setIsSlugManual(true);
+                    }}
                     placeholder="top-ai-tools-in-hindi"
                     className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono text-orange-600 font-bold"
                   />
@@ -449,11 +513,15 @@ export default function AdminPanelPage() {
                   </div>
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-black mb-1 mt-2">Image Alt Text (SEO)</label>
+                  <label className="block text-xs font-bold text-black mb-1 mt-2">Image Alt Text & Slug (SEO)</label>
                   <input
                     type="text"
                     value={blogImageAlt}
-                    onChange={(e) => setBlogImageAlt(e.target.value)}
+                    onChange={(e) => {
+                      const alt = e.target.value;
+                      setBlogImageAlt(alt);
+                      // also auto update slug if empty or match
+                    }}
                     placeholder="उदा: AI tutorial banner image"
                     className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-black font-medium"
                   />
@@ -470,13 +538,60 @@ export default function AdminPanelPage() {
                 />
               </div>
 
-              {/* WordPress-Style Formatting Toolbar with Mid-Article Image Upload */}
+              {/* Mid-Article Images Manager / Library Bar */}
+              {articleImages.length > 0 && (
+                <div className="p-4 bg-orange-50/60 border border-orange-200 rounded-2xl space-y-3">
+                  <div className="text-xs font-bold text-black">Uploaded Mid-Article Images ({articleImages.length}) - Click to Edit Alt Text & Slug:</div>
+                  <div className="flex flex-wrap gap-3">
+                    {articleImages.map((img) => (
+                      <div
+                        key={img.id}
+                        onClick={() => setSelectedImageForEdit(img)}
+                        className="bg-white border border-orange-200 rounded-xl p-2 flex items-center gap-3 cursor-pointer hover:shadow-md transition-shadow"
+                      >
+                        <div className="w-12 h-12 relative rounded-lg overflow-hidden bg-slate-200 shrink-0">
+                          <Image src={img.base64} alt={img.alt} fill className="object-cover" referrerPolicy="no-referrer" />
+                        </div>
+                        <div className="text-xs">
+                          <div className="font-bold text-black truncate max-w-[120px]">{img.alt}</div>
+                          <div className="text-orange-600 font-mono text-[10px] truncate max-w-[120px]">/{img.slug}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Dual Mode Editor: Visual (Normal live view) vs HTML Code Mode */}
               <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-bold text-black">Rich HTML Content Editor (WordPress Style)</label>
-                  <span className="text-xs text-orange-600 font-bold">💡 Tip: Place cursor in text and click &quot;Upload Mid-Article Image&quot;</span>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <label className="text-xs font-bold text-black">Article Content Editor</label>
+                  
+                  <div className="flex items-center gap-2 bg-slate-100 p-1 rounded-xl">
+                    <button
+                      type="button"
+                      onClick={() => setEditorMode('visual')}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                        editorMode === 'visual' ? 'bg-white text-orange-600 shadow-sm' : 'text-black hover:text-orange-600'
+                      }`}
+                    >
+                      <Eye className="w-3.5 h-3.5" />
+                      <span>Visual Editor (Normal)</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEditorMode('html')}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                        editorMode === 'html' ? 'bg-white text-orange-600 shadow-sm' : 'text-black hover:text-orange-600'
+                      }`}
+                    >
+                      <Code2 className="w-3.5 h-3.5" />
+                      <span>HTML Code Mode</span>
+                    </button>
+                  </div>
                 </div>
 
+                {/* Toolbar */}
                 <div className="flex flex-wrap items-center gap-1.5 p-2.5 bg-slate-100 rounded-xl border border-slate-200">
                   <button type="button" onClick={() => insertTag('<h1>', '</h1>')} className="px-3 py-1.5 bg-white hover:bg-orange-50 hover:text-orange-600 rounded-lg text-xs font-bold text-black shadow-sm flex items-center gap-1">
                     <Heading1 className="w-3.5 h-3.5" /> H1
@@ -498,11 +613,10 @@ export default function AdminPanelPage() {
                     <Italic className="w-3.5 h-3.5" /> Italic
                   </button>
                   <span className="text-slate-300">|</span>
-                  {/* Link Popup Button */}
                   <button type="button" onClick={handleOpenLinkModal} className="px-3 py-1.5 bg-white hover:bg-orange-50 hover:text-orange-600 rounded-lg text-xs font-bold text-black shadow-sm flex items-center gap-1">
                     <LinkIcon className="w-3.5 h-3.5" /> Insert Link
                   </button>
-                  {/* Mid-Article Content Image Upload Button */}
+                  {/* Upload Mid-Article Image */}
                   <input
                     type="file"
                     accept="image/*"
@@ -517,20 +631,28 @@ export default function AdminPanelPage() {
                   >
                     <Upload className="w-3.5 h-3.5" /> Upload Mid-Article Image
                   </label>
-                  <button type="button" onClick={() => insertTag('<ul>\n  <li>', '</li>\n</ul>')} className="px-3 py-1.5 bg-white hover:bg-orange-50 hover:text-orange-600 rounded-lg text-xs font-bold text-black shadow-sm">
-                    List
-                  </button>
                 </div>
 
-                <textarea
-                  ref={contentRef}
-                  rows={16}
-                  required
-                  value={blogContent}
-                  onChange={(e) => setBlogContent(e.target.value)}
-                  placeholder="Write or paste HTML article content here..."
-                  className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-mono text-black font-medium focus:ring-2 focus:ring-orange-600/20"
-                />
+                {/* Editor Content Area */}
+                {editorMode === 'visual' ? (
+                  <div
+                    contentEditable
+                    suppressContentEditableWarning
+                    onInput={(e) => setBlogContent(e.currentTarget.innerHTML)}
+                    dangerouslySetInnerHTML={{ __html: blogContent }}
+                    className="w-full min-h-[420px] p-6 bg-slate-50 border border-slate-200 rounded-2xl text-black font-medium focus:outline-none focus:ring-2 focus:ring-orange-600/20 prose max-w-none [&>h1]:text-2xl [&>h1]:font-extrabold [&>h2]:text-xl [&>h2]:font-bold [&>h3]:text-lg [&>h3]:font-bold [&>img]:rounded-2xl [&>img]:my-4"
+                  />
+                ) : (
+                  <textarea
+                    ref={contentRef}
+                    rows={16}
+                    required
+                    value={blogContent}
+                    onChange={(e) => setBlogContent(e.target.value)}
+                    placeholder="Write or paste HTML article content here..."
+                    className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-mono text-black font-medium focus:ring-2 focus:ring-orange-600/20"
+                  />
+                )}
               </div>
 
               <div className="flex items-center justify-end gap-4 pt-6 border-t border-slate-100">
@@ -551,6 +673,82 @@ export default function AdminPanelPage() {
             </form>
           </div>
         </main>
+
+        {/* Edit Image Alt Text & Slug Modal */}
+        {selectedImageForEdit && (
+          <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className="bg-white rounded-3xl max-w-md w-full p-8 space-y-6 shadow-2xl">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <h3 className="text-lg font-bold text-black">Edit Image Alt Text & Slug</h3>
+                <button onClick={() => setSelectedImageForEdit(null)} className="text-slate-400 hover:text-black">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                <div className="w-full h-36 relative rounded-2xl overflow-hidden bg-slate-100 border border-slate-200">
+                  <Image src={selectedImageForEdit.base64} alt={selectedImageForEdit.alt} fill className="object-cover" referrerPolicy="no-referrer" />
+                </div>
+
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    const altInput = (e.currentTarget.elements.namedItem('imgAlt') as HTMLInputElement).value;
+                    const slugInput = (e.currentTarget.elements.namedItem('imgSlug') as HTMLInputElement).value;
+                    handleUpdateImageMetadata(selectedImageForEdit.id, altInput, slugInput);
+                  }}
+                  className="space-y-4"
+                >
+                  <div>
+                    <label className="block text-xs font-bold text-black mb-1">Image Alt Text (SEO)</label>
+                    <input
+                      type="text"
+                      name="imgAlt"
+                      defaultValue={selectedImageForEdit.alt}
+                      onChange={(e) => {
+                        const newAlt = e.target.value;
+                        const slugField = document.getElementById('editImgSlugInput') as HTMLInputElement;
+                        if (slugField) {
+                          slugField.value = newAlt.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+                        }
+                      }}
+                      required
+                      className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-black font-medium focus:ring-2 focus:ring-orange-600/20"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-black mb-1">Image Slug (Auto-generated)</label>
+                    <input
+                      type="text"
+                      name="imgSlug"
+                      id="editImgSlugInput"
+                      defaultValue={selectedImageForEdit.slug}
+                      required
+                      className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono text-orange-600 font-bold focus:ring-2 focus:ring-orange-600/20"
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedImageForEdit(null)}
+                      className="px-4 py-2 text-xs font-bold text-black hover:bg-slate-100 rounded-xl"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      className="px-5 py-2.5 bg-orange-600 hover:bg-orange-700 text-white font-bold rounded-xl text-xs shadow-md"
+                    >
+                      Update Image
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Link Insertion Popup Modal */}
         {showLinkModal && (
@@ -613,7 +811,7 @@ export default function AdminPanelPage() {
   }
 
   // ==========================================
-  // RENDER MAIN ADMIN DASHBOARD (Tutorials + Backup & Restore & Clear Cache)
+  // RENDER MAIN ADMIN DASHBOARD
   // ==========================================
   return (
     <>
