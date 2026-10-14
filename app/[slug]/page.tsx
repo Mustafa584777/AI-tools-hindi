@@ -195,7 +195,7 @@ export default function SlugPage() {
               <div className="flex items-center gap-6">
                 <span className="flex items-center gap-1.5 font-bold text-black">
                   <User className="w-4 h-4 text-orange-600" />
-                  {post.author}
+                  {post.author || 'Anwar'}
                 </span>
                 <span className="flex items-center gap-1.5">
                   <Calendar className="w-4 h-4 text-orange-600" />
@@ -222,8 +222,52 @@ export default function SlugPage() {
               dangerouslySetInnerHTML={{ __html: post.content }}
             />
 
+            {/* Author Box at the end of every blog article */}
+            <div className="mt-12 p-6 sm:p-8 bg-gradient-to-br from-orange-50/80 to-amber-50/50 border border-orange-200/80 rounded-3xl flex flex-col sm:flex-row items-center sm:items-start gap-6 shadow-sm">
+              <div className="w-20 h-20 sm:w-24 sm:h-24 relative rounded-2xl overflow-hidden shrink-0 shadow-md border-2 border-orange-600 bg-slate-200">
+                <Image
+                  src="/author.png"
+                  alt="Anwar"
+                  fill
+                  sizes="96px"
+                  className="object-cover"
+                  referrerPolicy="no-referrer"
+                />
+              </div>
+              <div className="space-y-3 text-center sm:text-left flex-1">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div>
+                    <h3 className="text-lg font-extrabold text-black">Anwar</h3>
+                    <p className="text-xs font-bold text-orange-600">AI Tools & Prompt Engineering Expert</p>
+                  </div>
+                  <div className="flex items-center justify-center gap-3">
+                    <a
+                      href="https://x.com/aitool_hindi"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="w-9 h-9 bg-black text-white rounded-xl flex items-center justify-center hover:bg-orange-600 transition-colors shadow-sm"
+                      title="X (Twitter)"
+                    >
+                      <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24">
+                        <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+                      </svg>
+                    </a>
+                    <Link
+                      href="/"
+                      className="px-3.5 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-xl text-xs font-bold transition-colors shadow-sm whitespace-nowrap"
+                    >
+                      See Author&apos;s Posts
+                    </Link>
+                  </div>
+                </div>
+                <p className="text-xs sm:text-sm text-black leading-relaxed font-medium">
+                  Anwar, AI टूल्स और प्रॉम्प्ट इंजीनियरिंग के क्षेत्र में 5 वर्षों से ज़्यादा का अनुभव रखते हैं, इन्होंने 1000+ हज़ारों AI Tools को analyse और test किया है जिसकी झलक आप इनके हिंदी AI tutorials में भी देख सकते हैं। इनके tutorials से हज़ारों हिंदी readers ने ChatGPT, Gemini, Midjourney, AI image generation और AI video generation जैसी टेक्नोलॉजी का इस्तेमाल सीखा है।
+                </p>
+              </div>
+            </div>
+
             {/* WordPress URL preservation note */}
-            <div className="p-6 bg-slate-50 border border-slate-200/80 rounded-2xl flex items-center gap-4 text-xs text-black font-medium mt-12">
+            <div className="p-6 bg-slate-50 border border-slate-200/80 rounded-2xl flex items-center gap-4 text-xs text-black font-medium mt-8">
               <Sparkles className="w-6 h-6 text-orange-600 shrink-0" />
               <div>
                 <span className="font-bold text-black">WordPress SEO & Firebase Note:</span> This tutorial is served at its exact original WordPress slug (<code className="bg-slate-200 px-1.5 py-0.5 rounded font-mono text-black font-bold">/{post.slug}</code>) and synced with Firebase Firestore.

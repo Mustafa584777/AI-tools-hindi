@@ -4,7 +4,7 @@ import Image from 'next/image';
 export default function Footer() {
   return (
     <footer className="mt-auto bg-slate-900 text-slate-300 border-t border-slate-800">
-      <div className="max-w-7xl mx-auto px-6 py-12 grid grid-cols-1 md:grid-cols-4 gap-8">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-12 grid grid-cols-1 md:grid-cols-4 gap-8">
         <div className="space-y-4 md:col-span-1">
           <div className="flex items-center gap-2.5 text-white font-bold text-lg tracking-tight">
             <div className="w-9 h-9 relative rounded-xl overflow-hidden bg-orange-100 shrink-0">
@@ -27,7 +27,6 @@ export default function Footer() {
           <h4 className="text-white font-semibold text-sm">Quick Links</h4>
           <ul className="space-y-2 text-sm text-slate-300">
             <li><Link href="/" className="hover:text-white transition-colors">Home</Link></li>
-            <li><Link href="/blog" className="hover:text-white transition-colors">Informational Blog & Tutorials</Link></li>
             <li><Link href="/about-us" className="hover:text-white transition-colors">About Us</Link></li>
             <li><Link href="/contact-us" className="hover:text-white transition-colors">Contact Us</Link></li>
           </ul>
@@ -58,7 +57,7 @@ export default function Footer() {
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-6 py-6 border-t border-slate-800 text-center text-xs text-slate-400">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 border-t border-slate-800 text-center text-xs text-slate-400">
         &copy; {new Date().getFullYear()} Aitoolhindi.online. All rights reserved. Powered by Next.js & Firebase.
       </div>
     </footer>
