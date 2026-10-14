@@ -3,14 +3,15 @@
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { Plus, Edit, Trash2, Database, CheckCircle, ExternalLink, Sparkles, FileText, ArrowLeft, Image as ImageIcon, Link as LinkIcon, Bold, Italic, Heading1, Heading2, Heading3, Code, Wand2, Upload, X } from 'lucide-react';
+import { Plus, Edit, Trash2, Database, CheckCircle, ExternalLink, Sparkles, FileText, ArrowLeft, Image as ImageIcon, Link as LinkIcon, Bold, Italic, Heading1, Heading2, Heading3, Code, Wand2, Upload, X, RefreshCw } from 'lucide-react';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import { 
   fetchBlogPostsFromFirestore, 
   saveBlogPostToFirestore, 
   deleteBlogPostFromFirestore,
-  getStoredBlogPostsSync
+  getStoredBlogPostsSync,
+  clearClientCache
 } from '@/lib/storage';
 import { BlogPost } from '@/lib/types';
 
@@ -47,9 +48,10 @@ export default function AdminPanelPage() {
 
   const [notification, setNotification] = useState<string | null>(null);
 
-  const loadData = async () => {
+  const loadData = async (force = false) => {
+    setLoading(true);
     try {
-      const data = await fetchBlogPostsFromFirestore();
+      const data = await fetchBlogPostsFromFirestore(force);
       setPosts(data);
     } catch {
       setPosts(getStoredBlogPostsSync());
@@ -66,6 +68,12 @@ export default function AdminPanelPage() {
   const showNotify = (msg: string) => {
     setNotification(msg);
     setTimeout(() => setNotification(null), 3500);
+  };
+
+  const handleClearCacheAndRefresh = () => {
+    clearClientCache();
+    loadData(true);
+    showNotify('24-hour cache cleared successfully! Fetched fresh data from Firebase.');
   };
 
   const insertTag = (tagOpen: string, tagClose: string = '') => {
@@ -187,7 +195,7 @@ export default function AdminPanelPage() {
           for (const post of importedPosts) {
             await saveBlogPostToFirestore(post);
           }
-          await loadData();
+          await loadData(true);
           showNotify(`Successfully restored ${importedPosts.length} articles!`);
         }
       } catch (err) {
@@ -252,7 +260,7 @@ export default function AdminPanelPage() {
 
     try {
       await saveBlogPostToFirestore(postToSave);
-      await loadData();
+      await loadData(true);
       showNotify(editingBlogId ? 'Tutorial updated & synced with Firebase!' : 'New tutorial published to Firebase!');
       setIsEditingBlog(false);
     } catch (err) {
@@ -264,7 +272,7 @@ export default function AdminPanelPage() {
     if (confirm('Are you sure you want to delete this tutorial post?')) {
       try {
         await deleteBlogPostFromFirestore(id);
-        await loadData();
+        await loadData(true);
         showNotify('Tutorial deleted.');
       } catch (err) {
         alert('Error deleting: ' + (err as Error).message);
@@ -279,7 +287,7 @@ export default function AdminPanelPage() {
     return (
       <>
         <Navbar />
-        <main className="flex-1 max-w-5xl mx-auto px-6 py-10 space-y-8">
+        <main className="flex-1 max-w-5xl mx-auto px-4 sm:px-6 py-10 space-y-8">
           <div className="flex items-center justify-between">
             <button
               onClick={() => setIsEditingBlog(false)}
@@ -302,7 +310,7 @@ export default function AdminPanelPage() {
             </div>
           </div>
 
-          <div className="bg-white rounded-3xl border border-slate-200 p-8 md:p-12 shadow-sm space-y-8">
+          <div className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-12 shadow-sm space-y-8">
             <div className="space-y-2">
               <h1 className="text-2xl md:text-3xl font-extrabold text-black tracking-tight">
                 {editingBlogId ? 'Edit WordPress Tutorial Post' : 'Create New WordPress Tutorial Post'}
@@ -380,7 +388,7 @@ export default function AdminPanelPage() {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
-                  <label className="block text-xs font-bold text-black mb-2">Category</label>
+                  <label className="block text-xs font-bold text-black mb-2">Category (e.g. Image Tutorials, AI Guides)</label>
                   <input
                     type="text"
                     value={blogCategory}
@@ -605,13 +613,13 @@ export default function AdminPanelPage() {
   }
 
   // ==========================================
-  // RENDER MAIN ADMIN DASHBOARD (Tutorials + Backup & Restore)
+  // RENDER MAIN ADMIN DASHBOARD (Tutorials + Backup & Restore & Clear Cache)
   // ==========================================
   return (
     <>
       <Navbar />
 
-      <main className="flex-1 max-w-7xl mx-auto px-6 py-12 space-y-8">
+      <main className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 py-12 space-y-8">
         {/* Header */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="space-y-1">
@@ -621,17 +629,28 @@ export default function AdminPanelPage() {
             </div>
             <h1 className="text-3xl font-extrabold text-black tracking-tight">Tutorials Content Management</h1>
             <p className="text-black text-sm font-medium">
-              Manage your high-traffic Hindi AI tutorials, import WordPress code, backup site data, and publish instantly to Firebase.
+              Manage your high-traffic Hindi AI tutorials, 24-hr cache, backup data, and publish instantly to Firebase.
             </p>
           </div>
 
-          <button
-            onClick={handleOpenNewBlog}
-            className="px-5 py-2.5 bg-orange-600 hover:bg-orange-700 text-white font-bold rounded-xl text-xs shadow-md transition-colors inline-flex items-center gap-2"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Add New Tutorial Post</span>
-          </button>
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              onClick={handleClearCacheAndRefresh}
+              className="px-4 py-2.5 bg-amber-100 hover:bg-amber-200 text-amber-900 font-bold rounded-xl text-xs shadow-sm transition-colors inline-flex items-center gap-1.5"
+            >
+              <RefreshCw className="w-4 h-4" />
+              <span>Clear Cache (कैश साफ़ करें)</span>
+            </button>
+
+            <button
+              onClick={handleOpenNewBlog}
+              className="px-5 py-2.5 bg-orange-600 hover:bg-orange-700 text-white font-bold rounded-xl text-xs shadow-md transition-colors inline-flex items-center gap-2"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Add New Tutorial Post</span>
+            </button>
+          </div>
         </div>
 
         {notification && (
@@ -642,13 +661,13 @@ export default function AdminPanelPage() {
         )}
 
         {/* Backup & Restore Section */}
-        <div className="bg-white rounded-3xl border border-slate-200 p-8 shadow-sm space-y-4">
+        <div className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 shadow-sm space-y-4">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
               <h2 className="text-lg font-bold text-black">Site Data Backup & Restore (बैकअप और रीस्टोर)</h2>
               <p className="text-xs text-black font-medium mt-0.5">Export all tutorial articles as a JSON backup file or restore/import articles into Firebase.</p>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3">
               <button
                 type="button"
                 onClick={handleExportBackup}
@@ -679,9 +698,9 @@ export default function AdminPanelPage() {
 
         {/* Posts Table */}
         <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
-          <div className="p-6 border-b border-slate-100 flex items-center justify-between">
+          <div className="p-6 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
             <h2 className="text-lg font-bold text-black">All Tutorial Articles ({posts.length})</h2>
-            <span className="text-xs font-semibold text-slate-500">Synced with Firebase Firestore</span>
+            <span className="text-xs font-semibold text-slate-500">24-Hour Cached & Synced with Firebase</span>
           </div>
 
           {loading ? (
@@ -705,7 +724,11 @@ export default function AdminPanelPage() {
                         <div className="font-bold text-black line-clamp-1">{p.title}</div>
                         <div className="text-xs font-mono text-orange-600 font-bold mt-0.5">/{p.slug}</div>
                       </td>
-                      <td className="py-4 px-6 text-black font-medium">{p.category}</td>
+                      <td className="py-4 px-6 text-black font-medium">
+                        <Link href={`/${p.category.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '')}`} className="hover:text-orange-600 underline">
+                          {p.category}
+                        </Link>
+                      </td>
                       <td className="py-4 px-6">
                         <span className={`px-2.5 py-1 text-xs font-bold rounded-full ${
                           p.status === 'draft' ? 'bg-amber-50 text-amber-800 border border-amber-200' : 'bg-emerald-50 text-emerald-800 border border-emerald-200'
@@ -714,7 +737,7 @@ export default function AdminPanelPage() {
                         </span>
                       </td>
                       <td className="py-4 px-6 text-black/75 text-xs font-medium">{p.date}</td>
-                      <td className="py-4 px-6 text-right space-x-2">
+                      <td className="py-4 px-6 text-right space-x-2 whitespace-nowrap">
                         <button
                           onClick={() => handleOpenEditBlog(p)}
                           className="px-3 py-1.5 bg-slate-100 hover:bg-orange-50 hover:text-orange-600 text-black font-bold rounded-lg text-xs transition-colors"

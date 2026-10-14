@@ -39,7 +39,7 @@ export default function HomePage() {
 
       <main className="flex-1">
         {/* Hero Section focused on Tutorials & Traffic */}
-        <section className="relative bg-gradient-to-r from-orange-600 via-amber-600 to-orange-700 text-white py-20 px-6 overflow-hidden">
+        <section className="relative bg-gradient-to-r from-orange-600 via-amber-600 to-orange-700 text-white py-16 sm:py-20 px-4 sm:px-6 overflow-hidden">
           <div className="absolute inset-0 opacity-10 bg-[radial-gradient(#ffffff_1px,transparent_1px)] [background-size:16px_16px]"></div>
           
           <div className="max-w-5xl mx-auto text-center relative z-10 space-y-6">
@@ -48,36 +48,38 @@ export default function HomePage() {
               <span>WordPress से Next.js + Firebase पर माइग्रेटेड</span>
             </div>
 
-            <h1 className="text-4xl md:text-6xl font-extrabold tracking-tight leading-tight text-white">
+            <h1 className="text-3xl sm:text-4xl md:text-6xl font-extrabold tracking-tight leading-tight text-white">
               भारत का नंबर 1 <span className="text-transparent bg-clip-text bg-gradient-to-r from-amber-200 to-yellow-100">Hindi AI Tutorial</span> ब्लॉग
             </h1>
 
-            <p className="text-lg md:text-xl text-white/95 max-w-2xl mx-auto font-medium">
+            <p className="text-base sm:text-lg md:text-xl text-white/95 max-w-2xl mx-auto font-medium px-2">
               सटीक URL और SEO सुरक्षा के साथ सभी हिंदी AI आर्टिकल्स और ट्यूटोरियल।
             </p>
 
             {/* Search Bar */}
-            <div className="max-w-2xl mx-auto pt-4">
-              <div className="relative flex items-center shadow-2xl rounded-2xl bg-white/10 backdrop-blur-xl border border-white/20 p-2">
-                <Search className="w-5 h-5 text-white/80 ml-3 shrink-0" />
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="हिंदी ट्यूटोरियल या ब्लॉग आर्टिकल खोजें..."
-                  className="w-full bg-transparent px-4 py-3 text-white placeholder-white/75 text-base focus:outline-none font-medium"
-                />
+            <div className="max-w-2xl mx-auto pt-4 px-2 sm:px-0">
+              <div className="relative flex flex-col sm:flex-row items-stretch sm:items-center shadow-2xl rounded-2xl bg-white/10 backdrop-blur-xl border border-white/20 p-2 gap-2 sm:gap-0">
+                <div className="flex items-center flex-1">
+                  <Search className="w-5 h-5 text-white/80 ml-3 shrink-0" />
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="हिंदी ट्यूटोरियल या ब्लॉग आर्टिकल खोजें..."
+                    className="w-full bg-transparent px-3 py-2 sm:py-3 text-white placeholder-white/75 text-sm sm:text-base focus:outline-none font-medium"
+                  />
+                </div>
                 <Link
-                  href="/blog"
-                  className="px-6 py-3 bg-white text-black font-bold rounded-xl hover:bg-orange-500 hover:text-white transition-colors shrink-0 shadow-lg"
+                  href="/admin-panel"
+                  className="px-5 py-2.5 sm:py-3 bg-white text-black font-bold rounded-xl hover:bg-orange-500 hover:text-white transition-colors text-center shrink-0 shadow-lg text-xs sm:text-sm"
                 >
-                  All Tutorials
+                  Admin Panel
                 </Link>
               </div>
             </div>
 
             {/* Stats row */}
-            <div className="pt-8 grid grid-cols-2 md:grid-cols-4 gap-6 max-w-3xl mx-auto text-center border-t border-white/20 mt-12">
+            <div className="pt-8 grid grid-cols-2 md:grid-cols-4 gap-4 sm:gap-6 max-w-3xl mx-auto text-center border-t border-white/20 mt-12">
               <div>
                 <div className="text-2xl md:text-3xl font-bold text-white">100%</div>
                 <div className="text-xs text-white/90 mt-1 font-medium">URL SEO Retained</div>
@@ -87,8 +89,8 @@ export default function HomePage() {
                 <div className="text-xs text-white/90 mt-1 font-medium">Cloud Database</div>
               </div>
               <div>
-                <div className="text-2xl md:text-3xl font-bold text-white">WordPress</div>
-                <div className="text-xs text-white/90 mt-1 font-medium">Code Importer</div>
+                <div className="text-2xl md:text-3xl font-bold text-white">24-Hr</div>
+                <div className="text-xs text-white/90 mt-1 font-medium">Cached & Fast</div>
               </div>
               <div>
                 <div className="text-2xl md:text-3xl font-bold text-white">Active</div>
@@ -99,16 +101,12 @@ export default function HomePage() {
         </section>
 
         {/* Informational Blog / WordPress Posts Section */}
-        <section className="max-w-7xl mx-auto px-6 py-16 space-y-8">
+        <section className="max-w-7xl mx-auto px-4 sm:px-6 py-12 sm:py-16 space-y-8">
           <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
             <div>
               <h2 className="text-2xl md:text-3xl font-bold text-black tracking-tight">Informational AI Tutorials & Blog</h2>
               <p className="text-black text-sm mt-1 font-medium">आपके सभी ट्रैफिक-ड्राइविंग हिंदी आर्टिकल्स और गाइड्स</p>
             </div>
-            <Link href="/blog" className="inline-flex items-center gap-1.5 text-sm font-bold text-orange-600 hover:text-orange-700">
-              <span>View All Tutorials</span>
-              <ArrowRight className="w-4 h-4" />
-            </Link>
           </div>
 
           {loading ? (
@@ -134,7 +132,13 @@ export default function HomePage() {
                   <div className="p-6 flex flex-col justify-between flex-1 space-y-4">
                     <div className="space-y-2">
                       <div className="flex items-center gap-2 text-xs text-black/75 font-medium">
-                        <span>{post.category}</span>
+                        <Link 
+                          href={`/${post.category.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '')}`}
+                          onClick={(e) => e.stopPropagation()}
+                          className="hover:text-orange-600 underline font-semibold"
+                        >
+                          {post.category}
+                        </Link>
                         <span aria-hidden="true">·</span>
                         <span>{post.date}</span>
                         <span aria-hidden="true">·</span>

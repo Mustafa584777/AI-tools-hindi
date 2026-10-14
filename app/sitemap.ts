@@ -8,7 +8,6 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
   const staticRoutes = [
     '',
-    '/blog',
     '/about-us',
     '/contact-us',
     '/privacy-policy',
@@ -35,6 +34,14 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     blogPosts = getStoredBlogPostsSync();
   }
 
+  const categories = Array.from(new Set(blogPosts.map(p => p.category).filter(Boolean)));
+  const categoryPages = categories.map((cat: any) => ({
+    url: `${baseUrl}/${cat.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '')}`,
+    lastModified: new Date(),
+    changeFrequency: 'weekly' as const,
+    priority: 0.85,
+  }));
+
   const blogUrls = blogPosts.map((post) => ({
     url: `${baseUrl}/${post.slug}`,
     lastModified: new Date(),
@@ -42,5 +49,5 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     priority: 0.9,
   }));
 
-  return [...staticPages, ...blogUrls];
+  return [...staticPages, ...categoryPages, ...blogUrls];
 }

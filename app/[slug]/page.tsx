@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
-import { ArrowLeft, Clock, Calendar, User, Share2, Sparkles } from 'lucide-react';
+import { ArrowLeft, Clock, Calendar, User, Share2, Sparkles, Folder } from 'lucide-react';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import { fetchBlogPostsFromFirestore, getStoredBlogPostsSync } from '@/lib/storage';
@@ -12,51 +12,132 @@ import { BlogPost } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
 
-export default function BlogPostPage() {
+export default function SlugPage() {
   const params = useParams();
   const slug = params?.slug as string;
-  const [post, setPost] = useState<BlogPost | null>(null);
+  const [posts, setPosts] = useState<BlogPost[]>([]);
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
-    async function loadPost() {
+    async function loadData() {
       try {
-        const posts = await fetchBlogPostsFromFirestore();
-        const found = posts.find(p => p.slug === slug);
-        if (found) setPost(found);
+        const allPosts = await fetchBlogPostsFromFirestore();
+        setPosts(allPosts);
       } catch {
-        const posts = getStoredBlogPostsSync();
-        const found = posts.find(p => p.slug === slug);
-        if (found) setPost(found);
+        setPosts(getStoredBlogPostsSync());
       } finally {
         setLoading(false);
       }
     }
-    loadPost();
-  }, [slug]);
+    loadData();
+  }, []);
 
   if (loading) {
     return (
       <>
         <Navbar />
-        <main className="flex-1 max-w-4xl mx-auto px-6 py-24 text-center text-black font-medium">
-          Loading tutorial from Firebase Firestore...
+        <main className="flex-1 max-w-4xl mx-auto px-4 sm:px-6 py-24 text-center text-black font-medium">
+          Loading from Firebase...
         </main>
         <Footer />
       </>
     );
   }
 
+  // Check if this slug is a category archive slug
+  const matchedCategory = posts.find(p => 
+    p.category && p.category.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '') === slug
+  )?.category;
+
+  if (matchedCategory) {
+    const categoryPosts = posts.filter(p => 
+      p.category && p.category.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '') === slug && p.status !== 'draft'
+    );
+
+    return (
+      <>
+        <Navbar />
+        <main className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 py-12 space-y-8">
+          <div className="space-y-3">
+            <Link href="/" className="inline-flex items-center gap-2 text-sm font-bold text-black hover:text-orange-600 transition-colors">
+              <ArrowLeft className="w-4 h-4" />
+              <span>Back to Home</span>
+            </Link>
+            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-orange-50 border border-orange-200 text-orange-700 text-xs font-bold">
+              <Folder className="w-3.5 h-3.5 text-orange-600" />
+              <span>Category Archive</span>
+            </div>
+            <h1 className="text-3xl md:text-4xl font-extrabold text-black tracking-tight">
+              {matchedCategory} (Category Archive)
+            </h1>
+            <p className="text-black text-sm max-w-2xl font-medium">
+              Explore all Hindi AI tutorials and guides filed under &ldquo;{matchedCategory}&rdquo;.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {categoryPosts.length === 0 ? (
+              <div className="col-span-3 py-16 text-center text-black font-medium">No articles found in this category yet.</div>
+            ) : (
+              categoryPosts.map((post) => (
+                <Link
+                  key={post.id}
+                  href={`/${post.slug}`}
+                  className="bg-white rounded-2xl border border-slate-200/80 overflow-hidden shadow-sm hover:shadow-md transition-all flex flex-col group"
+                >
+                  <div className="h-48 relative w-full bg-slate-200">
+                    <Image
+                      src={post.image}
+                      alt={post.imageAlt || post.title}
+                      fill
+                      sizes="(max-width: 768px) 100vw, 33vw"
+                      className="object-cover group-hover:scale-105 transition-transform duration-300"
+                      referrerPolicy="no-referrer"
+                    />
+                  </div>
+                  <div className="p-6 flex flex-col justify-between flex-1 space-y-4">
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2 text-xs text-black/75 font-medium">
+                        <span>{post.category}</span>
+                        <span aria-hidden="true">·</span>
+                        <span>{post.date}</span>
+                      </div>
+                      <h3 className="font-bold text-black text-lg group-hover:text-orange-600 transition-colors line-clamp-2">
+                        {post.title}
+                      </h3>
+                      <p className="text-black text-sm leading-relaxed line-clamp-2 font-medium">
+                        {post.excerpt}
+                      </p>
+                    </div>
+
+                    <div className="pt-4 border-t border-slate-100 flex items-center justify-between text-xs font-bold text-orange-600">
+                      <span>Read Article</span>
+                      <ArrowLeft className="w-4 h-4 rotate-180 group-hover:translate-x-1 transition-transform" />
+                    </div>
+                  </div>
+                </Link>
+              ))
+            )}
+          </div>
+        </main>
+        <Footer />
+      </>
+    );
+  }
+
+  // Otherwise, find individual blog post
+  const post = posts.find(p => p.slug === slug);
+
   if (!post) {
     return (
       <>
         <Navbar />
-        <main className="flex-1 max-w-4xl mx-auto px-6 py-24 text-center space-y-4">
-          <h1 className="text-2xl font-bold text-black">Tutorial Not Found (404)</h1>
-          <p className="text-black font-medium">This exact WordPress URL slug does not exist or was deleted.</p>
-          <Link href="/blog" className="inline-block px-5 py-2.5 bg-orange-600 text-white rounded-xl text-sm font-bold shadow-sm">
-            Back to Tutorials
+        <main className="flex-1 max-w-4xl mx-auto px-4 sm:px-6 py-24 text-center space-y-4">
+          <h1 className="text-2xl font-bold text-black">Page or Category Not Found (404)</h1>
+          <p className="text-black font-medium">This exact URL slug does not exist or was deleted.</p>
+          <Link href="/" className="inline-block px-5 py-2.5 bg-orange-600 text-white rounded-xl text-sm font-bold shadow-sm">
+            Back to Home
           </Link>
         </main>
         <Footer />
@@ -76,10 +157,10 @@ export default function BlogPostPage() {
     <>
       <Navbar />
 
-      <main className="flex-1 max-w-4xl mx-auto px-6 py-12 space-y-8">
-        <Link href="/blog" className="inline-flex items-center gap-2 text-sm font-bold text-black hover:text-orange-600 transition-colors">
+      <main className="flex-1 max-w-4xl mx-auto px-4 sm:px-6 py-12 space-y-8">
+        <Link href="/" className="inline-flex items-center gap-2 text-sm font-bold text-black hover:text-orange-600 transition-colors">
           <ArrowLeft className="w-4 h-4" />
-          <span>Back to Blog Tutorials</span>
+          <span>Back to Home</span>
         </Link>
 
         {/* Article Header */}
@@ -96,16 +177,19 @@ export default function BlogPostPage() {
             />
             <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-slate-950/30 to-transparent"></div>
             <div className="absolute bottom-6 left-6 right-6 text-white space-y-3">
-              <span className="px-3.5 py-1.5 bg-orange-600 text-white font-bold text-xs rounded-full">
+              <Link 
+                href={`/${post.category.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '')}`}
+                className="inline-block px-3.5 py-1.5 bg-orange-600 text-white font-bold text-xs rounded-full hover:bg-orange-700 transition-colors"
+              >
                 {post.category}
-              </span>
+              </Link>
               <h1 className="text-2xl md:text-4xl font-extrabold tracking-tight leading-tight text-white">
                 {post.title}
               </h1>
             </div>
           </div>
 
-          <div className="p-8 md:p-12 space-y-8">
+          <div className="p-6 md:p-12 space-y-8">
             {/* Metadata bar */}
             <div className="flex flex-wrap items-center justify-between gap-4 py-4 border-y border-slate-100 text-xs text-black font-medium">
               <div className="flex items-center gap-6">
