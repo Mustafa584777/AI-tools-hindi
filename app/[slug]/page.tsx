@@ -1,195 +1,45 @@
-import { Metadata } from 'next';
+'use client';
+
+import { useState, useEffect } from 'react';
+import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
-import { ArrowLeft, Clock, Calendar, User, Share2, Folder } from 'lucide-react';
+import { ArrowLeft, Clock, Calendar, User, Share2, Sparkles } from 'lucide-react';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
-import { fetchBlogPostsFromFirestore } from '@/lib/storage';
+import { fetchBlogPostsFromFirestore, getStoredBlogPostsSync } from '@/lib/storage';
 import { BlogPost } from '@/lib/types';
 
-export const dynamic = 'force-dynamic';
+export default function BlogPostPage() {
+  const params = useParams();
+  const slug = params?.slug as string;
+  const [post, setPost] = useState<BlogPost | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [copied, setCopied] = useState(false);
 
-async function getPostBySlug(slug: string): Promise<BlogPost | null> {
-  try {
-    const posts = await fetchBlogPostsFromFirestore(true);
-    return posts.find(p => p.slug === slug) || null;
-  } catch {
-    return null;
-  }
-}
-
-async function getAllPosts(): Promise<BlogPost[]> {
-  try {
-    return await fetchBlogPostsFromFirestore(true);
-  } catch {
-    return [];
-  }
-}
-
-export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
-  const { slug } = await params;
-  const post = await getPostBySlug(slug);
-
-  if (!post) {
-    return {
-      title: 'Page Not Found | AI Tool Hindi',
-      description: 'The requested page does not exist on AI Tool Hindi.',
-    };
-  }
-
-  const url = `https://aitoolhindi.online/${post.slug}`;
-  const seoTitle = `${post.title} | AI Tool Hindi`;
-  const seoDescription = post.excerpt || 'हिंदी में सीखें आर्टिफिशियल इंटेलिजेंस और AI टूल्स की पूरी जानकारी।';
-
-  return {
-    title: seoTitle,
-    description: seoDescription,
-    robots: {
-      index: true,
-      follow: true,
-      googleBot: {
-        index: true,
-        follow: true,
-        'max-snippet': -1,
-        'max-video-preview': -1,
-        'max-image-preview': 'large',
-      },
-    },
-    alternates: {
-      canonical: url,
-    },
-    openGraph: {
-      title: post.title,
-      description: seoDescription,
-      url: url,
-      siteName: 'AI Tool Hindi',
-      type: 'article',
-      locale: 'hi_IN',
-      publishedTime: post.date,
-      modifiedTime: post.date,
-      authors: [post.author || 'Anwar'],
-      images: [
-        {
-          url: post.image,
-          width: 1200,
-          height: 630,
-          alt: post.imageAlt || post.title,
-        },
-      ],
-    },
-    twitter: {
-      card: 'summary_large_image',
-      title: post.title,
-      description: seoDescription,
-      site: '@aitool_hindi',
-      creator: '@aitool_hindi',
-      images: [post.image],
-    },
-  };
-}
-
-function extractFaqsFromHtml(html: string): { question: string; answer: string }[] {
-  const faqs: { question: string; answer: string }[] = [];
-  if (!html) return faqs;
-
-  // Simple regex parser for h2/h3 headings ending with ? and following paragraph
-  const headingRegex = /<h[23][^>]*>(.*?)<\/h[23]>/gi;
-  let match;
-  while ((match = headingRegex.exec(html)) !== null) {
-    const headingText = match[1].replace(/<[^>]*>/g, '').trim();
-    if (headingText.endsWith('?')) {
-      // Find text after this heading until next heading or end
-      const remainder = html.substring(headingRegex.lastIndex);
-      const pMatch = /<p[^>]*>(.*?)<\/p>/i.exec(remainder);
-      if (pMatch) {
-        const answerText = pMatch[1].replace(/<[^>]*>/g, '').trim();
-        faqs.push({ question: headingText, answer: answerText });
+  useEffect(() => {
+    async function loadPost() {
+      try {
+        const posts = await fetchBlogPostsFromFirestore();
+        const found = posts.find(p => p.slug === slug);
+        if (found) setPost(found);
+      } catch {
+        const posts = getStoredBlogPostsSync();
+        const found = posts.find(p => p.slug === slug);
+        if (found) setPost(found);
+      } finally {
+        setLoading(false);
       }
     }
-  }
-  return faqs;
-}
+    loadPost();
+  }, [slug]);
 
-export default async function SlugPage({ params }: { params: Promise<{ slug: string }> }) {
-  const { slug } = await params;
-  const posts = await getAllPosts();
-  const post = posts.find(p => p.slug === slug);
-
-  // Check if slug is category archive
-  const matchedCategory = posts.find(p =>
-    p.category && p.category.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '') === slug
-  )?.category;
-
-  if (matchedCategory) {
-    const categoryPosts = posts.filter(p =>
-      p.category && p.category.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '') === slug && p.status !== 'draft'
-    );
-
+  if (loading) {
     return (
       <>
         <Navbar />
-        <main className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 py-12 space-y-8">
-          <div className="space-y-3">
-            <Link href="/" className="inline-flex items-center gap-2 text-sm font-bold text-black hover:text-orange-600 transition-colors">
-              <ArrowLeft className="w-4 h-4" />
-              <span>Back to Home</span>
-            </Link>
-            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-orange-50 border border-orange-200 text-orange-700 text-xs font-bold">
-              <Folder className="w-3.5 h-3.5 text-orange-600" />
-              <span>Category Archive</span>
-            </div>
-            <h1 className="text-3xl md:text-4xl font-extrabold text-black tracking-tight">
-              {matchedCategory} (Category Archive)
-            </h1>
-            <p className="text-black text-sm max-w-2xl font-medium">
-              Explore all Hindi AI tutorials and guides filed under &ldquo;{matchedCategory}&rdquo;.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {categoryPosts.length === 0 ? (
-              <div className="col-span-3 py-16 text-center text-black font-medium">No articles found in this category yet.</div>
-            ) : (
-              categoryPosts.map((p) => (
-                <Link
-                  key={p.id}
-                  href={`/${p.slug}`}
-                  className="bg-white rounded-2xl border border-slate-200/80 overflow-hidden shadow-sm hover:shadow-md transition-all flex flex-col group"
-                >
-                  <div className="h-48 relative w-full bg-slate-200">
-                    <Image
-                      src={p.image}
-                      alt={p.imageAlt || p.title}
-                      fill
-                      sizes="(max-width: 768px) 100vw, 33vw"
-                      className="object-cover group-hover:scale-105 transition-transform duration-300"
-                      referrerPolicy="no-referrer"
-                    />
-                  </div>
-                  <div className="p-6 flex flex-col justify-between flex-1 space-y-4">
-                    <div className="space-y-2">
-                      <div className="flex items-center gap-2 text-xs text-black/75 font-medium">
-                        <span>{p.category}</span>
-                        <span aria-hidden="true">·</span>
-                        <span>{p.date}</span>
-                      </div>
-                      <h3 className="font-bold text-black text-lg group-hover:text-orange-600 transition-colors line-clamp-2">
-                        {p.title}
-                      </h3>
-                      <p className="text-black text-sm leading-relaxed line-clamp-2 font-medium">
-                        {p.excerpt}
-                      </p>
-                    </div>
-
-                    <div className="pt-4 border-t border-slate-100 flex items-center justify-between text-xs font-bold text-orange-600">
-                      <span>Read Article</span>
-                      <ArrowLeft className="w-4 h-4 rotate-180 group-hover:translate-x-1 transition-transform" />
-                    </div>
-                  </div>
-                </Link>
-              ))
-            )}
-          </div>
+        <main className="flex-1 max-w-4xl mx-auto px-6 py-24 text-center text-black font-medium">
+          Loading tutorial from Firebase Firestore...
         </main>
         <Footer />
       </>
@@ -200,11 +50,11 @@ export default async function SlugPage({ params }: { params: Promise<{ slug: str
     return (
       <>
         <Navbar />
-        <main className="flex-1 max-w-4xl mx-auto px-4 sm:px-6 py-24 text-center space-y-4">
-          <h1 className="text-2xl font-bold text-black">Page or Category Not Found (404)</h1>
-          <p className="text-black font-medium">This exact URL slug does not exist or was deleted.</p>
-          <Link href="/" className="inline-block px-5 py-2.5 bg-orange-600 text-white rounded-xl text-sm font-bold shadow-sm">
-            Back to Home
+        <main className="flex-1 max-w-4xl mx-auto px-6 py-24 text-center space-y-4">
+          <h1 className="text-2xl font-bold text-black">Tutorial Not Found (404)</h1>
+          <p className="text-black font-medium">This exact WordPress URL slug does not exist or was deleted.</p>
+          <Link href="/blog" className="inline-block px-5 py-2.5 bg-orange-600 text-white rounded-xl text-sm font-bold shadow-sm">
+            Back to Tutorials
           </Link>
         </main>
         <Footer />
@@ -212,68 +62,22 @@ export default async function SlugPage({ params }: { params: Promise<{ slug: str
     );
   }
 
-  // Construct BlogPosting Schema JSON-LD
-  const blogPostingSchema = {
-    '@context': 'https://schema.org',
-    '@type': 'BlogPosting',
-    mainEntityOfPage: {
-      '@type': 'WebPage',
-      '@id': `https://aitoolhindi.online/${post.slug}`,
-    },
-    headline: post.title,
-    description: post.excerpt,
-    image: post.image,
-    datePublished: post.date,
-    dateModified: post.date,
-    author: {
-      '@type': 'Person',
-      name: post.author || 'Anwar',
-    },
-    publisher: {
-      '@type': 'Organization',
-      name: 'AI Tool Hindi',
-      logo: {
-        '@type': 'ImageObject',
-        url: 'https://aitoolhindi.online/logo.png',
-      },
-    },
+  const handleShare = () => {
+    if (typeof window !== 'undefined') {
+      navigator.clipboard.writeText(window.location.href);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 3000);
+    }
   };
-
-  // Extract FAQs and construct FAQPage Schema if applicable
-  const extractedFaqs = extractFaqsFromHtml(post.content);
-  const faqSchema = extractedFaqs.length > 0 ? {
-    '@context': 'https://schema.org',
-    '@type': 'FAQPage',
-    mainEntity: extractedFaqs.map(faq => ({
-      '@type': 'Question',
-      name: faq.question,
-      acceptedAnswer: {
-        '@type': 'Answer',
-        text: faq.answer,
-      },
-    })),
-  } : null;
 
   return (
     <>
-      {/* RankMath-style BlogPosting & FAQ JSON-LD Schema in Head */}
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(blogPostingSchema) }}
-      />
-      {faqSchema && (
-        <script
-          type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(faqSchema) }}
-        />
-      )}
-
       <Navbar />
 
-      <main className="flex-1 max-w-4xl mx-auto px-4 sm:px-6 py-12 space-y-8">
-        <Link href="/" className="inline-flex items-center gap-2 text-sm font-bold text-black hover:text-orange-600 transition-colors">
+      <main className="flex-1 max-w-4xl mx-auto px-6 py-12 space-y-8">
+        <Link href="/blog" className="inline-flex items-center gap-2 text-sm font-bold text-black hover:text-orange-600 transition-colors">
           <ArrowLeft className="w-4 h-4" />
-          <span>Back to Home</span>
+          <span>Back to Blog Tutorials</span>
         </Link>
 
         {/* Article Header */}
@@ -290,7 +94,7 @@ export default async function SlugPage({ params }: { params: Promise<{ slug: str
             />
             <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-slate-950/30 to-transparent"></div>
             <div className="absolute bottom-6 left-6 right-6 text-white space-y-3">
-              <span className="inline-block px-3.5 py-1.5 bg-orange-600 text-white font-bold text-xs rounded-full">
+              <span className="px-3.5 py-1.5 bg-orange-600 text-white font-bold text-xs rounded-full">
                 {post.category}
               </span>
               <h1 className="text-2xl md:text-4xl font-extrabold tracking-tight leading-tight text-white">
@@ -299,13 +103,13 @@ export default async function SlugPage({ params }: { params: Promise<{ slug: str
             </div>
           </div>
 
-          <div className="p-6 md:p-12 space-y-8">
+          <div className="p-8 md:p-12 space-y-8">
             {/* Metadata bar */}
             <div className="flex flex-wrap items-center justify-between gap-4 py-4 border-y border-slate-100 text-xs text-black font-medium">
               <div className="flex items-center gap-6">
                 <span className="flex items-center gap-1.5 font-bold text-black">
                   <User className="w-4 h-4 text-orange-600" />
-                  {post.author || 'Anwar'}
+                  {post.author}
                 </span>
                 <span className="flex items-center gap-1.5">
                   <Calendar className="w-4 h-4 text-orange-600" />
@@ -316,6 +120,14 @@ export default async function SlugPage({ params }: { params: Promise<{ slug: str
                   {post.readTime}
                 </span>
               </div>
+
+              <button
+                onClick={handleShare}
+                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-black rounded-lg font-bold transition-colors"
+              >
+                <Share2 className="w-3.5 h-3.5" />
+                <span>{copied ? 'Link Copied!' : 'Share Article'}</span>
+              </button>
             </div>
 
             {/* WordPress HTML Content Renderer */}
@@ -324,47 +136,11 @@ export default async function SlugPage({ params }: { params: Promise<{ slug: str
               dangerouslySetInnerHTML={{ __html: post.content }}
             />
 
-            {/* Author Box at the end of every blog article */}
-            <div className="mt-12 p-6 sm:p-8 bg-gradient-to-br from-orange-50/80 to-amber-50/50 border border-orange-200/80 rounded-3xl flex flex-col sm:flex-row items-center sm:items-start gap-6 shadow-sm">
-              <div className="w-20 h-20 sm:w-24 sm:h-24 relative rounded-2xl overflow-hidden shrink-0 shadow-md border-2 border-orange-600 bg-slate-200">
-                <Image
-                  src="/author.png"
-                  alt="Anwar"
-                  fill
-                  sizes="96px"
-                  className="object-cover"
-                  referrerPolicy="no-referrer"
-                />
-              </div>
-              <div className="space-y-3 text-center sm:text-left flex-1">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                  <div>
-                    <h3 className="text-lg font-extrabold text-black">Anwar</h3>
-                    <p className="text-xs font-bold text-orange-600">AI Tools & Prompt Engineering Expert</p>
-                  </div>
-                  <div className="flex items-center justify-center gap-3">
-                    <a
-                      href="https://x.com/aitool_hindi"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="w-9 h-9 bg-black text-white rounded-xl flex items-center justify-center hover:bg-orange-600 transition-colors shadow-sm"
-                      title="X (Twitter)"
-                    >
-                      <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24">
-                        <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
-                      </svg>
-                    </a>
-                    <Link
-                      href="/"
-                      className="px-3.5 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-xl text-xs font-bold transition-colors shadow-sm whitespace-nowrap"
-                    >
-                      See Author&apos;s Posts
-                    </Link>
-                  </div>
-                </div>
-                <p className="text-xs sm:text-sm text-black leading-relaxed font-medium">
-                  Anwar, AI टूल्स और प्रॉम्प्ट इंजीनियरिंग के क्षेत्र में 5 वर्षों से ज़्यादा का अनुभव रखते हैं, इन्होंने 1000+ हज़ारों AI Tools को analyse और test किया है जिसकी झलक आप इनके हिंदी AI tutorials में भी देख सकते हैं। इनके tutorials से हज़ारों हिंदी readers ने ChatGPT, Gemini, Midjourney, AI image generation और AI video generation जैसी टेक्नोलॉजी का इस्तेमाल सीखा है।
-                </p>
+            {/* WordPress URL preservation note */}
+            <div className="p-6 bg-slate-50 border border-slate-200/80 rounded-2xl flex items-center gap-4 text-xs text-black font-medium mt-12">
+              <Sparkles className="w-6 h-6 text-orange-600 shrink-0" />
+              <div>
+                <span className="font-bold text-black">WordPress SEO & Firebase Note:</span> This tutorial is served at its exact original WordPress slug (<code className="bg-slate-200 px-1.5 py-0.5 rounded font-mono text-black font-bold">/{post.slug}</code>) and synced with Firebase Firestore.
               </div>
             </div>
           </div>

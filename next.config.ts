@@ -2,7 +2,6 @@ import type {NextConfig} from 'next';
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
-  trailingSlash: true, // Enforce trailing slashes (/) for 100% WordPress URL compatibility & SEO ranking preservation
   eslint: {
     ignoreDuringBuilds: true,
   },
