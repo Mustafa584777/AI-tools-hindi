@@ -485,18 +485,22 @@ export default function AdminPanelPage() {
   // FAQ Builder Handlers
   const handleAddFaq = () => {
     if (!newFaqQ.trim() || !newFaqA.trim()) return;
-    const updatedFaqs = [...faqs, { question: newFaqQ.trim(), answer: newFaqA.trim() }];
-    setFaqs(updatedFaqs);
+    setFaqs(prevFaqs => {
+      const updatedFaqs = [...prevFaqs, { question: newFaqQ.trim(), answer: newFaqA.trim() }];
+      updateContentWithFaqs(updatedFaqs);
+      return updatedFaqs;
+    });
     setNewFaqQ('');
     setNewFaqA('');
-    updateContentWithFaqs(updatedFaqs);
     showNotify('FAQ added and Schema automatically generated!');
   };
 
   const handleDeleteFaq = (index: number) => {
-    const updatedFaqs = faqs.filter((_, i) => i !== index);
-    setFaqs(updatedFaqs);
-    updateContentWithFaqs(updatedFaqs);
+    setFaqs(prevFaqs => {
+      const updatedFaqs = prevFaqs.filter((_, i) => i !== index);
+      updateContentWithFaqs(updatedFaqs);
+      return updatedFaqs;
+    });
   };
 
   const updateContentWithFaqs = (currentFaqs: FAQItem[]) => {
