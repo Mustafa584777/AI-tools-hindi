@@ -3,6 +3,7 @@ export interface BlogPost {
   slug: string; // Exact WordPress URL slug, e.g. "top-ai-tools-in-hindi"
   title: string;
   excerpt: string;
+  metaDescription?: string;
   content: string; // HTML or markdown formatted content
   category: string;
   author: string;

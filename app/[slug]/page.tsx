@@ -40,7 +40,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
 
   const url = `https://aitoolhindi.online/${post.slug}`;
   const seoTitle = `${post.title} | AI Tool Hindi`;
-  const seoDescription = post.excerpt || 'हिंदी में सीखें आर्टिफिशियल इंटेलिजेंस और AI टूल्स की पूरी जानकारी।';
+  const seoDescription = post.metaDescription || post.excerpt || 'हिंदी में सीखें आर्टिफिशियल इंटेलिजेंस और AI टूल्स की पूरी जानकारी।';
 
   return {
     title: seoTitle,
@@ -263,7 +263,7 @@ export default async function SlugPage({ params }: { params: Promise<{ slug: str
       '@id': `https://aitoolhindi.online/${post.slug}`,
     },
     headline: post.title,
-    description: post.excerpt,
+    description: post.metaDescription || post.excerpt,
     image: post.image,
     datePublished: post.date,
     dateModified: post.date,

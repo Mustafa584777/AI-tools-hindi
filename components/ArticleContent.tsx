@@ -8,8 +8,17 @@ function getProcessedContentWithTOC(html: string) {
   const parser = new DOMParser();
   const doc = parser.parseFromString(html, 'text/html');
 
+  // Convert any H1 headings inside article body to H2 to guarantee only one H1 per page (SEO best practice)
+  const h1s = Array.from(doc.querySelectorAll('h1'));
+  h1s.forEach(h1 => {
+    const h2 = doc.createElement('h2');
+    h2.innerHTML = h1.innerHTML;
+    h2.className = 'text-xl md:text-2xl font-bold text-black mt-6 mb-3';
+    h1.replaceWith(h2);
+  });
+
   const h2s = Array.from(doc.querySelectorAll('h2'));
-  if (h2s.length === 0) return html;
+  if (h2s.length === 0) return doc.body.innerHTML;
 
   const headings: { id: string; text: string }[] = [];
   h2s.forEach((h2, idx) => {

@@ -51,6 +51,7 @@ export default function AdminPanelPage() {
   const [blogSlug, setBlogSlug] = useState('');
   const [isSlugManual, setIsSlugManual] = useState(false);
   const [blogExcerpt, setBlogExcerpt] = useState('');
+  const [blogMetaDescription, setBlogMetaDescription] = useState('');
   const [blogContent, setBlogContent] = useState('');
   const [blogCategory, setBlogCategory] = useState('AI Guides');
   const [isNewCategoryMode, setIsNewCategoryMode] = useState(false);
@@ -687,6 +688,7 @@ export default function AdminPanelPage() {
     setBlogSlug('');
     setIsSlugManual(false);
     setBlogExcerpt('');
+    setBlogMetaDescription('');
     const defaultNewContent = '<h1 class="text-3xl font-extrabold text-black mt-6 mb-4">Article Title</h1>\n<p class="mb-6 text-slate-700 leading-relaxed text-lg">Start writing your tutorial here with proper spacing...</p>';
     setBlogContent(defaultNewContent);
     if (visualContentRef.current) visualContentRef.current.innerHTML = defaultNewContent;
@@ -711,7 +713,8 @@ export default function AdminPanelPage() {
     setBlogTitle(b.title);
     setBlogSlug(b.slug);
     setIsSlugManual(true);
-    setBlogExcerpt(b.excerpt);
+    setBlogExcerpt(b.excerpt || '');
+    setBlogMetaDescription(b.metaDescription || b.excerpt || '');
     setBlogContent(b.content);
     if (visualContentRef.current) visualContentRef.current.innerHTML = b.content;
     const cat = b.category || 'AI Guides';
@@ -778,7 +781,8 @@ export default function AdminPanelPage() {
       id: postId,
       title: blogTitle,
       slug: formattedSlug,
-      excerpt: blogExcerpt,
+      excerpt: blogMetaDescription || blogExcerpt,
+      metaDescription: blogMetaDescription,
       content: finalHtmlContent,
       category: finalCategory,
       author: blogAuthor || 'Anwar',
@@ -1037,11 +1041,12 @@ export default function AdminPanelPage() {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-black mb-2">Excerpt (Short Summary)</label>
+                  <label className="block text-xs font-bold text-black mb-2">SEO Meta Description (RankMath Style)</label>
                   <textarea
                     rows={2}
-                    value={blogExcerpt}
-                    onChange={(e) => setBlogExcerpt(e.target.value)}
+                    value={blogMetaDescription}
+                    onChange={(e) => setBlogMetaDescription(e.target.value)}
+                    placeholder="Enter RankMath style meta description for search engines and social sharing..."
                     className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm text-black font-medium"
                   />
                 </div>
