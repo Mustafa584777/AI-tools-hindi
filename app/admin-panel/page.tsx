@@ -103,6 +103,11 @@ export default function AdminPanelPage() {
   const [editImageAlt, setEditImageAlt] = useState('');
   const [editImageSlug, setEditImageSlug] = useState('');
 
+  // Link Addition Popup Modal State
+  const [showLinkAddModal, setShowLinkAddModal] = useState(false);
+  const [linkModalUrl, setLinkModalUrl] = useState('https://');
+  const [linkModalText, setLinkModalText] = useState('');
+
   const [notification, setNotification] = useState<string | null>(null);
 
   const loadData = async (force = false) => {
@@ -316,19 +321,7 @@ export default function AdminPanelPage() {
         showNotify('Italic applied to block');
       }
     } else if (type === 'link') {
-      if (el.innerHTML.includes('<a ')) {
-        const temp = document.createElement('div');
-        temp.innerHTML = el.innerHTML;
-        temp.querySelectorAll('a').forEach(l => l.replaceWith(l.innerHTML));
-        el.innerHTML = temp.innerHTML;
-        showNotify('Link removed from block');
-      } else {
-        const url = prompt('Enter URL (Link):', 'https://');
-        if (url) {
-          el.innerHTML = `<a href="${url}" target="_blank" rel="noopener noreferrer" class="text-orange-600 underline font-bold">${el.innerHTML}</a>`;
-          showNotify('Link applied to block');
-        }
-      }
+      handleOpenLinkModal();
     }
 
     updateActiveStates(el);
@@ -348,8 +341,28 @@ export default function AdminPanelPage() {
     insertHtmlAtSelection(tableHtml);
   };
 
+  const handleOpenLinkModal = () => {
+    const sel = window.getSelection();
+    const selectedText = sel ? sel.toString().trim() : '';
+    setLinkModalText(selectedText);
+    setLinkModalUrl('https://');
+    setShowLinkAddModal(true);
+  };
+
+  const handleConfirmLinkModal = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!linkModalUrl.trim()) return;
+
+    const anchorText = linkModalText.trim() || linkModalUrl;
+    const linkHtml = `<a href="${linkModalUrl}" target="_blank" rel="noopener noreferrer" class="text-orange-600 underline font-bold hover:text-orange-700 transition-colors">${anchorText}</a>`;
+    
+    insertHtmlAtSelection(linkHtml);
+    setShowLinkAddModal(false);
+    showNotify('Link inserted with orange highlight successfully!');
+  };
+
   const handleInsertLink = () => {
-    applyBlockFormatting('link');
+    handleOpenLinkModal();
   };
 
   // Click handler to select ANY block element or image across the entire document
@@ -476,7 +489,7 @@ export default function AdminPanelPage() {
     let faqHtml = `<div class="my-8 p-6 bg-slate-50 border border-slate-200 rounded-3xl space-y-4">\n  <h3 class="text-xl font-bold text-black">Frequently Asked Questions (FAQs)</h3>\n  <div class="space-y-3">\n`;
 
     currentFaqs.forEach((faq) => {
-      faqHtml += `    <div class="faq-item p-4 bg-white border border-slate-200 rounded-2xl space-y-1.5 cursor-pointer hover:border-orange-400 transition-colors">\n      <h4 class="faq-question font-bold text-black text-base flex items-center justify-between"><span>${faq.question}</span> <span class="faq-icon text-orange-600 font-extrabold text-lg">+</span></h4>\n      <p class="faq-answer hidden text-black text-sm font-medium pt-2 border-t border-slate-100">${faq.answer}</p>\n    </div>\n`;
+      faqHtml += `    <details class="group bg-white border border-slate-200 rounded-2xl p-4 shadow-sm hover:border-orange-400 transition-colors">\n      <summary class="font-bold text-black text-base cursor-pointer flex items-center justify-between">${faq.question} <span class="text-orange-600 group-open:rotate-180 transition-transform">▼</span></summary>\n      <p class="mt-3 text-slate-700 text-sm font-medium pt-3 border-t border-slate-100">${faq.answer}</p>\n    </details>\n`;
     });
 
     faqHtml += `  </div>\n</div>\n`;
@@ -1447,6 +1460,68 @@ export default function AdminPanelPage() {
                   </button>
                 </div>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Link Addition Popup Modal */}
+        {showLinkAddModal && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-3xl max-w-md w-full p-6 space-y-6 shadow-2xl border border-slate-200">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+                <div className="flex items-center gap-2 font-bold text-black text-lg">
+                  <LinkIcon className="w-5 h-5 text-orange-600" />
+                  <span>Insert Hyperlink (Orange Highlight)</span>
+                </div>
+                <button
+                  onClick={() => setShowLinkAddModal(false)}
+                  className="p-2 hover:bg-slate-100 rounded-xl text-slate-500 transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <form onSubmit={handleConfirmLinkModal} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-bold text-black mb-1.5">Target URL (Link)</label>
+                  <input
+                    type="url"
+                    required
+                    value={linkModalUrl}
+                    onChange={(e) => setLinkModalUrl(e.target.value)}
+                    placeholder="https://example.com"
+                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono text-black font-medium focus:ring-2 focus:ring-orange-600/20"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-black mb-1.5">Link Text (Anchor Text)</label>
+                  <input
+                    type="text"
+                    required
+                    value={linkModalText}
+                    onChange={(e) => setLinkModalText(e.target.value)}
+                    placeholder="Click here or selected text"
+                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-black focus:ring-2 focus:ring-orange-600/20"
+                  />
+                </div>
+
+                <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => setShowLinkAddModal(false)}
+                    className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-black font-bold rounded-xl text-xs transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-5 py-2.5 bg-orange-600 hover:bg-orange-700 text-white font-bold rounded-xl text-xs shadow-sm transition-colors"
+                  >
+                    Insert Link
+                  </button>
+                </div>
+              </form>
             </div>
           </div>
         )}

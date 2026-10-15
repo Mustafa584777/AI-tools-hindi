@@ -46,3 +46,14 @@ tr:hover {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
 }
+
+/* Added links orange highlight styling */
+a, .prose a, .editor-content a {
+  color: #ea580c !important; /* orange-600 */
+  font-weight: 700 !important;
+  text-decoration: underline !important;
+}
+
+a:hover, .prose a:hover, .editor-content a:hover {
+  color: #c2410c !important; /* orange-700 */
+}
