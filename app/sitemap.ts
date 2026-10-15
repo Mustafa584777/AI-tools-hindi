@@ -20,7 +20,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   ];
 
   const staticPages = staticRoutes.map((route) => ({
-    url: `${baseUrl}${route}`,
+    url: route === '' ? `${baseUrl}/` : `${baseUrl}${route}/`,
     lastModified: new Date(),
     changeFrequency: 'daily' as const,
     priority: route === '' ? 1.0 : 0.8,
@@ -35,14 +35,14 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
   const categories = Array.from(new Set(blogPosts.map(p => p.category).filter(Boolean)));
   const categoryPages = categories.map((cat: any) => ({
-    url: `${baseUrl}/${cat.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '')}`,
+    url: `${baseUrl}/${cat.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '')}/`,
     lastModified: new Date(),
     changeFrequency: 'weekly' as const,
     priority: 0.85,
   }));
 
   const blogUrls = blogPosts.filter(p => p.status !== 'draft').map((post) => ({
-    url: `${baseUrl}/${post.slug}`,
+    url: `${baseUrl}/${post.slug}/`,
     lastModified: new Date(),
     changeFrequency: 'weekly' as const,
     priority: 0.9,
