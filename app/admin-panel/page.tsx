@@ -103,6 +103,10 @@ export default function AdminPanelPage() {
   const [selectedImageEl, setSelectedImageEl] = useState<HTMLImageElement | null>(null);
   const [editImageAlt, setEditImageAlt] = useState('');
   const [editImageSlug, setEditImageSlug] = useState('');
+  const [showEditLinkModal, setShowEditLinkModal] = useState(false);
+  const [selectedLinkEl, setSelectedLinkEl] = useState<HTMLAnchorElement | null>(null);
+  const [editLinkUrl, setEditLinkUrl] = useState('');
+  const [editLinkText, setEditLinkText] = useState('');
 
   // Link Addition Popup Modal State
   const [showLinkAddModal, setShowLinkAddModal] = useState(false);
@@ -369,6 +373,17 @@ export default function AdminPanelPage() {
   // Click handler to select ANY block element or image across the entire document
   const handleVisualClick = (e: React.MouseEvent<HTMLDivElement>) => {
     const target = e.target as HTMLElement;
+
+    // Check if a link was clicked
+    const linkTarget = target.tagName === 'A' ? (target as HTMLAnchorElement) : target.closest('a');
+    if (linkTarget && visualContentRef.current?.contains(linkTarget)) {
+      e.preventDefault();
+      setSelectedLinkEl(linkTarget);
+      setEditLinkUrl(linkTarget.getAttribute('href') || 'https://');
+      setEditLinkText(linkTarget.textContent || '');
+      setShowEditLinkModal(true);
+      return;
+    }
 
     // Check if an image was clicked
     const imgTarget = target.tagName === 'IMG' ? (target as HTMLImageElement) : target.closest('img');
@@ -1499,6 +1514,94 @@ export default function AdminPanelPage() {
                     className="px-5 py-2.5 bg-orange-600 hover:bg-orange-700 text-white font-bold rounded-xl text-xs shadow-sm transition-colors"
                   >
                     Save Image Changes
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Edit Clicked Link Popup Modal */}
+        {showEditLinkModal && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-3xl max-w-md w-full p-6 space-y-6 shadow-2xl border border-slate-200">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+                <div className="flex items-center gap-2 font-bold text-black text-lg">
+                  <LinkIcon className="w-5 h-5 text-orange-600" />
+                  <span>Edit Inserted Link</span>
+                </div>
+                <button
+                  onClick={() => setShowEditLinkModal(false)}
+                  className="p-2 hover:bg-slate-100 rounded-xl text-slate-500 transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-xs font-bold text-black mb-1.5">Link URL (Target)</label>
+                  <input
+                    type="url"
+                    value={editLinkUrl}
+                    onChange={(e) => setEditLinkUrl(e.target.value)}
+                    placeholder="https://example.com"
+                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono text-black font-medium focus:ring-2 focus:ring-orange-600/20"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-black mb-1.5">Link Text (Anchor Text)</label>
+                  <input
+                    type="text"
+                    value={editLinkText}
+                    onChange={(e) => setEditLinkText(e.target.value)}
+                    placeholder="Link text..."
+                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-black focus:ring-2 focus:ring-orange-600/20"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between gap-3 pt-4 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (selectedLinkEl && confirm('Are you sure you want to remove this link (keep text)?')) {
+                      const textContent = selectedLinkEl.textContent || '';
+                      const textNode = document.createTextNode(textContent);
+                      selectedLinkEl.replaceWith(textNode);
+                      if (visualContentRef.current) setBlogContent(visualContentRef.current.innerHTML);
+                      setShowEditLinkModal(false);
+                      showNotify('Link removed successfully.');
+                    }
+                  }}
+                  className="px-4 py-2.5 bg-red-50 hover:bg-red-100 text-red-600 font-bold rounded-xl text-xs transition-colors"
+                >
+                  Remove Link
+                </button>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowEditLinkModal(false)}
+                    className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-black font-bold rounded-xl text-xs transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (selectedLinkEl) {
+                        selectedLinkEl.setAttribute('href', editLinkUrl);
+                        selectedLinkEl.textContent = editLinkText;
+                        if (visualContentRef.current) setBlogContent(visualContentRef.current.innerHTML);
+                        setShowEditLinkModal(false);
+                        showNotify('Link updated successfully!');
+                      }
+                    }}
+                    className="px-5 py-2.5 bg-orange-600 hover:bg-orange-700 text-white font-bold rounded-xl text-xs shadow-sm transition-colors"
+                  >
+                    Save Link Changes
                   </button>
                 </div>
               </div>
