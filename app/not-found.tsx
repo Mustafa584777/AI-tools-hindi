@@ -6,19 +6,12 @@ export default function NotFound() {
   return (
     <>
       <Navbar />
-      <main className="flex-1 max-w-4xl mx-auto px-6 py-24 text-center space-y-6">
-        <h1 className="text-4xl font-extrabold text-black">404 - Page Not Found</h1>
-        <p className="text-black font-medium text-lg">
-          The page you are looking for does not exist or has been moved.
-        </p>
-        <div>
-          <Link
-            href="/"
-            className="inline-block px-6 py-3 bg-orange-600 text-white rounded-xl font-bold shadow-sm hover:bg-orange-700 transition-colors"
-          >
-            Go Back Home
-          </Link>
-        </div>
+      <main className="flex-1 max-w-4xl mx-auto px-6 py-24 text-center space-y-4">
+        <h1 className="text-3xl font-extrabold text-black">Page Not Found (404)</h1>
+        <p className="text-black font-medium">The page you are looking for does not exist or has been moved.</p>
+        <Link href="/" className="inline-block px-5 py-2.5 bg-orange-600 text-white rounded-xl text-sm font-bold shadow-sm">
+          Back to Home
+        </Link>
       </main>
       <Footer />
     </>
