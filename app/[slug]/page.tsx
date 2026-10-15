@@ -88,44 +88,49 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   };
 }
 
-function getProcessedContentWithTOC(html: string): string {
-  if (!html) return '';
-  const h2Regex = /<h2[^>]*>(.*?)<\/h2>/gi;
+function getProcessedContentWithTOC(html: string) {
+  if (typeof window === 'undefined') return html;
+
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(html, 'text/html');
+
+  const h2s = Array.from(doc.querySelectorAll('h2'));
+  if (h2s.length === 0) return html;
+
   const headings: { id: string; text: string }[] = [];
-  let match;
-  let processed = html;
-  let idx = 0;
-  while ((match = h2Regex.exec(html)) !== null) {
-    const text = match[1].replace(/<[^>]*>/g, '').trim();
-    const id = `toc-heading-${idx}-${text.toLowerCase().replace(/[^a-z0-9]+/g, '-') || idx}`;
-    headings.push({ id, text });
-    processed = processed.replace(match[0], `<h2 id="${id}" class="text-xl md:text-2xl font-bold text-black pt-3">${match[1]}</h2>`);
-    idx++;
-  }
+  h2s.forEach((h2, idx) => {
+    const id = `toc-heading-${idx}-${h2.textContent?.toLowerCase().replace(/[^a-z0-9]+/g, '-') || idx}`;
+    h2.id = id;
+    headings.push({ id, text: h2.textContent || '' });
+  });
 
-  if (headings.length === 0) return processed;
+  if (doc.querySelector('.auto-toc-box')) return doc.body.innerHTML;
 
+  const paragraphs = Array.from(doc.querySelectorAll('p'));
   const tocHtml = `
-    <div class="my-8 p-6 bg-orange-50/70 border border-orange-200 rounded-2xl shadow-sm space-y-3">
+    <div class="auto-toc-box my-8 p-6 bg-orange-50/70 border border-orange-200 rounded-2xl shadow-sm space-y-3">
       <div class="flex items-center gap-2 font-extrabold text-black text-base">
-        <span class="text-orange-600">📋</span>
+        <svg class="w-5 h-5 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h7"/></svg>
         <span>Table of Contents (विषय सूची)</span>
       </div>
       <ul class="space-y-1.5 pl-5 list-disc text-sm font-bold text-orange-600">
-        ${headings.map(h => `<li><a href="#${h.id}" class="no-underline text-orange-600 hover:text-orange-700">${h.text}</a></li>`).join('')}
+        ${headings.map(h => `<li><a href="#${h.id}" class="no-underline hover:text-orange-800 text-orange-600">${h.text}</a></li>`).join('')}
       </ul>
     </div>
   `;
 
-  const firstPIndex = processed.indexOf('</p>');
-  if (firstPIndex !== -1) {
-    const insertPos = firstPIndex + 4;
-    processed = processed.substring(0, insertPos) + '\n' + tocHtml + '\n' + processed.substring(insertPos);
-  } else {
-    processed = tocHtml + '\n' + processed;
+  if (paragraphs.length >= 3) {
+    const thirdP = paragraphs[2];
+    const tempContainer = doc.createElement('div');
+    tempContainer.innerHTML = tocHtml;
+    thirdP.after(tempContainer.firstElementChild!);
+  } else if (doc.body.firstChild) {
+    const tempContainer = doc.createElement('div');
+    tempContainer.innerHTML = tocHtml;
+    doc.body.insertBefore(tempContainer.firstElementChild!, doc.body.firstChild);
   }
 
-  return processed;
+  return doc.body.innerHTML;
 }
 
 function extractFaqsFromHtml(html: string): { question: string; answer: string }[] {
@@ -153,7 +158,6 @@ export default async function SlugPage({ params }: { params: Promise<{ slug: str
   const posts = await getAllPosts();
   const post = posts.find(p => p.slug === slug);
 
-  // Check if slug is category archive
   const matchedCategory = posts.find(p =>
     p.category && p.category.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '') === slug
   )?.category;
@@ -250,9 +254,6 @@ export default async function SlugPage({ params }: { params: Promise<{ slug: str
     );
   }
 
-  const processedContent = getProcessedContentWithTOC(post.content);
-
-  // Construct BlogPosting Schema JSON-LD
   const blogPostingSchema = {
     '@context': 'https://schema.org',
     '@type': 'BlogPosting',
@@ -359,12 +360,12 @@ export default async function SlugPage({ params }: { params: Promise<{ slug: str
             {/* WordPress HTML Content Renderer */}
             <div 
               className="prose prose-slate max-w-none text-black leading-relaxed space-y-4 text-base md:text-lg font-medium [&>h1]:text-2xl [&>h1]:md:text-3xl [&>h1]:font-extrabold [&>h1]:text-black [&>h1]:pt-4 [&>h2]:text-xl [&>h2]:md:text-2xl [&>h2]:font-bold [&>h2]:text-black [&>h2]:pt-3 [&>h3]:text-lg [&>h3]:font-bold [&>h3]:text-black [&>ul]:list-disc [&>ul]:ml-6 [&>ol]:list-decimal [&>ol]:ml-6 [&>blockquote]:border-l-4 [&>blockquote]:border-orange-600 [&>blockquote]:pl-4 [&>blockquote]:italic [&>blockquote]:text-black [&>blockquote]:my-4 [&>blockquote]:bg-orange-50/50 [&>blockquote]:py-3 [&>blockquote]:rounded-r-xl"
-              dangerouslySetInnerHTML={{ __html: processedContent }}
+              dangerouslySetInnerHTML={{ __html: post.content }}
             />
 
-            {/* Author Box at the end of every blog article */}
-            <div className="mt-12 p-6 sm:p-8 bg-gradient-to-br from-orange-50/80 to-amber-50/50 border border-orange-200/80 rounded-3xl flex flex-col sm:flex-row items-center sm:items-start gap-6 shadow-sm">
-              <div className="w-20 h-20 sm:w-24 sm:h-24 relative rounded-2xl overflow-hidden shrink-0 shadow-md border-2 border-orange-600 bg-slate-200">
+            {/* Author Box at the end of every blog article with white links/buttons */}
+            <div className="mt-12 p-6 sm:p-8 bg-slate-900 text-white border border-slate-800 rounded-3xl flex flex-col sm:flex-row items-center sm:items-start gap-6 shadow-md">
+              <div className="w-20 h-20 sm:w-24 sm:h-24 relative rounded-2xl overflow-hidden shrink-0 shadow-md border-2 border-white/20 bg-slate-800">
                 <Image
                   src="/author.png"
                   alt="Anwar"
@@ -377,15 +378,15 @@ export default async function SlugPage({ params }: { params: Promise<{ slug: str
               <div className="space-y-3 text-center sm:text-left flex-1">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                   <div>
-                    <h3 className="text-lg font-extrabold text-black">Anwar</h3>
-                    <p className="text-xs font-bold text-orange-600">AI Tools & Prompt Engineering Expert</p>
+                    <h3 className="text-lg font-extrabold text-white">Anwar</h3>
+                    <p className="text-xs font-bold text-amber-300">AI Tools & Prompt Engineering Expert</p>
                   </div>
                   <div className="flex items-center justify-center gap-3">
                     <a
                       href="https://x.com/aitool_hindi"
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="w-9 h-9 bg-white text-black rounded-xl flex items-center justify-center hover:bg-slate-100 transition-colors shadow-sm"
+                      className="w-9 h-9 bg-white text-black rounded-xl flex items-center justify-center hover:bg-slate-200 transition-colors shadow-sm"
                       title="X (Twitter)"
                     >
                       <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24">
@@ -394,13 +395,13 @@ export default async function SlugPage({ params }: { params: Promise<{ slug: str
                     </a>
                     <Link
                       href="/"
-                      className="px-3.5 py-2 bg-white text-black hover:bg-slate-100 rounded-xl text-xs font-bold transition-colors shadow-sm whitespace-nowrap"
+                      className="px-3.5 py-2 bg-white text-black hover:bg-slate-200 rounded-xl text-xs font-bold transition-colors shadow-sm whitespace-nowrap"
                     >
                       See Author&apos;s Posts
                     </Link>
                   </div>
                 </div>
-                <p className="text-xs sm:text-sm text-black leading-relaxed font-medium">
+                <p className="text-xs sm:text-sm text-white/90 leading-relaxed font-medium">
                   Anwar, AI टूल्स और प्रॉम्प्ट इंजीनियरिंग के क्षेत्र में 5 वर्षों से ज़्यादा का अनुभव रखते हैं, इन्होंने 1000+ हज़ारों AI Tools को analyse और test किया है जिसकी झलक आप इनके हिंदी AI tutorials में भी देख सकते हैं। इनके tutorials से हज़ारों हिंदी readers ने ChatGPT, Gemini, Midjourney, AI image generation और AI video generation जैसी टेक्नोलॉजी का इस्तेमाल सीखा है।
                 </p>
               </div>

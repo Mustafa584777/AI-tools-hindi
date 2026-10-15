@@ -677,7 +677,7 @@ export default function AdminPanelPage() {
     setBlogAuthor('Anwar');
     setBlogImage('https://picsum.photos/seed/newpost/800/450');
     setBlogImageAlt('AI tutorial featured image');
-    setBlogImageSlug('ai-tutorial-featured-image');
+    setBlogImageSlug('ai-tutorial-featured');
     setBlogStatus('published');
     setArticleImages([]);
     setFaqs([]);
@@ -1000,18 +1000,18 @@ export default function AdminPanelPage() {
                         type="text"
                         value={blogImageAlt}
                         onChange={(e) => setBlogImageAlt(e.target.value)}
-                        placeholder="उदा: AI tutorial banner image"
+                        placeholder="उदा: AI tutorial banner image alt text"
                         className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-black font-medium"
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-bold text-black mb-1">Featured Image Slug</label>
+                      <label className="block text-xs font-bold text-black mb-1">Featured Image Slug / Identifier</label>
                       <input
                         type="text"
                         value={blogImageSlug}
                         onChange={(e) => setBlogImageSlug(e.target.value)}
-                        placeholder="उदा: ai-tutorial-banner-image"
-                        className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-mono text-orange-600 font-bold"
+                        placeholder="उदा: ai-tutorial-banner-slug"
+                        className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-mono text-black font-medium"
                       />
                     </div>
                   </div>
