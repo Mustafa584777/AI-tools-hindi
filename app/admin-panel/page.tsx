@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { Plus, Edit, Trash2, Database, CheckCircle, ExternalLink, Sparkles, FileText, ArrowLeft, Image as ImageIcon, Link as LinkIcon, Bold, Italic, Heading1, Heading2, Heading3, Code, Wand2, Upload, X, RefreshCw, Eye, Code2, HelpCircle, Bot, AlertTriangle, TrendingUp, Award, Folder, List, Table, Undo, Redo, Settings } from 'lucide-react';
+import { Plus, Edit, Trash2, Database, CheckCircle, ExternalLink, Sparkles, FileText, ArrowLeft, Image as ImageIcon, Link as LinkIcon, Bold, Italic, Heading1, Heading2, Heading3, Code, Wand2, Upload, X, RefreshCw, Eye, Code2, HelpCircle, Bot, AlertTriangle, TrendingUp, Award, Folder, List, Table, Undo, Redo, Settings, Loader2 } from 'lucide-react';
 import { 
   fetchBlogPostsFromFirestore, 
   saveBlogPostToFirestore, 
@@ -96,6 +96,12 @@ export default function AdminPanelPage() {
   const contentImageInputRef = useRef<HTMLInputElement>(null);
   const featuredImageInputRef = useRef<HTMLInputElement>(null);
   const restoreFileInputRef = useRef<HTMLInputElement>(null);
+
+  const [isSavingPost, setIsSavingPost] = useState(false);
+  const [showImageModal, setShowImageModal] = useState(false);
+  const [selectedImageEl, setSelectedImageEl] = useState<HTMLImageElement | null>(null);
+  const [editImageAlt, setEditImageAlt] = useState('');
+  const [editImageSlug, setEditImageSlug] = useState('');
 
   const [notification, setNotification] = useState<string | null>(null);
 
@@ -346,9 +352,20 @@ export default function AdminPanelPage() {
     applyBlockFormatting('link');
   };
 
-  // Click handler to select ANY block element across the entire document and highlight with light blue border
+  // Click handler to select ANY block element or image across the entire document
   const handleVisualClick = (e: React.MouseEvent<HTMLDivElement>) => {
     const target = e.target as HTMLElement;
+
+    // Check if an image was clicked
+    const imgTarget = target.tagName === 'IMG' ? (target as HTMLImageElement) : target.closest('img');
+    if (imgTarget && visualContentRef.current?.contains(imgTarget)) {
+      setSelectedImageEl(imgTarget);
+      setEditImageAlt(imgTarget.getAttribute('alt') || '');
+      setEditImageSlug(imgTarget.getAttribute('data-img-slug') || '');
+      setShowImageModal(true);
+      return;
+    }
+
     const blockEl = target.closest('p, h1, h2, h3, blockquote, ul, table, li, tr') as HTMLElement;
     if (blockEl && visualContentRef.current?.contains(blockEl) && blockEl !== visualContentRef.current) {
       visualContentRef.current.querySelectorAll('.editor-selected-block').forEach(el => {
@@ -380,8 +397,18 @@ export default function AdminPanelPage() {
 
       setArticleImages(prev => [...prev, newImg]);
 
-      const imgHtml = `<img src="${base64String}" alt="${cleanAlt}" data-img-slug="${imgSlug}" class="w-full rounded-2xl my-6 shadow-md object-cover" />\n`;
-      insertHtmlAtSelection(imgHtml);
+      const imgHtml = `<img src="${base64String}" alt="${cleanAlt}" data-img-slug="${imgSlug}" class="w-full rounded-2xl my-6 shadow-md object-cover cursor-pointer hover:ring-2 hover:ring-orange-500 transition-all" />\n`;
+
+      if (selectedBlockElementRef.current && visualContentRef.current?.contains(selectedBlockElementRef.current)) {
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = imgHtml;
+        const imgNode = tempDiv.firstChild;
+        selectedBlockElementRef.current.after(imgNode!);
+        setBlogContent(visualContentRef.current.innerHTML);
+        showNotify('Image inserted right after selected block!');
+      } else {
+        insertHtmlAtSelection(imgHtml);
+      }
     };
     reader.readAsDataURL(file);
     if (contentImageInputRef.current) contentImageInputRef.current.value = '';
@@ -701,6 +728,7 @@ export default function AdminPanelPage() {
       status: blogStatus
     };
 
+    setIsSavingPost(true);
     try {
       await saveBlogPostToFirestore(postToSave);
       await loadData(true);
@@ -708,6 +736,8 @@ export default function AdminPanelPage() {
       setIsEditingBlog(false);
     } catch (err) {
       alert('Error saving to Firebase: ' + (err as Error).message);
+    } finally {
+      setIsSavingPost(false);
     }
   };
 
@@ -1310,14 +1340,116 @@ export default function AdminPanelPage() {
                 </button>
                 <button
                   type="submit"
-                  className="px-8 py-3 bg-orange-600 hover:bg-orange-700 text-white font-bold rounded-xl text-xs shadow-md"
+                  disabled={isSavingPost}
+                  className="px-8 py-3 bg-orange-600 hover:bg-orange-700 text-white font-bold rounded-xl text-xs shadow-md inline-flex items-center gap-2 disabled:opacity-75"
                 >
-                  Save & Publish to Firebase
+                  {isSavingPost ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Saving & Publishing...</span>
+                    </>
+                  ) : (
+                    <span>Save & Publish to Firebase</span>
+                  )}
                 </button>
               </div>
             </form>
           </div>
         </main>
+
+        {/* Image Alt Text & Slug Edit Modal */}
+        {showImageModal && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-3xl max-w-md w-full p-6 space-y-6 shadow-2xl border border-slate-200">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+                <div className="flex items-center gap-2 font-bold text-black text-lg">
+                  <ImageIcon className="w-5 h-5 text-orange-600" />
+                  <span>Edit Image SEO & Alt Text</span>
+                </div>
+                <button
+                  onClick={() => setShowImageModal(false)}
+                  className="p-2 hover:bg-slate-100 rounded-xl text-slate-500 transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                <div className="h-40 relative rounded-xl overflow-hidden bg-slate-100 border border-slate-200">
+                  <Image
+                    src={selectedImageEl?.src || ''}
+                    alt="Preview"
+                    fill
+                    className="object-cover"
+                    referrerPolicy="no-referrer"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-black mb-1.5">Image Alt Text (for SEO & Accessibility)</label>
+                  <input
+                    type="text"
+                    value={editImageAlt}
+                    onChange={(e) => setEditImageAlt(e.target.value)}
+                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-black focus:ring-2 focus:ring-orange-600/20"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-black mb-1.5">Image URL Slug / Identifier</label>
+                  <input
+                    type="text"
+                    value={editImageSlug}
+                    onChange={(e) => setEditImageSlug(e.target.value)}
+                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono text-black font-medium focus:ring-2 focus:ring-orange-600/20"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between gap-3 pt-4 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (selectedImageEl && confirm('Are you sure you want to delete this image?')) {
+                      selectedImageEl.remove();
+                      if (visualContentRef.current) setBlogContent(visualContentRef.current.innerHTML);
+                      setShowImageModal(false);
+                      showNotify('Image deleted.');
+                    }
+                  }}
+                  className="px-4 py-2.5 bg-red-50 hover:bg-red-100 text-red-600 font-bold rounded-xl text-xs transition-colors"
+                >
+                  Delete Image
+                </button>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowImageModal(false)}
+                    className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-black font-bold rounded-xl text-xs transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (selectedImageEl) {
+                        selectedImageEl.setAttribute('alt', editImageAlt);
+                        selectedImageEl.setAttribute('data-img-slug', editImageSlug);
+                        if (visualContentRef.current) setBlogContent(visualContentRef.current.innerHTML);
+                        setShowImageModal(false);
+                        showNotify('Image alt text & slug updated successfully!');
+                      }
+                    }}
+                    className="px-5 py-2.5 bg-orange-600 hover:bg-orange-700 text-white font-bold rounded-xl text-xs shadow-sm transition-colors"
+                  >
+                    Save Image Changes
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
