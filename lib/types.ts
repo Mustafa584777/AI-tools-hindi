@@ -13,5 +13,6 @@ export interface BlogPost {
   imageAlt?: string;
   imageSlug?: string;
   status: 'published' | 'draft';
+  noIndex?: boolean;
   faqs?: { question: string; answer: string; }[];
 }

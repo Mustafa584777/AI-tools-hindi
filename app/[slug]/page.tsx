@@ -46,11 +46,11 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
     title: seoTitle,
     description: seoDescription,
     robots: {
-      index: true,
-      follow: true,
+      index: !post.noIndex,
+      follow: !post.noIndex,
       googleBot: {
-        index: true,
-        follow: true,
+        index: !post.noIndex,
+        follow: !post.noIndex,
         'max-snippet': -1,
         'max-video-preview': -1,
         'max-image-preview': 'large',

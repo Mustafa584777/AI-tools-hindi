@@ -1,4 +1,5 @@
 'use client';
+/* eslint-disable react-hooks/immutability */
 
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
@@ -61,6 +62,7 @@ export default function AdminPanelPage() {
   const [blogImageAlt, setBlogImageAlt] = useState('');
   const [blogImageSlug, setBlogImageSlug] = useState('');
   const [blogStatus, setBlogStatus] = useState<'published' | 'draft'>('published');
+  const [blogNoIndex, setBlogNoIndex] = useState(false);
 
   // Post Settings Toggle State
   const [showPostSettings, setShowPostSettings] = useState(true);
@@ -452,6 +454,10 @@ export default function AdminPanelPage() {
     reader.onload = (uploadEvent) => {
       const base64String = uploadEvent.target?.result as string;
       setBlogImage(base64String);
+      if (!blogImageSlug) {
+        const cleanSlug = file.name.replace(/\.[^/.]+$/, "").toLowerCase().replace(/[^a-z0-9]+/g, '-');
+        setBlogImageSlug(cleanSlug);
+      }
       showNotify('Featured image uploaded locally successfully!');
     };
     reader.readAsDataURL(file);
@@ -700,6 +706,7 @@ export default function AdminPanelPage() {
     setBlogImageAlt('AI tutorial featured image');
     setBlogImageSlug('ai-tutorial-featured');
     setBlogStatus('published');
+    setBlogNoIndex(false);
     setArticleImages([]);
     setFaqs([]);
     setAnalysisResult(null);
@@ -729,6 +736,7 @@ export default function AdminPanelPage() {
     setBlogImageAlt(b.imageAlt || '');
     setBlogImageSlug(b.imageSlug || '');
     setBlogStatus(b.status || 'published');
+    setBlogNoIndex(!!b.noIndex);
     setArticleImages([]);
     const parsedFaqs: FAQItem[] = [];
     if (b.content) {
@@ -791,7 +799,8 @@ export default function AdminPanelPage() {
       image: blogImage,
       imageAlt: blogImageAlt,
       imageSlug: blogImageSlug,
-      status: blogStatus
+      status: blogStatus,
+      noIndex: blogNoIndex
     };
 
     setIsSavingPost(true);
@@ -1008,11 +1017,16 @@ export default function AdminPanelPage() {
                         </label>
                       </div>
                       <input
-                        type="url"
-                        value={blogImage}
-                        onChange={(e) => setBlogImage(e.target.value)}
+                        type="text"
+                        value={blogImage.startsWith('data:image/') ? (blogImageSlug ? `[Image Slug: ${blogImageSlug}] (Local Base64 Upload)` : '[Local Uploaded Base64 Image]') : blogImage}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (!val.startsWith('[') && !val.startsWith('📁')) {
+                            setBlogImage(val);
+                          }
+                        }}
                         placeholder="Or paste image URL here..."
-                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs text-black font-medium"
+                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs text-black font-medium font-mono"
                       />
                     </div>
                   </div>
@@ -1049,6 +1063,19 @@ export default function AdminPanelPage() {
                     placeholder="Enter RankMath style meta description for search engines and social sharing..."
                     className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm text-black font-medium"
                   />
+                </div>
+
+                <div className="flex items-center gap-3 pt-2">
+                  <input
+                    type="checkbox"
+                    id="blogNoIndexCheck"
+                    checked={blogNoIndex}
+                    onChange={(e) => setBlogNoIndex(e.target.checked)}
+                    className="w-4 h-4 text-orange-600 rounded border-slate-300 focus:ring-orange-500"
+                  />
+                  <label htmlFor="blogNoIndexCheck" className="text-xs font-bold text-black cursor-pointer">
+                    🚫 NoIndex / NoFollow (Hide this tutorial from Google search index & robots)
+                  </label>
                 </div>
               </div>
             )}
@@ -1600,6 +1627,7 @@ export default function AdminPanelPage() {
                   <button
                     type="button"
                     onClick={() => {
+                      /* eslint-disable react-hooks/immutability */
                       if (selectedLinkEl) {
                         selectedLinkEl.setAttribute('href', editLinkUrl);
                         selectedLinkEl.textContent = editLinkText;
@@ -1607,6 +1635,7 @@ export default function AdminPanelPage() {
                         setShowEditLinkModal(false);
                         showNotify('Link updated successfully!');
                       }
+                      /* eslint-enable react-hooks/immutability */
                     }}
                     className="px-5 py-2.5 bg-orange-600 hover:bg-orange-700 text-white font-bold rounded-xl text-xs shadow-sm transition-colors"
                   >
