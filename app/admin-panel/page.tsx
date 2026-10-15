@@ -509,12 +509,22 @@ export default function AdminPanelPage() {
 
     const schemaScript = `<script type="application/ld+json">\n${JSON.stringify(schemaData, null, 2)}\n</script>`;
 
-    setBlogContent(prev => {
-      const cleanPrev = prev.replace(/<div class="my-8 p-6 bg-slate-50[^>]*>[\s\S]*?<\/script>/g, '').trim();
-      const updated = cleanPrev + '\n\n' + faqHtml + '\n\n' + schemaScript;
-      if (visualContentRef.current) visualContentRef.current.innerHTML = updated;
-      return updated;
+    const currentHtml = visualContentRef.current ? visualContentRef.current.innerHTML : blogContent;
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = currentHtml;
+    tempDiv.querySelectorAll('div, script').forEach(el => {
+      if (
+        (el.innerHTML && el.innerHTML.includes('FAQPage')) || 
+        (el.className && typeof el.className === 'string' && el.className.includes('bg-slate-50') && el.innerHTML.includes('Frequently Asked Questions'))
+      ) {
+        el.remove();
+      }
     });
+
+    const cleanHtml = tempDiv.innerHTML.trim();
+    const updated = cleanHtml + '\n\n' + faqHtml + '\n\n' + schemaScript;
+    setBlogContent(updated);
+    if (visualContentRef.current) visualContentRef.current.innerHTML = updated;
   };
 
   // AI Supervisor Actions
