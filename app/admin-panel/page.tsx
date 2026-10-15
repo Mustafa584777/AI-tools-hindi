@@ -349,6 +349,40 @@ export default function AdminPanelPage() {
     insertHtmlAtSelection(tableHtml);
   };
 
+  const insertYouTubeEmbed = () => {
+    const input = prompt('Enter YouTube Video URL or Video ID (e.g., https://www.youtube.com/watch?v=dQw4w9WgXcQ):', '');
+    if (!input) return;
+
+    let videoId = input.trim();
+    if (videoId.includes('youtube.com/watch?v=')) {
+      const urlParams = new URLSearchParams(videoId.split('?')[1]);
+      videoId = urlParams.get('v') || videoId;
+    } else if (videoId.includes('youtu.be/')) {
+      const parts = videoId.split('youtu.be/');
+      videoId = parts[1]?.split('?')[0] || videoId;
+    }
+
+    if (!videoId) {
+      alert('Invalid YouTube URL or Video ID.');
+      return;
+    }
+
+    const youtubeEmbedHtml = `
+      <div class="lite-youtube-embed my-6 relative rounded-2xl overflow-hidden shadow-md bg-black aspect-video cursor-pointer group" data-video-id="${videoId}">
+        <img src="https://img.youtube.com/vi/${videoId}/hqdefault.jpg" alt="YouTube video thumbnail" class="w-full h-full object-cover group-hover:opacity-90 transition-opacity" />
+        <div class="absolute inset-0 flex items-center justify-center">
+          <div class="w-16 h-16 bg-red-600 hover:bg-red-700 text-white rounded-full flex items-center justify-center shadow-xl group-hover:scale-110 transition-transform">
+            <svg class="w-8 h-8 fill-current ml-1" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+          </div>
+        </div>
+        <div class="absolute bottom-3 left-3 bg-black/75 text-white text-xs px-3 py-1 rounded-lg font-bold">YouTube Video (Click to Play)</div>
+      </div>
+    `;
+
+    insertHtmlAtSelection(youtubeEmbedHtml);
+    showNotify('YouTube video embed inserted (Click-to-load optimized)!');
+  };
+
   const handleOpenLinkModal = () => {
     const sel = window.getSelection();
     const selectedText = sel ? sel.toString().trim() : '';
@@ -1354,6 +1388,14 @@ export default function AdminPanelPage() {
                     <Upload className="w-3.5 h-3.5" />
                     <span>+ Insert Image</span>
                   </label>
+                  <button
+                    type="button"
+                    onClick={insertYouTubeEmbed}
+                    className="px-3.5 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-bold shadow-md inline-flex items-center gap-1.5 transition-colors"
+                  >
+                    <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>
+                    <span>+ YouTube</span>
+                  </button>
                 </div>
 
                 {/* Continuous Visual Editor or HTML Code Mode */}

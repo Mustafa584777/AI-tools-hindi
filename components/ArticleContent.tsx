@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useRef, useEffect } from 'react';
 
 function getProcessedContentWithTOC(html: string) {
   if (typeof window === 'undefined') return html;
@@ -57,12 +57,49 @@ function getProcessedContentWithTOC(html: string) {
 }
 
 export default function ArticleContent({ content }: { content: string }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+
   const processedContent = useMemo(() => {
     return getProcessedContentWithTOC(content);
   }, [content]);
 
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const embeds = container.querySelectorAll('.lite-youtube-embed');
+    const handlers: { el: Element; handler: () => void }[] = [];
+
+    embeds.forEach((embed) => {
+      const videoId = embed.getAttribute('data-video-id');
+      if (!videoId) return;
+
+      const handler = () => {
+        const iframe = document.createElement('iframe');
+        iframe.setAttribute('src', `https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1`);
+        iframe.setAttribute('title', 'YouTube video player');
+        iframe.setAttribute('frameborder', '0');
+        iframe.setAttribute('allow', 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share');
+        iframe.setAttribute('allowfullscreen', 'true');
+        iframe.className = 'w-full h-full absolute inset-0';
+        embed.innerHTML = '';
+        embed.appendChild(iframe);
+      };
+
+      embed.addEventListener('click', handler);
+      handlers.push({ el: embed, handler });
+    });
+
+    return () => {
+      handlers.forEach(({ el, handler }) => {
+        el.removeEventListener('click', handler);
+      });
+    };
+  }, [processedContent]);
+
   return (
     <div 
+      ref={containerRef}
       className="prose prose-slate max-w-none text-black leading-relaxed space-y-4 text-base md:text-lg font-medium [&>h1]:text-2xl [&>h1]:md:text-3xl [&>h1]:font-extrabold [&>h1]:text-black [&>h1]:pt-4 [&>h2]:text-xl [&>h2]:md:text-2xl [&>h2]:font-bold [&>h2]:text-black [&>h2]:pt-3 [&>h3]:text-lg [&>h3]:font-bold [&>h3]:text-black [&>ul]:list-disc [&>ul]:ml-6 [&>ol]:list-decimal [&>ol]:ml-6 [&>blockquote]:border-l-4 [&>blockquote]:border-orange-600 [&>blockquote]:pl-4 [&>blockquote]:italic [&>blockquote]:text-black [&>blockquote]:my-4 [&>blockquote]:bg-orange-50/50 [&>blockquote]:py-3 [&>blockquote]:rounded-r-xl"
       dangerouslySetInnerHTML={{ __html: processedContent }}
     />
