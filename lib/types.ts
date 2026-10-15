@@ -7,8 +7,10 @@ export interface BlogPost {
   category: string;
   author: string;
   date: string;
-  readTime: string;
+  readTime?: string;
   image: string;
   imageAlt?: string;
+  imageSlug?: string;
   status: 'published' | 'draft';
+  faqs?: { question: string; answer: string; }[];
 }
