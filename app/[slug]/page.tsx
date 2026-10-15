@@ -6,6 +6,7 @@ import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import { fetchBlogPostsFromFirestore } from '@/lib/storage';
 import { BlogPost } from '@/lib/types';
+import ArticleContent from '@/components/ArticleContent';
 
 export const dynamic = 'force-dynamic';
 
@@ -357,11 +358,8 @@ export default async function SlugPage({ params }: { params: Promise<{ slug: str
               </div>
             </div>
 
-            {/* WordPress HTML Content Renderer */}
-            <div 
-              className="prose prose-slate max-w-none text-black leading-relaxed space-y-4 text-base md:text-lg font-medium [&>h1]:text-2xl [&>h1]:md:text-3xl [&>h1]:font-extrabold [&>h1]:text-black [&>h1]:pt-4 [&>h2]:text-xl [&>h2]:md:text-2xl [&>h2]:font-bold [&>h2]:text-black [&>h2]:pt-3 [&>h3]:text-lg [&>h3]:font-bold [&>h3]:text-black [&>ul]:list-disc [&>ul]:ml-6 [&>ol]:list-decimal [&>ol]:ml-6 [&>blockquote]:border-l-4 [&>blockquote]:border-orange-600 [&>blockquote]:pl-4 [&>blockquote]:italic [&>blockquote]:text-black [&>blockquote]:my-4 [&>blockquote]:bg-orange-50/50 [&>blockquote]:py-3 [&>blockquote]:rounded-r-xl"
-              dangerouslySetInnerHTML={{ __html: post.content }}
-            />
+            {/* WordPress HTML Content Renderer with TOC */}
+            <ArticleContent content={post.content} />
 
             {/* Author Box at the end of every blog article with white links/buttons */}
             <div className="mt-12 p-6 sm:p-8 bg-slate-900 text-white border border-slate-800 rounded-3xl flex flex-col sm:flex-row items-center sm:items-start gap-6 shadow-md">
