@@ -67,6 +67,12 @@ export default function AdminPanelPage() {
   const [editorMode, setEditorMode] = useState<'visual' | 'html'>('visual');
   const selectedBlockElementRef = useRef<HTMLElement | null>(null);
 
+  // Active formatting state for toolbar highlights
+  const [activeBold, setActiveBold] = useState(false);
+  const [activeItalic, setActiveItalic] = useState(false);
+  const [activeLink, setActiveLink] = useState(false);
+  const [activeBlockType, setActiveBlockType] = useState('P');
+
   // Article Media Library
   const [articleImages, setArticleImages] = useState<ArticleImage[]>([]);
 
@@ -130,6 +136,16 @@ export default function AdminPanelPage() {
     }
   }, [blogContent, editorMode, isEditingBlog]);
 
+  const updateActiveStates = (el?: HTMLElement | null) => {
+    const targetEl = el || selectedBlockElementRef.current;
+    if (targetEl) {
+      setActiveBold(targetEl.innerHTML.includes('<strong>') || targetEl.innerHTML.includes('<b>') || !!targetEl.querySelector('strong, b'));
+      setActiveItalic(targetEl.innerHTML.includes('<em>') || targetEl.innerHTML.includes('<i>') || !!targetEl.querySelector('em, i'));
+      setActiveLink(targetEl.innerHTML.includes('<a ') || !!targetEl.querySelector('a'));
+      setActiveBlockType(targetEl.tagName.toUpperCase());
+    }
+  };
+
   const showNotify = (msg: string) => {
     setNotification(msg);
     setTimeout(() => setNotification(null), 3500);
@@ -182,15 +198,63 @@ export default function AdminPanelPage() {
     }
   };
 
-  // Apply formatting directly to the actively selected block element across the entire document using ref or selection fallback
+  // Robust HTML insertion at selection or end
+  const insertHtmlAtSelection = (html: string) => {
+    if (!visualContentRef.current) return;
+    visualContentRef.current.focus();
+    const sel = window.getSelection();
+    if (sel && sel.rangeCount > 0) {
+      const range = sel.getRangeAt(0);
+      if (visualContentRef.current.contains(range.commonAncestorContainer)) {
+        range.deleteContents();
+        const frag = range.createContextualFragment(html);
+        range.insertNode(frag);
+        sel.removeAllRanges();
+        setBlogContent(visualContentRef.current.innerHTML);
+        showNotify('Inserted successfully into visual editor!');
+        return;
+      }
+    }
+    visualContentRef.current.innerHTML += '\n' + html;
+    setBlogContent(visualContentRef.current.innerHTML);
+    showNotify('Inserted successfully into visual editor!');
+  };
+
+  // Dual-mode formatting: applies to manual text selection OR toggles/applies on block level with undo support
   const applyBlockFormatting = (type: 'H1' | 'H2' | 'H3' | 'P' | 'bold' | 'italic' | 'link') => {
+    const sel = window.getSelection();
+    const hasTextSelection = sel && sel.toString().trim().length > 0;
+
+    if (hasTextSelection) {
+      if (type === 'bold') {
+        document.execCommand('bold', false, '');
+        showNotify('Bold toggled on text');
+      } else if (type === 'italic') {
+        document.execCommand('italic', false, '');
+        showNotify('Italic toggled on text');
+      } else if (type === 'link') {
+        const url = prompt('Enter URL (Link):', 'https://');
+        if (url) {
+          document.execCommand('createLink', false, url);
+          showNotify('Link applied to text');
+        }
+      } else if (type === 'H1' || type === 'H2' || type === 'H3' || type === 'P') {
+        const tag = type === 'H1' ? 'h1' : type === 'H2' ? 'h2' : type === 'H3' ? 'h3' : 'p';
+        document.execCommand('formatBlock', false, tag);
+        showNotify(`Format changed to ${tag.toUpperCase()}`);
+      }
+      if (visualContentRef.current) {
+        setBlogContent(visualContentRef.current.innerHTML);
+      }
+      return;
+    }
+
+    // Block level formatting with Toggle / Undo support
     let el = selectedBlockElementRef.current;
 
-    // Fallback: If no block is currently selected, find the block enclosing the current selection / caret
     if (!el || !visualContentRef.current?.contains(el)) {
-      const selection = window.getSelection();
-      if (selection && selection.rangeCount > 0) {
-        let node = selection.anchorNode;
+      if (sel && sel.rangeCount > 0) {
+        let node = sel.anchorNode;
         if (node && node.nodeType === Node.TEXT_NODE) node = node.parentNode;
         if (node && node instanceof HTMLElement) {
           el = node.closest('p, h1, h2, h3, blockquote, ul, li, table, tr, div') as HTMLElement;
@@ -217,40 +281,65 @@ export default function AdminPanelPage() {
 
     if (type === 'H1' || type === 'H2' || type === 'H3' || type === 'P') {
       const tag = type === 'H1' ? 'h1' : type === 'H2' ? 'h2' : type === 'H3' ? 'h3' : 'p';
-      const newEl = document.createElement(tag);
+      const targetTag = el.tagName.toLowerCase() === tag.toLowerCase() ? 'p' : tag;
+      const newEl = document.createElement(targetTag);
       newEl.innerHTML = el.innerHTML;
-      newEl.className = tag === 'h1' ? 'text-3xl font-extrabold text-black mt-6 mb-4' :
-                        tag === 'h2' ? 'text-2xl font-bold text-black mt-6 mb-3' :
-                        tag === 'h3' ? 'text-xl font-semibold text-black mt-4 mb-2' :
+      newEl.className = targetTag === 'h1' ? 'text-3xl font-extrabold text-black mt-6 mb-4' :
+                        targetTag === 'h2' ? 'text-2xl font-bold text-black mt-6 mb-3' :
+                        targetTag === 'h3' ? 'text-xl font-semibold text-black mt-4 mb-2' :
                         'mb-6 text-slate-700 leading-relaxed text-lg';
       el.replaceWith(newEl);
       newEl.classList.add('ring-2', 'ring-blue-400', 'bg-blue-50/20', 'rounded-xl', 'p-2', 'editor-selected-block');
       selectedBlockElementRef.current = newEl;
+      el = newEl;
+      showNotify(`Block formatted to ${targetTag.toUpperCase()}`);
     } else if (type === 'bold') {
-      el.innerHTML = `<strong>${el.innerHTML}</strong>`;
+      if (el.innerHTML.includes('<strong>') || el.innerHTML.includes('<b>')) {
+        el.innerHTML = el.innerHTML.replace(/<\/?(strong|b)>/gi, '');
+        showNotify('Bold removed from block');
+      } else {
+        el.innerHTML = `<strong>${el.innerHTML}</strong>`;
+        showNotify('Bold applied to block');
+      }
     } else if (type === 'italic') {
-      el.innerHTML = `<em>${el.innerHTML}</em>`;
+      if (el.innerHTML.includes('<em>') || el.innerHTML.includes('<i>')) {
+        el.innerHTML = el.innerHTML.replace(/<\/?(em|i)>/gi, '');
+        showNotify('Italic removed from block');
+      } else {
+        el.innerHTML = `<em>${el.innerHTML}</em>`;
+        showNotify('Italic applied to block');
+      }
     } else if (type === 'link') {
-      const url = prompt('Enter URL (Link):', 'https://');
-      if (url) {
-        el.innerHTML = `<a href="${url}" target="_blank" rel="noopener noreferrer" class="text-orange-600 underline font-bold">${el.innerHTML}</a>`;
+      if (el.innerHTML.includes('<a ')) {
+        const temp = document.createElement('div');
+        temp.innerHTML = el.innerHTML;
+        temp.querySelectorAll('a').forEach(l => l.replaceWith(l.innerHTML));
+        el.innerHTML = temp.innerHTML;
+        showNotify('Link removed from block');
+      } else {
+        const url = prompt('Enter URL (Link):', 'https://');
+        if (url) {
+          el.innerHTML = `<a href="${url}" target="_blank" rel="noopener noreferrer" class="text-orange-600 underline font-bold">${el.innerHTML}</a>`;
+          showNotify('Link applied to block');
+        }
       }
     }
 
+    updateActiveStates(el);
+
     if (visualContentRef.current) {
       setBlogContent(visualContentRef.current.innerHTML);
-      showNotify('Formatting applied to block successfully!');
     }
   };
 
   const insertList = () => {
     const listHtml = `<ul class="list-disc pl-6 space-y-2 mb-6 text-slate-700"><li>List item 1</li><li>List item 2</li><li>List item 3</li></ul>\n`;
-    applyFormatting('insertHTML', listHtml);
+    insertHtmlAtSelection(listHtml);
   };
 
   const insertTable = () => {
     const tableHtml = `<div class="overflow-x-auto my-6"><table class="w-full border-collapse border border-slate-300"><thead><tr class="bg-slate-100"><th class="border border-slate-300 p-3 text-left font-bold text-black">Header 1</th><th class="border border-slate-300 p-3 text-left font-bold text-black">Header 2</th></tr></thead><tbody><tr><td class="border border-slate-300 p-3 text-black">Row 1 Cell 1</td><td class="border border-slate-300 p-3 text-black">Row 1 Cell 2</td></tr><tr><td class="border border-slate-300 p-3 text-black">Row 2 Cell 1</td><td class="border border-slate-300 p-3 text-black">Row 2 Cell 2</td></tr></tbody></table></div>\n`;
-    applyFormatting('insertHTML', tableHtml);
+    insertHtmlAtSelection(tableHtml);
   };
 
   const handleInsertLink = () => {
@@ -267,6 +356,7 @@ export default function AdminPanelPage() {
       });
       blockEl.classList.add('ring-2', 'ring-blue-400', 'bg-blue-50/20', 'rounded-xl', 'p-2', 'editor-selected-block');
       selectedBlockElementRef.current = blockEl;
+      updateActiveStates(blockEl);
     }
   };
 
@@ -291,8 +381,7 @@ export default function AdminPanelPage() {
       setArticleImages(prev => [...prev, newImg]);
 
       const imgHtml = `<img src="${base64String}" alt="${cleanAlt}" data-img-slug="${imgSlug}" class="w-full rounded-2xl my-6 shadow-md object-cover" />\n`;
-      applyFormatting('insertHTML', imgHtml);
-      showNotify('Image inserted into visual editor!');
+      insertHtmlAtSelection(imgHtml);
     };
     reader.readAsDataURL(file);
     if (contentImageInputRef.current) contentImageInputRef.current.value = '';
@@ -675,7 +764,7 @@ export default function AdminPanelPage() {
                   {editingBlogId ? 'WordPress Visual Editor (Edit Post)' : 'WordPress Visual Editor (New Post)'}
                 </h1>
                 <p className="text-black text-sm font-medium">
-                  Click any paragraph or heading anywhere in the document to select it, then click formatting buttons above to apply formatting instantly.
+                  Select text manually or click any block to format. Active formatting icons glow orange and can be clicked again to undo!
                 </p>
               </div>
 
@@ -1019,7 +1108,7 @@ export default function AdminPanelPage() {
                   </div>
                 </div>
 
-                {/* Sticky Formatting Toolbar with Undo, Redo, List & Table */}
+                {/* Sticky Formatting Toolbar with Active Orange Highlights & Toggle/Undo */}
                 <div className="sticky top-12 z-20 bg-white/95 backdrop-blur-md p-3.5 rounded-2xl border border-slate-200 shadow-lg flex flex-wrap items-center gap-2">
                   <button type="button" onClick={() => applyFormatting('undo')} className="px-3 py-1.5 bg-slate-100 hover:bg-orange-50 hover:text-orange-600 rounded-lg text-xs font-bold text-black transition-colors flex items-center gap-1" title="Undo">
                     <Undo className="w-3.5 h-3.5" /> Undo
@@ -1028,27 +1117,83 @@ export default function AdminPanelPage() {
                     <Redo className="w-3.5 h-3.5" /> Redo
                   </button>
                   <span className="text-slate-300">|</span>
-                  <button type="button" onClick={() => applyBlockFormatting('H1')} className="px-3 py-1.5 bg-slate-100 hover:bg-orange-50 hover:text-orange-600 rounded-lg text-xs font-bold text-black transition-colors flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => applyBlockFormatting('H1')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors flex items-center gap-1 ${
+                      activeBlockType === 'H1'
+                        ? 'bg-orange-100 text-orange-700 border border-orange-300 font-extrabold shadow-sm'
+                        : 'bg-slate-100 text-black hover:bg-orange-50 hover:text-orange-600'
+                    }`}
+                  >
                     <Heading1 className="w-3.5 h-3.5" /> H1
                   </button>
-                  <button type="button" onClick={() => applyBlockFormatting('H2')} className="px-3 py-1.5 bg-slate-100 hover:bg-orange-50 hover:text-orange-600 rounded-lg text-xs font-bold text-black transition-colors flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => applyBlockFormatting('H2')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors flex items-center gap-1 ${
+                      activeBlockType === 'H2'
+                        ? 'bg-orange-100 text-orange-700 border border-orange-300 font-extrabold shadow-sm'
+                        : 'bg-slate-100 text-black hover:bg-orange-50 hover:text-orange-600'
+                    }`}
+                  >
                     <Heading2 className="w-3.5 h-3.5" /> H2
                   </button>
-                  <button type="button" onClick={() => applyBlockFormatting('H3')} className="px-3 py-1.5 bg-slate-100 hover:bg-orange-50 hover:text-orange-600 rounded-lg text-xs font-bold text-black transition-colors flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => applyBlockFormatting('H3')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors flex items-center gap-1 ${
+                      activeBlockType === 'H3'
+                        ? 'bg-orange-100 text-orange-700 border border-orange-300 font-extrabold shadow-sm'
+                        : 'bg-slate-100 text-black hover:bg-orange-50 hover:text-orange-600'
+                    }`}
+                  >
                     <Heading3 className="w-3.5 h-3.5" /> H3
                   </button>
                   <span className="text-slate-300">|</span>
-                  <button type="button" onClick={() => applyBlockFormatting('P')} className="px-3 py-1.5 bg-slate-100 hover:bg-orange-50 hover:text-orange-600 rounded-lg text-xs font-bold text-black transition-colors">
+                  <button
+                    type="button"
+                    onClick={() => applyBlockFormatting('P')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${
+                      activeBlockType === 'P'
+                        ? 'bg-orange-100 text-orange-700 border border-orange-300 font-extrabold shadow-sm'
+                        : 'bg-slate-100 text-black hover:bg-orange-50 hover:text-orange-600'
+                    }`}
+                  >
                     Paragraph
                   </button>
-                  <button type="button" onClick={() => applyBlockFormatting('bold')} className="px-3 py-1.5 bg-slate-100 hover:bg-orange-50 hover:text-orange-600 rounded-lg text-xs font-bold text-black transition-colors flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => applyBlockFormatting('bold')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors flex items-center gap-1 ${
+                      activeBold
+                        ? 'bg-orange-100 text-orange-700 border border-orange-300 font-extrabold shadow-sm'
+                        : 'bg-slate-100 text-black hover:bg-orange-50 hover:text-orange-600'
+                    }`}
+                  >
                     <Bold className="w-3.5 h-3.5" /> Bold
                   </button>
-                  <button type="button" onClick={() => applyBlockFormatting('italic')} className="px-3 py-1.5 bg-slate-100 hover:bg-orange-50 hover:text-orange-600 rounded-lg text-xs font-bold text-black transition-colors flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => applyBlockFormatting('italic')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors flex items-center gap-1 ${
+                      activeItalic
+                        ? 'bg-orange-100 text-orange-700 border border-orange-300 font-extrabold shadow-sm'
+                        : 'bg-slate-100 text-black hover:bg-orange-50 hover:text-orange-600'
+                    }`}
+                  >
                     <Italic className="w-3.5 h-3.5" /> Italic
                   </button>
                   <span className="text-slate-300">|</span>
-                  <button type="button" onClick={handleInsertLink} className="px-3 py-1.5 bg-slate-100 hover:bg-orange-50 hover:text-orange-600 rounded-lg text-xs font-bold text-black transition-colors flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={handleInsertLink}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors flex items-center gap-1 ${
+                      activeLink
+                        ? 'bg-orange-100 text-orange-700 border border-orange-300 font-extrabold shadow-sm'
+                        : 'bg-slate-100 text-black hover:bg-orange-50 hover:text-orange-600'
+                    }`}
+                  >
                     <LinkIcon className="w-3.5 h-3.5" /> Insert Link
                   </button>
                   <button type="button" onClick={insertList} className="px-3 py-1.5 bg-slate-100 hover:bg-orange-50 hover:text-orange-600 rounded-lg text-xs font-bold text-black transition-colors flex items-center gap-1">
@@ -1082,6 +1227,17 @@ export default function AdminPanelPage() {
                     contentEditable={true}
                     suppressContentEditableWarning={true}
                     onClick={handleVisualClick}
+                    onKeyUp={() => {
+                      const sel = window.getSelection();
+                      if (sel && sel.rangeCount > 0) {
+                        let node = sel.anchorNode;
+                        if (node && node.nodeType === Node.TEXT_NODE) node = node.parentNode;
+                        if (node && node instanceof HTMLElement) {
+                          const block = node.closest('p, h1, h2, h3, blockquote, ul, li, table, tr, div');
+                          if (block) updateActiveStates(block as HTMLElement);
+                        }
+                      }
+                    }}
                     className="w-full min-h-[550px] p-6 sm:p-10 bg-slate-50 border border-slate-200 rounded-2xl text-black font-medium focus:outline-none focus:ring-2 focus:ring-orange-600/20 prose max-w-none [&>*]:cursor-text [&>*]:select-text [&>h1]:text-3xl [&>h1]:font-extrabold [&>h1]:mt-6 [&>h1]:mb-4 [&>h2]:text-2xl [&>h2]:font-bold [&>h2]:mt-6 [&>h2]:mb-3 [&>h3]:text-xl [&>h3]:font-semibold [&>h3]:mt-4 [&>h3]:mb-2 [&>p]:mb-6 [&>p]:leading-relaxed [&>p]:text-lg [&>img]:w-full [&>img]:rounded-2xl [&>img]:my-6 [&>img]:shadow-md [&>img]:object-cover"
                   />
                 ) : (
