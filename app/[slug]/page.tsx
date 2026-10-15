@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
@@ -11,6 +11,53 @@ import { fetchBlogPostsFromFirestore, getStoredBlogPostsSync } from '@/lib/stora
 import { BlogPost } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
+
+function getProcessedContentWithTOC(html: string) {
+  if (typeof window === 'undefined') return html;
+
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(html, 'text/html');
+
+  // Find ONLY H2 headings for Table of Contents
+  const h2s = Array.from(doc.querySelectorAll('h2'));
+  if (h2s.length === 0) return html;
+
+  const headings: { id: string; text: string }[] = [];
+  h2s.forEach((h2, idx) => {
+    const id = `toc-heading-${idx}-${h2.textContent?.toLowerCase().replace(/[^a-z0-9]+/g, '-') || idx}`;
+    h2.id = id;
+    headings.push({ id, text: h2.textContent || '' });
+  });
+
+  // Check if TOC already exists to avoid duplicate insertion
+  if (doc.querySelector('.auto-toc-box')) return doc.body.innerHTML;
+
+  const paragraphs = Array.from(doc.querySelectorAll('p'));
+  const tocHtml = `
+    <div class="auto-toc-box my-8 p-6 bg-orange-50/70 border border-orange-200 rounded-2xl shadow-sm space-y-3">
+      <div class="flex items-center gap-2 font-extrabold text-black text-base">
+        <svg class="w-5 h-5 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h7"/></svg>
+        <span>Table of Contents (विषय सूची)</span>
+      </div>
+      <ul class="space-y-1.5 pl-5 list-disc text-sm font-bold text-orange-600">
+        ${headings.map(h => `<li><a href="#${h.id}" class="hover:underline text-orange-600">${h.text}</a></li>`).join('')}
+      </ul>
+    </div>
+  `;
+
+  if (paragraphs.length >= 3) {
+    const thirdP = paragraphs[2];
+    const tempContainer = doc.createElement('div');
+    tempContainer.innerHTML = tocHtml;
+    thirdP.after(tempContainer.firstElementChild!);
+  } else if (doc.body.firstChild) {
+    const tempContainer = doc.createElement('div');
+    tempContainer.innerHTML = tocHtml;
+    doc.body.insertBefore(tempContainer.firstElementChild!, doc.body.firstChild);
+  }
+
+  return doc.body.innerHTML;
+}
 
 export default function SlugPage() {
   const params = useParams();
@@ -33,21 +80,12 @@ export default function SlugPage() {
     loadData();
   }, []);
 
-  useEffect(() => {
-    const faqItems = document.querySelectorAll('.faq-item');
-    faqItems.forEach(item => {
-      item.addEventListener('click', () => {
-        const answer = item.querySelector('.faq-answer');
-        const icon = item.querySelector('.faq-icon');
-        if (answer) {
-          answer.classList.toggle('hidden');
-          if (icon) {
-            icon.textContent = answer.classList.contains('hidden') ? '+' : '-';
-          }
-        }
-      });
-    });
-  }, [posts, slug]);
+  const post = posts.find(p => p.slug === slug);
+  const postContent = post?.content || '';
+  const processedContent = useMemo(() => {
+    if (!postContent) return '';
+    return getProcessedContentWithTOC(postContent);
+  }, [postContent]);
 
   if (loading) {
     return (
@@ -96,16 +134,16 @@ export default function SlugPage() {
             {categoryPosts.length === 0 ? (
               <div className="col-span-3 py-16 text-center text-black font-medium">No articles found in this category yet.</div>
             ) : (
-              categoryPosts.map((post) => (
+              categoryPosts.map((p) => (
                 <Link
-                  key={post.id}
-                  href={`/${post.slug}`}
+                  key={p.id}
+                  href={`/${p.slug}`}
                   className="bg-white rounded-2xl border border-slate-200/80 overflow-hidden shadow-sm hover:shadow-md transition-all flex flex-col group"
                 >
                   <div className="h-48 relative w-full bg-slate-200">
                     <Image
-                      src={post.image}
-                      alt={post.imageAlt || post.title}
+                      src={p.image}
+                      alt={p.imageAlt || p.title}
                       fill
                       sizes="(max-width: 768px) 100vw, 33vw"
                       className="object-cover group-hover:scale-105 transition-transform duration-300"
@@ -115,15 +153,15 @@ export default function SlugPage() {
                   <div className="p-6 flex flex-col justify-between flex-1 space-y-4">
                     <div className="space-y-2">
                       <div className="flex items-center gap-2 text-xs text-black/75 font-medium">
-                        <span>{post.category}</span>
+                        <span>{p.category}</span>
                         <span aria-hidden="true">·</span>
-                        <span>{post.date}</span>
+                        <span>{p.date}</span>
                       </div>
                       <h3 className="font-bold text-black text-lg group-hover:text-orange-600 transition-colors line-clamp-2">
-                        {post.title}
+                        {p.title}
                       </h3>
                       <p className="text-black text-sm leading-relaxed line-clamp-2 font-medium">
-                        {post.excerpt}
+                        {p.excerpt}
                       </p>
                     </div>
 
@@ -141,9 +179,6 @@ export default function SlugPage() {
       </>
     );
   }
-
-  // Otherwise, find individual blog post
-  const post = posts.find(p => p.slug === slug);
 
   if (!post) {
     return (
@@ -229,10 +264,10 @@ export default function SlugPage() {
               </button>
             </div>
 
-            {/* WordPress HTML Content Renderer */}
+            {/* WordPress HTML Content Renderer with Auto-Injected TOC */}
             <div 
               className="prose prose-slate max-w-none text-black leading-relaxed space-y-4 text-base md:text-lg font-medium [&>h1]:text-2xl [&>h1]:md:text-3xl [&>h1]:font-extrabold [&>h1]:text-black [&>h1]:pt-4 [&>h2]:text-xl [&>h2]:md:text-2xl [&>h2]:font-bold [&>h2]:text-black [&>h2]:pt-3 [&>h3]:text-lg [&>h3]:font-bold [&>h3]:text-black [&>ul]:list-disc [&>ul]:ml-6 [&>ol]:list-decimal [&>ol]:ml-6 [&>blockquote]:border-l-4 [&>blockquote]:border-orange-600 [&>blockquote]:pl-4 [&>blockquote]:italic [&>blockquote]:text-black [&>blockquote]:my-4 [&>blockquote]:bg-orange-50/50 [&>blockquote]:py-3 [&>blockquote]:rounded-r-xl"
-              dangerouslySetInnerHTML={{ __html: post.content }}
+              dangerouslySetInnerHTML={{ __html: processedContent }}
             />
 
             {/* Author Box at the end of every blog article */}

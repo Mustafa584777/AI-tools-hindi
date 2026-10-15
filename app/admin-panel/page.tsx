@@ -705,7 +705,23 @@ export default function AdminPanelPage() {
     setBlogImageAlt(b.imageAlt || '');
     setBlogStatus(b.status || 'published');
     setArticleImages([]);
-    setFaqs([]);
+    const parsedFaqs: FAQItem[] = [];
+    if (b.content) {
+      const tempDiv = document.createElement('div');
+      tempDiv.innerHTML = b.content;
+      tempDiv.querySelectorAll('details').forEach(details => {
+        const summary = details.querySelector('summary');
+        const p = details.querySelector('p');
+        if (summary && p) {
+          const qText = summary.textContent?.replace('▼', '').trim() || '';
+          const aText = p.textContent?.trim() || '';
+          if (qText && aText) {
+            parsedFaqs.push({ question: qText, answer: aText });
+          }
+        }
+      });
+    }
+    setFaqs(parsedFaqs);
     setAnalysisResult(null);
     setEditorMode('visual');
     setShowPostSettings(false);
