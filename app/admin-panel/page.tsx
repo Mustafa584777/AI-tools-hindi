@@ -513,14 +513,55 @@ export default function AdminPanelPage() {
         .join('\n');
     }
 
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(cleaned, 'text/html');
+    const imgs = doc.querySelectorAll('img');
+    let firstImgSrc = '';
+    let firstImgSlug = '';
+
+    imgs.forEach((img, idx) => {
+      const oldSrc = img.getAttribute('src') || '';
+      const oldAlt = img.getAttribute('alt') || `Tutorial image ${idx + 1}`;
+      
+      let baseName = oldAlt;
+      if (oldSrc && oldSrc.includes('/')) {
+        const urlParts = oldSrc.split('/');
+        const filename = urlParts[urlParts.length - 1]?.split('?')[0] || '';
+        if (filename && filename.includes('.')) {
+          baseName = filename.substring(0, filename.lastIndexOf('.'));
+        }
+      }
+
+      const imgSlug = baseName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || `wp-image-${idx + 1}`;
+      const cleanSrc = `https://picsum.photos/seed/${imgSlug}/800/450`;
+
+      if (idx === 0) {
+        firstImgSrc = cleanSrc;
+        firstImgSlug = imgSlug;
+      }
+
+      img.setAttribute('src', cleanSrc);
+      img.setAttribute('alt', oldAlt);
+      img.setAttribute('data-img-slug', imgSlug);
+      img.className = 'w-full rounded-2xl my-6 shadow-md object-cover cursor-pointer hover:ring-2 hover:ring-orange-500 transition-all';
+    });
+
+    cleaned = doc.body.innerHTML;
+
     const updated = blogContent ? blogContent + '\n\n' + cleaned : cleaned;
     setBlogContent(updated);
     if (visualContentRef.current) {
       visualContentRef.current.innerHTML = updated;
     }
+
+    if (firstImgSrc && (blogImage.includes('picsum.photos/seed/newpost') || blogImage.includes('blogdefault'))) {
+      setBlogImage(firstImgSrc);
+      setBlogImageSlug(firstImgSlug);
+    }
+
     setWpRawCode('');
     setShowWpImporter(false);
-    showNotify('WordPress code successfully converted and inserted into visual editor!');
+    showNotify('WordPress code imported: Images processed with auto-slugs and clean optimized URLs!');
   };
 
   // FAQ Builder Handlers
@@ -1584,9 +1625,13 @@ export default function AdminPanelPage() {
                       if (selectedImageEl) {
                         selectedImageEl.setAttribute('alt', editImageAlt);
                         selectedImageEl.setAttribute('data-img-slug', editImageSlug);
+                        if (editImageSlug.trim()) {
+                          const newSrc = `https://picsum.photos/seed/${editImageSlug.trim()}/800/450`;
+                          selectedImageEl.setAttribute('src', newSrc);
+                        }
                         if (visualContentRef.current) setBlogContent(visualContentRef.current.innerHTML);
                         setShowImageModal(false);
-                        showNotify('Image alt text & slug updated successfully!');
+                        showNotify('Image alt text, slug & URL updated successfully!');
                       }
                     }}
                     className="px-5 py-2.5 bg-orange-600 hover:bg-orange-700 text-white font-bold rounded-xl text-xs shadow-sm transition-colors"
