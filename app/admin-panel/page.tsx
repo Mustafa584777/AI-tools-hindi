@@ -45,7 +45,7 @@ export default function AdminPanelPage() {
   const [customCategories, setCustomCategories] = useState<string[]>(['AI Guides', 'Image Tutorials', 'Video Tutorials', 'ChatGPT Guides']);
   const [newCatInput, setNewCatInput] = useState('');
 
-  // Full-page Editor View State for Blog
+  // Full-page Editor View State for Blog (Author removed per user request)
   const [isEditingBlog, setIsEditingBlog] = useState(false);
   const [editingBlogId, setEditingBlogId] = useState<string | null>(null);
   const [blogTitle, setBlogTitle] = useState('');
@@ -57,7 +57,6 @@ export default function AdminPanelPage() {
   const [blogCategory, setBlogCategory] = useState('AI Guides');
   const [isNewCategoryMode, setIsNewCategoryMode] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
-  const [blogAuthor, setBlogAuthor] = useState('Anwar');
   const [blogImage, setBlogImage] = useState('https://picsum.photos/seed/blogdefault/800/450');
   const [blogImageAlt, setBlogImageAlt] = useState('');
   const [blogImageSlug, setBlogImageSlug] = useState('');
@@ -146,7 +145,6 @@ export default function AdminPanelPage() {
     loadData();
   }, []);
 
-  // Sync contentEditable div HTML when blogContent changes or editing starts
   useEffect(() => {
     if (editorMode === 'visual' && visualContentRef.current) {
       if (visualContentRef.current.innerHTML !== blogContent) {
@@ -217,7 +215,6 @@ export default function AdminPanelPage() {
     }
   };
 
-  // Robust HTML insertion at selection or end
   const insertHtmlAtSelection = (html: string) => {
     if (!visualContentRef.current) return;
     visualContentRef.current.focus();
@@ -239,7 +236,6 @@ export default function AdminPanelPage() {
     showNotify('Inserted successfully into visual editor!');
   };
 
-  // Dual-mode formatting: applies to manual text selection OR toggles/applies on block level with undo support
   const applyBlockFormatting = (type: 'H1' | 'H2' | 'H3' | 'P' | 'bold' | 'italic' | 'link') => {
     const sel = window.getSelection();
     const hasTextSelection = sel && sel.toString().trim().length > 0;
@@ -268,7 +264,6 @@ export default function AdminPanelPage() {
       return;
     }
 
-    // Block level formatting with Toggle / Undo support
     let el = selectedBlockElementRef.current;
 
     if (!el || !visualContentRef.current?.contains(el)) {
@@ -407,11 +402,9 @@ export default function AdminPanelPage() {
     handleOpenLinkModal();
   };
 
-  // Click handler to select ANY block element or image across the entire document
   const handleVisualClick = (e: React.MouseEvent<HTMLDivElement>) => {
     const target = e.target as HTMLElement;
 
-    // Check if a link was clicked
     const linkTarget = target.tagName === 'A' ? (target as HTMLAnchorElement) : target.closest('a');
     if (linkTarget && visualContentRef.current?.contains(linkTarget)) {
       e.preventDefault();
@@ -422,7 +415,6 @@ export default function AdminPanelPage() {
       return;
     }
 
-    // Check if an image was clicked
     const imgTarget = target.tagName === 'IMG' ? (target as HTMLImageElement) : target.closest('img');
     if (imgTarget && visualContentRef.current?.contains(imgTarget)) {
       setSelectedImageEl(imgTarget);
@@ -783,7 +775,6 @@ export default function AdminPanelPage() {
     setBlogCategory(customCategories[0] || 'AI Guides');
     setIsNewCategoryMode(false);
     setNewCategoryName('');
-    setBlogAuthor('Anwar');
     setBlogImage('https://picsum.photos/seed/newpost/800/450');
     setBlogImageAlt('AI tutorial featured image');
     setBlogImageSlug('ai-tutorial-featured');
@@ -813,7 +804,6 @@ export default function AdminPanelPage() {
     setBlogCategory(cat);
     setIsNewCategoryMode(false);
     setNewCategoryName('');
-    setBlogAuthor(b.author || 'Anwar');
     setBlogImage(b.image);
     setBlogImageAlt(b.imageAlt || '');
     setBlogImageSlug(b.imageSlug || '');
@@ -882,7 +872,7 @@ export default function AdminPanelPage() {
       metaDescription: blogMetaDescription,
       content: finalHtmlContent,
       category: finalCategory,
-      author: blogAuthor || 'Anwar',
+      author: 'Anwar', // default author since author field removed
       date: new Date().toLocaleDateString('hi-IN', { day: 'numeric', month: 'short', year: 'numeric' }),
       readTime: '5 min read',
       image: blogImage,
@@ -1003,7 +993,7 @@ export default function AdminPanelPage() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-1 gap-6">
                   <div>
                     <label className="block text-xs font-bold text-black mb-2">Category *</label>
                     {!isNewCategoryMode ? (
@@ -1060,16 +1050,6 @@ export default function AdminPanelPage() {
                         </button>
                       </div>
                     )}
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-black mb-2">Author (Default: Anwar)</label>
-                    <input
-                      type="text"
-                      value={blogAuthor}
-                      onChange={(e) => setBlogAuthor(e.target.value)}
-                      placeholder="Anwar"
-                      className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm text-black font-medium"
-                    />
                   </div>
                 </div>
 
@@ -1896,7 +1876,7 @@ export default function AdminPanelPage() {
           </button>
         </div>
 
-        {/* Tab 1: Tutorials Manager */}
+        {/* Tab 1: Tutorials Manager (Author column completely removed) */}
         {activeTab === 'tutorials' && (
           <div className="space-y-6">
             <div className="flex items-center justify-between">
@@ -1922,7 +1902,6 @@ export default function AdminPanelPage() {
                       <tr className="bg-slate-50 border-b border-slate-200 text-xs font-extrabold text-black">
                         <th className="p-4">Title & Slug</th>
                         <th className="p-4">Category</th>
-                        <th className="p-4">Author</th>
                         <th className="p-4">Status</th>
                         <th className="p-4 text-right">Actions</th>
                       </tr>
@@ -1937,7 +1916,6 @@ export default function AdminPanelPage() {
                           <td className="p-4 font-semibold text-black">
                             <span className="px-2.5 py-1 bg-orange-50 text-orange-700 rounded-lg">{p.category || 'AI Guides'}</span>
                           </td>
-                          <td className="p-4 font-bold text-black">{p.author || 'Anwar'}</td>
                           <td className="p-4 font-bold">
                             <span className={`px-2.5 py-1 rounded-lg ${p.status === 'draft' ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'}`}>
                               {p.status || 'published'}

@@ -343,16 +343,12 @@ export default async function SlugPage({ params }: { params: Promise<{ slug: str
             {/* Metadata bar */}
             <div className="flex flex-wrap items-center justify-between gap-4 py-4 border-y border-slate-100 text-xs text-black font-medium">
               <div className="flex items-center gap-6">
-                <span className="flex items-center gap-1.5 font-bold text-black">
-                  <User className="w-4 h-4 text-orange-600" />
-                  {post.author || 'Anwar'}
-                </span>
                 <span className="flex items-center gap-1.5">
                   <Calendar className="w-4 h-4 text-orange-600" />
                   {post.date}
                 </span>
                 <span className="flex items-center gap-1.5">
-                  <Clock className="w-4 h-4" />
+                  <Clock className="w-4 h-4 text-orange-600" />
                   {post.readTime}
                 </span>
               </div>
@@ -360,50 +356,6 @@ export default async function SlugPage({ params }: { params: Promise<{ slug: str
 
             {/* WordPress HTML Content Renderer with TOC */}
             <ArticleContent content={post.content} />
-
-            {/* Author Box at the end of every blog article with white links/buttons */}
-            <div className="mt-12 p-6 sm:p-8 bg-slate-900 text-white border border-slate-800 rounded-3xl flex flex-col sm:flex-row items-center sm:items-start gap-6 shadow-md">
-              <div className="w-20 h-20 sm:w-24 sm:h-24 relative rounded-2xl overflow-hidden shrink-0 shadow-md border-2 border-white/20 bg-slate-800">
-                <Image
-                  src="/author.png"
-                  alt="Anwar"
-                  fill
-                  sizes="96px"
-                  className="object-cover"
-                  referrerPolicy="no-referrer"
-                />
-              </div>
-              <div className="space-y-3 text-center sm:text-left flex-1">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                  <div>
-                    <h3 className="text-lg font-extrabold text-white">Anwar</h3>
-                    <p className="text-xs font-bold text-amber-300">AI Tools & Prompt Engineering Expert</p>
-                  </div>
-                  <div className="flex items-center justify-center gap-3">
-                    <a
-                      href="https://x.com/aitool_hindi"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="w-9 h-9 bg-white text-black rounded-xl flex items-center justify-center hover:bg-slate-200 transition-colors shadow-sm"
-                      title="X (Twitter)"
-                    >
-                      <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24">
-                        <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
-                      </svg>
-                    </a>
-                    <Link
-                      href="/"
-                      className="px-3.5 py-2 bg-white text-black hover:bg-slate-200 rounded-xl text-xs font-bold transition-colors shadow-sm whitespace-nowrap"
-                    >
-                      See Author&apos;s Posts
-                    </Link>
-                  </div>
-                </div>
-                <p className="text-xs sm:text-sm text-white/90 leading-relaxed font-medium">
-                  Anwar, AI टूल्स और प्रॉम्प्ट इंजीनियरिंग के क्षेत्र में 5 वर्षों से ज़्यादा का अनुभव रखते हैं, इन्होंने 1000+ हज़ारों AI Tools को analyse और test किया है जिसकी झलक आप इनके हिंदी AI tutorials में भी देख सकते हैं। इनके tutorials से हज़ारों हिंदी readers ने ChatGPT, Gemini, Midjourney, AI image generation और AI video generation जैसी टेक्नोलॉजी का इस्तेमाल सीखा है।
-                </p>
-              </div>
-            </div>
           </div>
         </article>
       </main>
