@@ -16,7 +16,9 @@ export async function fetchBlogPostsFromFirestore(forceRefresh = false): Promise
       if (cachedTime && cachedData) {
         const age = Date.now() - parseInt(cachedTime, 10);
         if (age < CACHE_TTL) {
-          return JSON.parse(cachedData);
+          const parsed: BlogPost[] = JSON.parse(cachedData);
+          parsed.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+          return parsed;
         }
       }
     } catch (e) {
@@ -31,6 +33,8 @@ export async function fetchBlogPostsFromFirestore(forceRefresh = false): Promise
       posts.push(docSnap.data() as BlogPost);
     });
 
+    posts.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+
     if (typeof window !== 'undefined') {
       localStorage.setItem(BLOG_KEY, JSON.stringify(posts));
       localStorage.setItem(CACHE_TIME_KEY, Date.now().toString());
@@ -42,7 +46,9 @@ export async function fetchBlogPostsFromFirestore(forceRefresh = false): Promise
     if (typeof window === 'undefined') return [];
     const local = localStorage.getItem(BLOG_KEY);
     if (!local) return [];
-    return JSON.parse(local);
+    const parsed: BlogPost[] = JSON.parse(local);
+    parsed.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+    return parsed;
   }
 }
 
@@ -54,12 +60,18 @@ export function clearClientCache(): void {
 }
 
 export async function saveBlogPostToFirestore(post: BlogPost): Promise<void> {
+  const postWithTime: BlogPost = {
+    ...post,
+    createdAt: post.createdAt || Date.now()
+  };
+
   // Always save to localStorage first so saving never fails due to network/Firestore issues
   if (typeof window !== 'undefined') {
     try {
       const posts = getStoredBlogPostsSync();
-      const exists = posts.some(p => p.id === post.id);
-      const updated = exists ? posts.map(p => p.id === post.id ? post : p) : [post, ...posts];
+      const exists = posts.some(p => p.id === postWithTime.id);
+      const updated = exists ? posts.map(p => p.id === postWithTime.id ? postWithTime : p) : [postWithTime, ...posts];
+      updated.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
       localStorage.setItem(BLOG_KEY, JSON.stringify(updated));
       localStorage.setItem(CACHE_TIME_KEY, Date.now().toString());
     } catch (e) {
@@ -68,7 +80,7 @@ export async function saveBlogPostToFirestore(post: BlogPost): Promise<void> {
   }
 
   try {
-    await setDoc(doc(db, 'blogPosts', post.id), post);
+    await setDoc(doc(db, 'blogPosts', postWithTime.id), postWithTime);
     clearClientCache();
   } catch (err) {
     console.warn('Firestore sync warning (article successfully saved locally):', err);
@@ -82,6 +94,7 @@ export async function deleteBlogPostFromFirestore(id: string): Promise<void> {
     if (typeof window !== 'undefined') {
       const posts = getStoredBlogPostsSync();
       const updated = posts.filter(p => p.id !== id);
+      updated.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
       localStorage.setItem(BLOG_KEY, JSON.stringify(updated));
       localStorage.setItem(CACHE_TIME_KEY, Date.now().toString());
     }
@@ -96,7 +109,9 @@ export function getStoredBlogPostsSync(): BlogPost[] {
   try {
     const data = localStorage.getItem(BLOG_KEY);
     if (!data) return [];
-    return JSON.parse(data);
+    const posts: BlogPost[] = JSON.parse(data);
+    posts.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+    return posts;
   } catch {
     return [];
   }

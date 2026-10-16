@@ -15,4 +15,5 @@ export interface BlogPost {
   status: 'published' | 'draft';
   noIndex?: boolean;
   faqs?: { question: string; answer: string; }[];
+  createdAt?: number;
 }
