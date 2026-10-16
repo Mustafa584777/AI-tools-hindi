@@ -40,6 +40,7 @@ export default function AdminPanelPage() {
   const [posts, setPosts] = useState<BlogPost[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'tutorials' | 'categories'>('tutorials');
+  const [tutorialSubTab, setTutorialSubTab] = useState<'published' | 'draft'>('published');
 
   // Categories list state
   const [customCategories, setCustomCategories] = useState<string[]>(['AI Guides', 'Image Tutorials', 'Video Tutorials', 'ChatGPT Guides']);
@@ -1931,8 +1932,26 @@ export default function AdminPanelPage() {
         {/* Tab 1: Tutorials Manager (Author column completely removed) */}
         {activeTab === 'tutorials' && (
           <div className="space-y-6">
-            <div className="flex items-center justify-between">
-              <h2 className="text-xl font-extrabold text-black">All Tutorial Articles</h2>
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setTutorialSubTab('published')}
+                  className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
+                    tutorialSubTab === 'published' ? 'bg-emerald-600 text-white shadow-md' : 'bg-white text-black hover:bg-slate-100 border border-slate-200'
+                  }`}
+                >
+                  <span>Published ({posts.filter(p => !p.status || p.status === 'published').length})</span>
+                </button>
+                <button
+                  onClick={() => setTutorialSubTab('draft')}
+                  className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
+                    tutorialSubTab === 'draft' ? 'bg-amber-600 text-white shadow-md' : 'bg-white text-black hover:bg-slate-100 border border-slate-200'
+                  }`}
+                >
+                  <span>Drafts ({posts.filter(p => p.status === 'draft').length})</span>
+                </button>
+              </div>
+
               <button
                 onClick={handleOpenNewBlog}
                 className="px-5 py-2.5 bg-orange-600 hover:bg-orange-700 text-white font-bold rounded-xl text-xs shadow-md inline-flex items-center gap-2 transition-colors"
@@ -1945,8 +1964,10 @@ export default function AdminPanelPage() {
             <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
               {loading ? (
                 <div className="p-12 text-center text-slate-500 font-medium text-sm">Loading tutorials from Firebase...</div>
-              ) : posts.length === 0 ? (
-                <div className="p-12 text-center text-slate-500 font-medium text-sm">No tutorial articles found. Click &quot;Create New Tutorial&quot; above.</div>
+              ) : (tutorialSubTab === 'published' ? posts.filter(p => !p.status || p.status === 'published') : posts.filter(p => p.status === 'draft')).length === 0 ? (
+                <div className="p-12 text-center text-slate-500 font-medium text-sm">
+                  {tutorialSubTab === 'published' ? 'No published tutorial articles found.' : 'No draft articles found.'}
+                </div>
               ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full text-left border-collapse">
@@ -1959,7 +1980,7 @@ export default function AdminPanelPage() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 text-xs">
-                      {posts.map((p) => (
+                      {(tutorialSubTab === 'published' ? posts.filter(p => !p.status || p.status === 'published') : posts.filter(p => p.status === 'draft')).map((p) => (
                         <tr key={p.id} className="hover:bg-slate-50/80 transition-colors">
                           <td className="p-4 space-y-1">
                             <div className="font-bold text-black text-sm">{p.title}</div>
