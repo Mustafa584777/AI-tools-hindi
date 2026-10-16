@@ -1316,10 +1316,10 @@ export default function AdminPanelPage() {
                     अपने पुराने WordPress पोस्ट का HTML या Gutenberg ब्लॉक कोड यहाँ पेस्ट करें। &ldquo;Convert &amp; Insert&rdquo; पर क्लिक करते ही यह विजुअल एडिटर में आ जाएगा।
                   </p>
                   <textarea
-                    rows={5}
+                    rows={15}
                     value={wpRawCode}
                     onChange={(e) => setWpRawCode(e.target.value)}
-                    placeholder="Paste WordPress post code here..."
+                    placeholder="Paste WordPress post code here (supports 5000+ words)..."
                     className="w-full p-4 bg-white border border-orange-200 rounded-xl text-xs font-mono text-black font-medium focus:ring-2 focus:ring-orange-600/20"
                   />
                   <button
