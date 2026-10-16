@@ -96,6 +96,7 @@ export default function AdminPanelPage() {
   const [showWpImporter, setShowWpImporter] = useState(false);
 
   const visualContentRef = useRef<HTMLDivElement>(null);
+  const savedRangeRef = useRef<Range | null>(null);
   const contentImageInputRef = useRef<HTMLInputElement>(null);
   const featuredImageInputRef = useRef<HTMLInputElement>(null);
   const restoreFileInputRef = useRef<HTMLInputElement>(null);
@@ -380,10 +381,54 @@ export default function AdminPanelPage() {
 
   const handleOpenLinkModal = () => {
     const sel = window.getSelection();
-    const selectedText = sel ? sel.toString().trim() : '';
-    setLinkModalText(selectedText);
+    if (sel && sel.rangeCount > 0) {
+      const range = sel.getRangeAt(0);
+      if (visualContentRef.current && visualContentRef.current.contains(range.commonAncestorContainer)) {
+        savedRangeRef.current = range.cloneRange();
+      } else {
+        savedRangeRef.current = null;
+      }
+      const selectedText = sel.toString().trim();
+      setLinkModalText(selectedText);
+    } else {
+      savedRangeRef.current = null;
+      setLinkModalText('');
+    }
     setLinkModalUrl('https://');
     setShowLinkAddModal(true);
+  };
+
+  const insertHtmlAtSavedRange = (html: string) => {
+    if (!visualContentRef.current) return;
+    visualContentRef.current.focus();
+
+    const sel = window.getSelection();
+    if (savedRangeRef.current && sel) {
+      sel.removeAllRanges();
+      sel.addRange(savedRangeRef.current);
+      const range = savedRangeRef.current;
+      range.deleteContents();
+      const frag = range.createContextualFragment(html);
+      range.insertNode(frag);
+      sel.removeAllRanges();
+      savedRangeRef.current = null;
+    } else {
+      if (sel && sel.rangeCount > 0) {
+        const range = sel.getRangeAt(0);
+        if (visualContentRef.current.contains(range.commonAncestorContainer)) {
+          range.deleteContents();
+          const frag = range.createContextualFragment(html);
+          range.insertNode(frag);
+          sel.removeAllRanges();
+        } else {
+          visualContentRef.current.innerHTML += '\n' + html;
+        }
+      } else {
+        visualContentRef.current.innerHTML += '\n' + html;
+      }
+    }
+    setBlogContent(visualContentRef.current.innerHTML);
+    showNotify('Link inserted successfully on selected text!');
   };
 
   const handleConfirmLinkModal = (e: React.FormEvent) => {
@@ -393,9 +438,8 @@ export default function AdminPanelPage() {
     const anchorText = linkModalText.trim() || linkModalUrl;
     const linkHtml = `<a href="${linkModalUrl}" target="_blank" rel="noopener noreferrer" class="text-orange-600 underline font-bold hover:text-orange-700 transition-colors">${anchorText}</a>`;
     
-    insertHtmlAtSelection(linkHtml);
+    insertHtmlAtSavedRange(linkHtml);
     setShowLinkAddModal(false);
-    showNotify('Link inserted with orange highlight successfully!');
   };
 
   const handleInsertLink = () => {
@@ -769,7 +813,7 @@ export default function AdminPanelPage() {
     setIsSlugManual(false);
     setBlogExcerpt('');
     setBlogMetaDescription('');
-    const defaultNewContent = '<h1 class="text-3xl font-extrabold text-black mt-6 mb-4">Article Title</h1>\n<p class="mb-6 text-slate-700 leading-relaxed text-lg">Start writing your tutorial here with proper spacing...</p>';
+    const defaultNewContent = '';
     setBlogContent(defaultNewContent);
     if (visualContentRef.current) visualContentRef.current.innerHTML = defaultNewContent;
     setBlogCategory(customCategories[0] || 'AI Guides');
@@ -864,12 +908,20 @@ export default function AdminPanelPage() {
     const formattedSlug = blogSlug.toLowerCase().replace(/\s+/g, '-');
     const postId = editingBlogId || ('blog-' + formattedSlug);
 
+    let finalMetaDesc = blogMetaDescription.trim();
+    if (!finalMetaDesc) {
+      const tempDiv = document.createElement('div');
+      tempDiv.innerHTML = finalHtmlContent;
+      const plainText = tempDiv.textContent || tempDiv.innerText || '';
+      finalMetaDesc = plainText.trim().substring(0, 160);
+    }
+
     const postToSave: BlogPost = {
       id: postId,
       title: blogTitle,
       slug: formattedSlug,
-      excerpt: blogMetaDescription || blogExcerpt,
-      metaDescription: blogMetaDescription,
+      excerpt: finalMetaDesc,
+      metaDescription: finalMetaDesc,
       content: finalHtmlContent,
       category: finalCategory,
       author: 'Anwar', // default author since author field removed
