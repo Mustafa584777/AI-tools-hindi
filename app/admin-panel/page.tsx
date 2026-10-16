@@ -100,6 +100,7 @@ export default function AdminPanelPage() {
   const visualContentRef = useRef<HTMLDivElement>(null);
   const savedRangeRef = useRef<Range | null>(null);
   const contentImageInputRef = useRef<HTMLInputElement>(null);
+  const contentVideoInputRef = useRef<HTMLInputElement>(null);
   const featuredImageInputRef = useRef<HTMLInputElement>(null);
   const restoreFileInputRef = useRef<HTMLInputElement>(null);
 
@@ -381,22 +382,40 @@ export default function AdminPanelPage() {
     showNotify('YouTube video embed inserted (Click-to-load optimized)!');
   };
 
-  const insertMp4Video = () => {
-    const input = prompt('Enter MP4 Video URL (e.g. https://example.com/video.mp4):', 'https://');
-    if (!input || !input.trim() || input === 'https://') return;
+  const handleContentVideoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
 
-    const videoUrl = input.trim();
-    const mp4EmbedHtml = `
-      <div class="my-6 rounded-2xl overflow-hidden shadow-md bg-black">
-        <video controls class="w-full h-auto max-h-[500px]" preload="metadata">
-          <source src="${videoUrl}" type="video/mp4" />
-          Your browser does not support the video tag.
-        </video>
-      </div>
-    `;
+    if (file.size > 20 * 1024 * 1024) {
+      alert('Video file size is quite large (>20MB). For best web performance, please use compressed MP4 clips.');
+    }
 
-    insertHtmlAtSelection(mp4EmbedHtml);
-    showNotify('MP4 video player inserted successfully!');
+    const reader = new FileReader();
+    reader.onload = (uploadEvent) => {
+      const base64VideoUrl = uploadEvent.target?.result as string;
+      const mp4EmbedHtml = `
+        <div class="my-6 rounded-2xl overflow-hidden shadow-md bg-black">
+          <video controls class="w-full h-auto max-h-[500px]" preload="metadata">
+            <source src="${base64VideoUrl}" type="video/mp4" />
+            Your browser does not support the video tag.
+          </video>
+        </div>
+      `;
+
+      if (selectedBlockElementRef.current && visualContentRef.current?.contains(selectedBlockElementRef.current)) {
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = mp4EmbedHtml;
+        const node = tempDiv.firstChild;
+        selectedBlockElementRef.current.after(node!);
+        setBlogContent(visualContentRef.current.innerHTML);
+        showNotify('Local MP4 video inserted right after selected block!');
+      } else {
+        insertHtmlAtSelection(mp4EmbedHtml);
+        showNotify('Local MP4 video uploaded & inserted successfully!');
+      }
+    };
+    reader.readAsDataURL(file);
+    if (contentVideoInputRef.current) contentVideoInputRef.current.value = '';
   };
 
   const handleOpenLinkModal = () => {
@@ -1593,14 +1612,21 @@ export default function AdminPanelPage() {
                     <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>
                     <span>+ YouTube</span>
                   </button>
-                  <button
-                    type="button"
-                    onClick={insertMp4Video}
-                    className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold shadow-md inline-flex items-center gap-1.5 transition-colors"
+                  <input
+                    type="file"
+                    accept="video/mp4"
+                    ref={contentVideoInputRef}
+                    onChange={handleContentVideoUpload}
+                    className="hidden"
+                    id="visualVideoUpload"
+                  />
+                  <label
+                    htmlFor="visualVideoUpload"
+                    className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold shadow-md inline-flex items-center gap-1.5 cursor-pointer transition-colors"
                   >
                     <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24"><path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z"/></svg>
                     <span>+ MP4 Video</span>
-                  </button>
+                  </label>
                 </div>
 
                 {/* Continuous Visual Editor or HTML Code Mode */}
