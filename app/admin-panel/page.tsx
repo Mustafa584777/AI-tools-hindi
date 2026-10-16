@@ -1,167 +1,62 @@
 'use client';
-/* eslint-disable react-hooks/immutability */
 
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { Plus, Edit, Trash2, Database, CheckCircle, ExternalLink, Sparkles, FileText, ArrowLeft, Image as ImageIcon, Link as LinkIcon, Bold, Italic, Heading1, Heading2, Heading3, Code, Wand2, Upload, X, RefreshCw, Eye, Code2, HelpCircle, Bot, AlertTriangle, TrendingUp, Award, Folder, List, Table, Undo, Redo, Settings, Loader2 } from 'lucide-react';
+import { Plus, Edit, Trash2, Database, CheckCircle, ExternalLink, Sparkles, FileText, ArrowLeft, Image as ImageIcon, Link as LinkIcon, Bold, Italic, Heading1, Heading2, Heading3, Code, Wand2, Upload, X } from 'lucide-react';
+import Navbar from '@/components/Navbar';
+import Footer from '@/components/Footer';
 import { 
   fetchBlogPostsFromFirestore, 
   saveBlogPostToFirestore, 
   deleteBlogPostFromFirestore,
-  getStoredBlogPostsSync,
-  clearClientCache
+  getStoredBlogPostsSync
 } from '@/lib/storage';
 import { BlogPost } from '@/lib/types';
-
-interface ArticleImage {
-  id: string;
-  base64: string;
-  alt: string;
-  slug: string;
-}
-
-interface FAQItem {
-  question: string;
-  answer: string;
-}
-
-interface AIAnalysis {
-  seoScore: number;
-  eeatScore: number;
-  rankingChances: string;
-  mistakes: string[];
-  competitorComparison: string;
-}
-
-const CATEGORIES_KEY = 'aitoolhindi_categories_v1';
 
 export default function AdminPanelPage() {
   const [posts, setPosts] = useState<BlogPost[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'tutorials' | 'categories'>('tutorials');
 
-  // Categories list state
-  const [customCategories, setCustomCategories] = useState<string[]>(['AI Guides', 'Image Tutorials', 'Video Tutorials', 'ChatGPT Guides']);
-  const [newCatInput, setNewCatInput] = useState('');
-
-  // Full-page Editor View State for Blog
+  // Full-page Editor View State for Blog (Author removed per user request)
   const [isEditingBlog, setIsEditingBlog] = useState(false);
   const [editingBlogId, setEditingBlogId] = useState<string | null>(null);
   const [blogTitle, setBlogTitle] = useState('');
   const [blogSlug, setBlogSlug] = useState('');
-  const [isSlugManual, setIsSlugManual] = useState(false);
   const [blogExcerpt, setBlogExcerpt] = useState('');
-  const [blogMetaDescription, setBlogMetaDescription] = useState('');
   const [blogContent, setBlogContent] = useState('');
   const [blogCategory, setBlogCategory] = useState('AI Guides');
-  const [isNewCategoryMode, setIsNewCategoryMode] = useState(false);
-  const [newCategoryName, setNewCategoryName] = useState('');
-  const [blogAuthor, setBlogAuthor] = useState('Anwar');
   const [blogImage, setBlogImage] = useState('https://picsum.photos/seed/blogdefault/800/450');
   const [blogImageAlt, setBlogImageAlt] = useState('');
-  const [blogImageSlug, setBlogImageSlug] = useState('');
   const [blogStatus, setBlogStatus] = useState<'published' | 'draft'>('published');
-  const [blogNoIndex, setBlogNoIndex] = useState(false);
-
-  // Post Settings Toggle State
-  const [showPostSettings, setShowPostSettings] = useState(true);
-
-  // Editor Mode: Visual vs HTML Code Mode
-  const [editorMode, setEditorMode] = useState<'visual' | 'html'>('visual');
-  const selectedBlockElementRef = useRef<HTMLElement | null>(null);
-
-  // Active formatting state for toolbar highlights
-  const [activeBold, setActiveBold] = useState(false);
-  const [activeItalic, setActiveItalic] = useState(false);
-  const [activeLink, setActiveLink] = useState(false);
-  const [activeBlockType, setActiveBlockType] = useState('P');
-
-  // Article Media Library
-  const [articleImages, setArticleImages] = useState<ArticleImage[]>([]);
-
-  // FAQ Builder State
-  const [faqs, setFaqs] = useState<FAQItem[]>([]);
-  const [newFaqQ, setNewFaqQ] = useState('');
-  const [newFaqA, setNewFaqA] = useState('');
-
-  // AI Supervisor State
-  const [aiKeyword, setAiKeyword] = useState('');
-  const [isGeneratingAi, setIsGeneratingAi] = useState(false);
-  const [isAnalyzingAi, setIsAnalyzingAi] = useState(false);
-  const [isOptimizingAi, setIsOptimizingAi] = useState(false);
-  const [analysisResult, setAnalysisResult] = useState<AIAnalysis | null>(null);
 
   // WordPress Code Importer State
   const [wpRawCode, setWpRawCode] = useState('');
   const [showWpImporter, setShowWpImporter] = useState(false);
 
-  const visualContentRef = useRef<HTMLDivElement>(null);
+  // Link Insertion Popup Modal State
+  const [showLinkModal, setShowLinkModal] = useState(false);
+  const [linkInputUrl, setLinkInputUrl] = useState('https://');
+  const [linkInputText, setLinkInputText] = useState('');
+
+  const contentRef = useRef<HTMLTextAreaElement>(null);
   const contentImageInputRef = useRef<HTMLInputElement>(null);
   const featuredImageInputRef = useRef<HTMLInputElement>(null);
-  const restoreFileInputRef = useRef<HTMLInputElement>(null);
-
-  const [isSavingPost, setIsSavingPost] = useState(false);
-  const [showImageModal, setShowImageModal] = useState(false);
-  const [selectedImageEl, setSelectedImageEl] = useState<HTMLImageElement | null>(null);
-  const [editImageAlt, setEditImageAlt] = useState('');
-  const [editImageSlug, setEditImageSlug] = useState('');
-  const [showEditLinkModal, setShowEditLinkModal] = useState(false);
-  const [selectedLinkEl, setSelectedLinkEl] = useState<HTMLAnchorElement | null>(null);
-  const [editLinkUrl, setEditLinkUrl] = useState('');
-  const [editLinkText, setEditLinkText] = useState('');
-
-  // Link Addition Popup Modal State
-  const [showLinkAddModal, setShowLinkAddModal] = useState(false);
-  const [linkModalUrl, setLinkModalUrl] = useState('https://');
-  const [linkModalText, setLinkModalText] = useState('');
 
   const [notification, setNotification] = useState<string | null>(null);
 
-  const loadData = async (force = false) => {
-    setLoading(true);
-    try {
-      const data = await fetchBlogPostsFromFirestore(force);
-      setPosts(data);
+  useEffect(() => {
+    loadData();
+  }, []);
 
-      if (typeof window !== 'undefined') {
-        const storedCats = localStorage.getItem(CATEGORIES_KEY);
-        const derivedCats = Array.from(new Set(data.map(p => p.category).filter(Boolean)));
-        if (storedCats) {
-          const parsed = JSON.parse(storedCats);
-          setCustomCategories(Array.from(new Set([...parsed, ...derivedCats])));
-        } else {
-          setCustomCategories(Array.from(new Set(['AI Guides', 'Image Tutorials', 'Video Tutorials', ...derivedCats])));
-        }
-      }
+  const loadData = async () => {
+    try {
+      const data = await fetchBlogPostsFromFirestore();
+      setPosts(data);
     } catch {
       setPosts(getStoredBlogPostsSync());
     } finally {
       setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    loadData();
-  }, []);
-
-  // Sync contentEditable div HTML when blogContent changes or editing starts
-  useEffect(() => {
-    if (editorMode === 'visual' && visualContentRef.current) {
-      if (visualContentRef.current.innerHTML !== blogContent) {
-        visualContentRef.current.innerHTML = blogContent;
-      }
-    }
-  }, [blogContent, editorMode, isEditingBlog]);
-
-  const updateActiveStates = (el?: HTMLElement | null) => {
-    const targetEl = el || selectedBlockElementRef.current;
-    if (targetEl) {
-      setActiveBold(targetEl.innerHTML.includes('<strong>') || targetEl.innerHTML.includes('<b>') || !!targetEl.querySelector('strong, b'));
-      setActiveItalic(targetEl.innerHTML.includes('<em>') || targetEl.innerHTML.includes('<i>') || !!targetEl.querySelector('em, i'));
-      setActiveLink(targetEl.innerHTML.includes('<a ') || !!targetEl.querySelector('a'));
-      setActiveBlockType(targetEl.tagName.toUpperCase());
     }
   };
 
@@ -170,277 +65,21 @@ export default function AdminPanelPage() {
     setTimeout(() => setNotification(null), 3500);
   };
 
-  const handleClearCacheAndRefresh = () => {
-    clearClientCache();
-    loadData(true);
-    showNotify('24-hour cache cleared successfully! Fetched fresh data from Firebase.');
-  };
-
-  const handleAddGlobalCategory = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newCatInput.trim()) return;
-    const trimmed = newCatInput.trim();
-    if (!customCategories.includes(trimmed)) {
-      const updated = [...customCategories, trimmed];
-      setCustomCategories(updated);
-      if (typeof window !== 'undefined') {
-        localStorage.setItem(CATEGORIES_KEY, JSON.stringify(updated));
-      }
-      showNotify(`Category "${trimmed}" added successfully!`);
-    }
-    setNewCatInput('');
-  };
-
-  const handleDeleteGlobalCategory = (catName: string) => {
-    if (confirm(`Are you sure you want to delete category "${catName}"?`)) {
-      const updated = customCategories.filter(c => c !== catName);
-      setCustomCategories(updated);
-      if (typeof window !== 'undefined') {
-        localStorage.setItem(CATEGORIES_KEY, JSON.stringify(updated));
-      }
-      showNotify(`Category "${catName}" removed.`);
-    }
-  };
-
-  const handleTitleChange = (val: string) => {
-    setBlogTitle(val);
-    if (!isSlugManual) {
-      const generated = val.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
-      setBlogSlug(generated);
-    }
-  };
-
-  const applyFormatting = (command: string, value: string = '') => {
-    document.execCommand(command, false, value);
-    if (visualContentRef.current) {
-      setBlogContent(visualContentRef.current.innerHTML);
-    }
-  };
-
-  // Robust HTML insertion at selection or end
-  const insertHtmlAtSelection = (html: string) => {
-    if (!visualContentRef.current) return;
-    visualContentRef.current.focus();
-    const sel = window.getSelection();
-    if (sel && sel.rangeCount > 0) {
-      const range = sel.getRangeAt(0);
-      if (visualContentRef.current.contains(range.commonAncestorContainer)) {
-        range.deleteContents();
-        const frag = range.createContextualFragment(html);
-        range.insertNode(frag);
-        sel.removeAllRanges();
-        setBlogContent(visualContentRef.current.innerHTML);
-        showNotify('Inserted successfully into visual editor!');
-        return;
-      }
-    }
-    visualContentRef.current.innerHTML += '\n' + html;
-    setBlogContent(visualContentRef.current.innerHTML);
-    showNotify('Inserted successfully into visual editor!');
-  };
-
-  // Dual-mode formatting: applies to manual text selection OR toggles/applies on block level with undo support
-  const applyBlockFormatting = (type: 'H1' | 'H2' | 'H3' | 'P' | 'bold' | 'italic' | 'link') => {
-    const sel = window.getSelection();
-    const hasTextSelection = sel && sel.toString().trim().length > 0;
-
-    if (hasTextSelection) {
-      if (type === 'bold') {
-        document.execCommand('bold', false, '');
-        showNotify('Bold toggled on text');
-      } else if (type === 'italic') {
-        document.execCommand('italic', false, '');
-        showNotify('Italic toggled on text');
-      } else if (type === 'link') {
-        const url = prompt('Enter URL (Link):', 'https://');
-        if (url) {
-          document.execCommand('createLink', false, url);
-          showNotify('Link applied to text');
-        }
-      } else if (type === 'H1' || type === 'H2' || type === 'H3' || type === 'P') {
-        const tag = type === 'H1' ? 'h1' : type === 'H2' ? 'h2' : type === 'H3' ? 'h3' : 'p';
-        document.execCommand('formatBlock', false, tag);
-        showNotify(`Format changed to ${tag.toUpperCase()}`);
-      }
-      if (visualContentRef.current) {
-        setBlogContent(visualContentRef.current.innerHTML);
-      }
-      return;
-    }
-
-    // Block level formatting with Toggle / Undo support
-    let el = selectedBlockElementRef.current;
-
-    if (!el || !visualContentRef.current?.contains(el)) {
-      if (sel && sel.rangeCount > 0) {
-        let node = sel.anchorNode;
-        if (node && node.nodeType === Node.TEXT_NODE) node = node.parentNode;
-        if (node && node instanceof HTMLElement) {
-          el = node.closest('p, h1, h2, h3, blockquote, ul, li, table, tr, div') as HTMLElement;
-        }
-      }
-    }
-
-    if (!el || !visualContentRef.current?.contains(el) || el === visualContentRef.current) {
-      el = visualContentRef.current?.querySelector('p, h1, h2, h3, li') as HTMLElement;
-    }
-
-    if (!el && visualContentRef.current) {
-      const p = document.createElement('p');
-      p.className = 'mb-6 text-slate-700 leading-relaxed text-lg';
-      p.innerHTML = visualContentRef.current.innerHTML || 'New paragraph';
-      visualContentRef.current.appendChild(p);
-      el = p;
-    }
-
-    if (!el) {
-      alert('कृपया एडिटर में पहले किसी भी पैराग्राफ या हेडिंग ब्लॉक पर क्लिक करें!');
-      return;
-    }
-
-    if (type === 'H1' || type === 'H2' || type === 'H3' || type === 'P') {
-      const tag = type === 'H1' ? 'h1' : type === 'H2' ? 'h2' : type === 'H3' ? 'h3' : 'p';
-      const targetTag = el.tagName.toLowerCase() === tag.toLowerCase() ? 'p' : tag;
-      const newEl = document.createElement(targetTag);
-      newEl.innerHTML = el.innerHTML;
-      newEl.className = targetTag === 'h1' ? 'text-3xl font-extrabold text-black mt-6 mb-4' :
-                        targetTag === 'h2' ? 'text-2xl font-bold text-black mt-6 mb-3' :
-                        targetTag === 'h3' ? 'text-xl font-semibold text-black mt-4 mb-2' :
-                        'mb-6 text-slate-700 leading-relaxed text-lg';
-      el.replaceWith(newEl);
-      newEl.classList.add('ring-2', 'ring-blue-400', 'bg-blue-50/20', 'rounded-xl', 'p-2', 'editor-selected-block');
-      selectedBlockElementRef.current = newEl;
-      el = newEl;
-      showNotify(`Block formatted to ${targetTag.toUpperCase()}`);
-    } else if (type === 'bold') {
-      if (el.innerHTML.includes('<strong>') || el.innerHTML.includes('<b>')) {
-        el.innerHTML = el.innerHTML.replace(/<\/?(strong|b)>/gi, '');
-        showNotify('Bold removed from block');
-      } else {
-        el.innerHTML = `<strong>${el.innerHTML}</strong>`;
-        showNotify('Bold applied to block');
-      }
-    } else if (type === 'italic') {
-      if (el.innerHTML.includes('<em>') || el.innerHTML.includes('<i>')) {
-        el.innerHTML = el.innerHTML.replace(/<\/?(em|i)>/gi, '');
-        showNotify('Italic removed from block');
-      } else {
-        el.innerHTML = `<em>${el.innerHTML}</em>`;
-        showNotify('Italic applied to block');
-      }
-    } else if (type === 'link') {
-      handleOpenLinkModal();
-    }
-
-    updateActiveStates(el);
-
-    if (visualContentRef.current) {
-      setBlogContent(visualContentRef.current.innerHTML);
-    }
-  };
-
-  const insertList = () => {
-    const listHtml = `<ul class="list-disc pl-6 space-y-2 mb-6 text-slate-700"><li>List item 1</li><li>List item 2</li><li>List item 3</li></ul>\n`;
-    insertHtmlAtSelection(listHtml);
-  };
-
-  const insertTable = () => {
-    const tableHtml = `<div class="overflow-x-auto my-6"><table class="w-full border-collapse border border-slate-300"><thead><tr class="bg-slate-100"><th class="border border-slate-300 p-3 text-left font-bold text-black">Header 1</th><th class="border border-slate-300 p-3 text-left font-bold text-black">Header 2</th></tr></thead><tbody><tr><td class="border border-slate-300 p-3 text-black">Row 1 Cell 1</td><td class="border border-slate-300 p-3 text-black">Row 1 Cell 2</td></tr><tr><td class="border border-slate-300 p-3 text-black">Row 2 Cell 1</td><td class="border border-slate-300 p-3 text-black">Row 2 Cell 2</td></tr></tbody></table></div>\n`;
-    insertHtmlAtSelection(tableHtml);
-  };
-
-  const insertYouTubeEmbed = () => {
-    const input = prompt('Enter YouTube Video URL or Video ID (e.g., https://www.youtube.com/watch?v=dQw4w9WgXcQ):', '');
-    if (!input) return;
-
-    let videoId = input.trim();
-    if (videoId.includes('youtube.com/watch?v=')) {
-      const urlParams = new URLSearchParams(videoId.split('?')[1]);
-      videoId = urlParams.get('v') || videoId;
-    } else if (videoId.includes('youtu.be/')) {
-      const parts = videoId.split('youtu.be/');
-      videoId = parts[1]?.split('?')[0] || videoId;
-    }
-
-    if (!videoId) {
-      alert('Invalid YouTube URL or Video ID.');
-      return;
-    }
-
-    const youtubeEmbedHtml = `
-      <div class="lite-youtube-embed my-6 relative rounded-2xl overflow-hidden shadow-md bg-black aspect-video cursor-pointer group" data-video-id="${videoId}">
-        <img src="https://img.youtube.com/vi/${videoId}/hqdefault.jpg" alt="YouTube video thumbnail" class="w-full h-full object-cover group-hover:opacity-90 transition-opacity" />
-        <div class="absolute inset-0 flex items-center justify-center">
-          <div class="w-16 h-16 bg-red-600 hover:bg-red-700 text-white rounded-full flex items-center justify-center shadow-xl group-hover:scale-110 transition-transform">
-            <svg class="w-8 h-8 fill-current ml-1" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
-          </div>
-        </div>
-        <div class="absolute bottom-3 left-3 bg-black/75 text-white text-xs px-3 py-1 rounded-lg font-bold">YouTube Video (Click to Play)</div>
-      </div>
-    `;
-
-    insertHtmlAtSelection(youtubeEmbedHtml);
-    showNotify('YouTube video embed inserted (Click-to-load optimized)!');
-  };
-
-  const handleOpenLinkModal = () => {
-    const sel = window.getSelection();
-    const selectedText = sel ? sel.toString().trim() : '';
-    setLinkModalText(selectedText);
-    setLinkModalUrl('https://');
-    setShowLinkAddModal(true);
-  };
-
-  const handleConfirmLinkModal = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!linkModalUrl.trim()) return;
-
-    const anchorText = linkModalText.trim() || linkModalUrl;
-    const linkHtml = `<a href="${linkModalUrl}" target="_blank" rel="noopener noreferrer" class="text-orange-600 underline font-bold hover:text-orange-700 transition-colors">${anchorText}</a>`;
+  const insertTag = (tagOpen: string, tagClose: string = '') => {
+    const textarea = contentRef.current;
+    if (!textarea) return;
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const text = textarea.value;
+    const selectedText = text.substring(start, end) || 'Text here';
+    const replacement = tagOpen + selectedText + tagClose;
     
-    insertHtmlAtSelection(linkHtml);
-    setShowLinkAddModal(false);
-    showNotify('Link inserted with orange highlight successfully!');
-  };
-
-  const handleInsertLink = () => {
-    handleOpenLinkModal();
-  };
-
-  // Click handler to select ANY block element or image across the entire document
-  const handleVisualClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    const target = e.target as HTMLElement;
-
-    // Check if a link was clicked
-    const linkTarget = target.tagName === 'A' ? (target as HTMLAnchorElement) : target.closest('a');
-    if (linkTarget && visualContentRef.current?.contains(linkTarget)) {
-      e.preventDefault();
-      setSelectedLinkEl(linkTarget);
-      setEditLinkUrl(linkTarget.getAttribute('href') || 'https://');
-      setEditLinkText(linkTarget.textContent || '');
-      setShowEditLinkModal(true);
-      return;
-    }
-
-    // Check if an image was clicked
-    const imgTarget = target.tagName === 'IMG' ? (target as HTMLImageElement) : target.closest('img');
-    if (imgTarget && visualContentRef.current?.contains(imgTarget)) {
-      setSelectedImageEl(imgTarget);
-      setEditImageAlt(imgTarget.getAttribute('alt') || '');
-      setEditImageSlug(imgTarget.getAttribute('data-img-slug') || '');
-      setShowImageModal(true);
-      return;
-    }
-
-    const blockEl = target.closest('p, h1, h2, h3, blockquote, ul, table, li, tr') as HTMLElement;
-    if (blockEl && visualContentRef.current?.contains(blockEl) && blockEl !== visualContentRef.current) {
-      visualContentRef.current.querySelectorAll('.editor-selected-block').forEach(el => {
-        el.classList.remove('ring-2', 'ring-blue-400', 'bg-blue-50/20', 'rounded-xl', 'p-2', 'editor-selected-block');
-      });
-      blockEl.classList.add('ring-2', 'ring-blue-400', 'bg-blue-50/20', 'rounded-xl', 'p-2', 'editor-selected-block');
-      selectedBlockElementRef.current = blockEl;
-      updateActiveStates(blockEl);
-    }
+    const newContent = text.substring(0, start) + replacement + text.substring(end);
+    setBlogContent(newContent);
+    setTimeout(() => {
+      textarea.focus();
+      textarea.setSelectionRange(start + tagOpen.length, start + tagOpen.length + selectedText.length);
+    }, 0);
   };
 
   const handleContentImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -450,31 +89,9 @@ export default function AdminPanelPage() {
     const reader = new FileReader();
     reader.onload = (uploadEvent) => {
       const base64String = uploadEvent.target?.result as string;
-      const alt = prompt('Enter Image Alt Text (SEO):', 'Tutorial illustration image');
-      const cleanAlt = alt || 'Tutorial image';
-      const imgSlug = cleanAlt.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
-
-      const newImg: ArticleImage = {
-        id: 'img-' + (articleImages.length + 1),
-        base64: base64String,
-        alt: cleanAlt,
-        slug: imgSlug
-      };
-
-      setArticleImages(prev => [...prev, newImg]);
-
-      const imgHtml = `<img src="${base64String}" alt="${cleanAlt}" data-img-slug="${imgSlug}" class="w-full rounded-2xl my-6 shadow-md object-cover cursor-pointer hover:ring-2 hover:ring-orange-500 transition-all" />\n`;
-
-      if (selectedBlockElementRef.current && visualContentRef.current?.contains(selectedBlockElementRef.current)) {
-        const tempDiv = document.createElement('div');
-        tempDiv.innerHTML = imgHtml;
-        const imgNode = tempDiv.firstChild;
-        selectedBlockElementRef.current.after(imgNode!);
-        setBlogContent(visualContentRef.current.innerHTML);
-        showNotify('Image inserted right after selected block!');
-      } else {
-        insertHtmlAtSelection(imgHtml);
-      }
+      const alt = prompt('Enter Image Alt Text (for SEO & accessibility):', 'Tutorial illustration image');
+      const imgHtml = `<img src="${base64String}" alt="${alt || 'Tutorial image'}" class="w-full rounded-2xl my-4 shadow-md" />\n`;
+      insertTag(imgHtml, '');
     };
     reader.readAsDataURL(file);
     if (contentImageInputRef.current) contentImageInputRef.current.value = '';
@@ -488,14 +105,30 @@ export default function AdminPanelPage() {
     reader.onload = (uploadEvent) => {
       const base64String = uploadEvent.target?.result as string;
       setBlogImage(base64String);
-      if (!blogImageSlug) {
-        const cleanSlug = file.name.replace(/\.[^/.]+$/, "").toLowerCase().replace(/[^a-z0-9]+/g, '-');
-        setBlogImageSlug(cleanSlug);
-      }
       showNotify('Featured image uploaded locally successfully!');
     };
     reader.readAsDataURL(file);
     if (featuredImageInputRef.current) featuredImageInputRef.current.value = '';
+  };
+
+  const handleOpenLinkModal = () => {
+    const textarea = contentRef.current;
+    if (textarea) {
+      const selected = textarea.value.substring(textarea.selectionStart, textarea.selectionEnd);
+      setLinkInputText(selected || '');
+    }
+    setLinkInputUrl('https://');
+    setShowLinkModal(true);
+  };
+
+  const handleConfirmInsertLink = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!linkInputUrl.trim()) return;
+
+    const anchorText = linkInputText.trim() || linkInputUrl;
+    const linkHtml = `<a href="${linkInputUrl}" target="_blank" rel="noopener noreferrer" class="text-orange-600 underline font-bold">${anchorText}</a>`;
+    insertTag(linkHtml, '');
+    setShowLinkModal(false);
   };
 
   const handleConvertWpCode = () => {
@@ -509,291 +142,26 @@ export default function AdminPanelPage() {
     if (!cleaned.includes('<p>') && !cleaned.includes('<h1>')) {
       cleaned = cleaned
         .split('\n\n')
-        .map(p => p.trim() ? `<p class="mb-6 text-slate-700 leading-relaxed text-lg">${p.trim()}</p>` : '')
+        .map(p => p.trim() ? `<p>${p.trim()}</p>` : '')
         .join('\n');
     }
 
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(cleaned, 'text/html');
-    const imgs = doc.querySelectorAll('img');
-    let firstImgSrc = '';
-    let firstImgSlug = '';
-
-    imgs.forEach((img, idx) => {
-      const oldSrc = img.getAttribute('src') || '';
-      const oldAlt = img.getAttribute('alt') || `Tutorial image ${idx + 1}`;
-      
-      let imgSlug = `wp-image-${idx + 1}`;
-      if (oldSrc) {
-        try {
-          const urlObj = new URL(oldSrc, window.location.origin);
-          let pathname = urlObj.pathname;
-          if (pathname.startsWith('/')) {
-            pathname = pathname.substring(1);
-          }
-          if (pathname) {
-            imgSlug = pathname;
-          }
-        } catch {
-          let cleanPath = oldSrc.replace(/^https?:\/\/[^\/]+\//, '');
-          if (cleanPath) {
-            imgSlug = cleanPath;
-          }
-        }
-      }
-
-      if (idx === 0) {
-        firstImgSrc = oldSrc;
-        firstImgSlug = imgSlug;
-      }
-
-      img.setAttribute('src', oldSrc);
-      img.setAttribute('alt', oldAlt);
-      img.setAttribute('data-img-slug', imgSlug);
-      img.className = 'w-full rounded-2xl my-6 shadow-md object-cover cursor-pointer hover:ring-2 hover:ring-orange-500 transition-all';
-    });
-
-    cleaned = doc.body.innerHTML;
-
-    const updated = blogContent ? blogContent + '\n\n' + cleaned : cleaned;
-    setBlogContent(updated);
-    if (visualContentRef.current) {
-      visualContentRef.current.innerHTML = updated;
-    }
-
-    if (firstImgSrc && (blogImage.includes('picsum.photos/seed/newpost') || blogImage.includes('blogdefault'))) {
-      setBlogImage(firstImgSrc);
-      setBlogImageSlug(firstImgSlug);
-    }
-
+    setBlogContent(prev => (prev ? prev + '\n\n' + cleaned : cleaned));
     setWpRawCode('');
     setShowWpImporter(false);
-    showNotify('WordPress code imported: Images processed with auto-slugs and clean optimized URLs!');
-  };
-
-  // FAQ Builder Handlers
-  const handleAddFaq = () => {
-    if (!newFaqQ.trim() || !newFaqA.trim()) return;
-    setFaqs(prevFaqs => {
-      const updatedFaqs = [...prevFaqs, { question: newFaqQ.trim(), answer: newFaqA.trim() }];
-      updateContentWithFaqs(updatedFaqs);
-      return updatedFaqs;
-    });
-    setNewFaqQ('');
-    setNewFaqA('');
-    showNotify('FAQ added and Schema automatically generated!');
-  };
-
-  const handleDeleteFaq = (index: number) => {
-    setFaqs(prevFaqs => {
-      const updatedFaqs = prevFaqs.filter((_, i) => i !== index);
-      updateContentWithFaqs(updatedFaqs);
-      return updatedFaqs;
-    });
-  };
-
-  const updateContentWithFaqs = (currentFaqs: FAQItem[]) => {
-    if (currentFaqs.length === 0) return;
-
-    let faqHtml = `<div class="my-8 p-6 bg-slate-50 border border-slate-200 rounded-3xl space-y-4">\n  <h3 class="text-xl font-bold text-black">Frequently Asked Questions (FAQs)</h3>\n  <div class="space-y-3">\n`;
-
-    currentFaqs.forEach((faq) => {
-      faqHtml += `    <details class="group bg-white border border-slate-200 rounded-2xl p-4 shadow-sm hover:border-orange-400 transition-colors">\n      <summary class="font-bold text-black text-base cursor-pointer flex items-center justify-between">${faq.question} <span class="text-orange-600 group-open:rotate-180 transition-transform">▼</span></summary>\n      <p class="mt-3 text-slate-700 text-sm font-medium pt-3 border-t border-slate-100">${faq.answer}</p>\n    </details>\n`;
-    });
-
-    faqHtml += `  </div>\n</div>\n`;
-
-    const schemaData = {
-      "@context": "https://schema.org",
-      "@type": "FAQPage",
-      "mainEntity": currentFaqs.map(f => ({
-        "@type": "Question",
-        "name": f.question,
-        "acceptedAnswer": {
-          "@type": "Answer",
-          "text": f.answer
-        }
-      }))
-    };
-
-    const schemaScript = `<script type="application/ld+json">\n${JSON.stringify(schemaData, null, 2)}\n</script>`;
-
-    const currentHtml = visualContentRef.current ? visualContentRef.current.innerHTML : blogContent;
-    const tempDiv = document.createElement('div');
-    tempDiv.innerHTML = currentHtml;
-    tempDiv.querySelectorAll('div, script').forEach(el => {
-      if (
-        (el.innerHTML && el.innerHTML.includes('FAQPage')) || 
-        (el.className && typeof el.className === 'string' && el.className.includes('bg-slate-50') && el.innerHTML.includes('Frequently Asked Questions'))
-      ) {
-        el.remove();
-      }
-    });
-
-    const cleanHtml = tempDiv.innerHTML.trim();
-    const updated = cleanHtml + '\n\n' + faqHtml + '\n\n' + schemaScript;
-    setBlogContent(updated);
-    if (visualContentRef.current) visualContentRef.current.innerHTML = updated;
-  };
-
-  // AI Supervisor Actions
-  const handleAiGeneratePost = async () => {
-    if (!aiKeyword.trim()) return;
-    setIsGeneratingAi(true);
-    try {
-      const res = await fetch('/api/ai-supervisor', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'generate', keywordOrTitle: aiKeyword })
-      });
-      const data = await res.json();
-      if (data.title) {
-        setBlogTitle(data.title);
-        setBlogSlug(data.slug || data.title.toLowerCase().replace(/[^a-z0-9]+/g, '-'));
-        const cat = data.category || 'AI Guides';
-        setBlogCategory(cat);
-        if (!customCategories.includes(cat)) {
-          const updatedCats = [...customCategories, cat];
-          setCustomCategories(updatedCats);
-          if (typeof window !== 'undefined') localStorage.setItem(CATEGORIES_KEY, JSON.stringify(updatedCats));
-        }
-        setBlogExcerpt(data.excerpt || '');
-        setBlogContent(data.content || '');
-        if (visualContentRef.current) visualContentRef.current.innerHTML = data.content || '';
-        showNotify('Full Hindi article generated successfully by AI Supervisor!');
-      } else {
-        alert('Failed to generate article.');
-      }
-    } catch (err) {
-      alert('Error generating article: ' + (err as Error).message);
-    } finally {
-      setIsGeneratingAi(false);
-    }
-  };
-
-  const handleAiAnalyzePost = async () => {
-    const currentContent = visualContentRef.current ? visualContentRef.current.innerHTML : blogContent;
-    if (!blogTitle.trim() || !currentContent.trim()) {
-      alert('Please enter a title and content to analyze.');
-      return;
-    }
-    setIsAnalyzingAi(true);
-    try {
-      const res = await fetch('/api/ai-supervisor', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'analyze', keywordOrTitle: blogTitle, content: currentContent })
-      });
-      const data = await res.json();
-      if (data.seoScore !== undefined) {
-        setAnalysisResult(data);
-        showNotify('AI Supervisor analysis complete!');
-      } else {
-        alert('Failed to analyze article.');
-      }
-    } catch (err) {
-      alert('Error analyzing article: ' + (err as Error).message);
-    } finally {
-      setIsAnalyzingAi(false);
-    }
-  };
-
-  const handleAiOptimizePost = async () => {
-    const currentContent = visualContentRef.current ? visualContentRef.current.innerHTML : blogContent;
-    if (!blogTitle.trim() || !currentContent.trim()) {
-      alert('Please enter a title and content to optimize.');
-      return;
-    }
-    setIsOptimizingAi(true);
-    try {
-      const res = await fetch('/api/ai-supervisor', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'optimize', keywordOrTitle: blogTitle, content: currentContent })
-      });
-      const data = await res.json();
-      if (data.title && data.content) {
-        setBlogTitle(data.title);
-        if (data.excerpt) setBlogExcerpt(data.excerpt);
-        setBlogContent(data.content);
-        if (visualContentRef.current) visualContentRef.current.innerHTML = data.content;
-        showNotify('Content successfully optimized by AI Supervisor! Mistakes fixed & SEO boosted.');
-      } else {
-        alert('Failed to optimize article.');
-      }
-    } catch (err) {
-      alert('Error optimizing article: ' + (err as Error).message);
-    } finally {
-      setIsOptimizingAi(false);
-    }
-  };
-
-  const handleExportBackup = () => {
-    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(posts, null, 2));
-    const downloadAnchor = document.createElement('a');
-    downloadAnchor.setAttribute("href", dataStr);
-    downloadAnchor.setAttribute("download", `aitoolhindi-backup-${new Date().toISOString().slice(0, 10)}.json`);
-    document.body.appendChild(downloadAnchor);
-    downloadAnchor.click();
-    downloadAnchor.remove();
-    showNotify('All site articles backup exported successfully!');
-  };
-
-  const handleImportBackup = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = async (uploadEvent) => {
-      try {
-        const content = uploadEvent.target?.result as string;
-        const importedPosts: BlogPost[] = JSON.parse(content);
-        if (!Array.isArray(importedPosts)) {
-          alert('Invalid backup format. Must be an array of articles.');
-          return;
-        }
-
-        if (confirm(`Are you sure you want to restore ${importedPosts.length} articles? This will sync them to Firestore and update existing items.`)) {
-          for (const post of importedPosts) {
-            await saveBlogPostToFirestore(post);
-          }
-          await loadData(true);
-          showNotify(`Successfully restored ${importedPosts.length} articles!`);
-        }
-      } catch (err) {
-        console.error(err);
-        alert('Failed to parse backup JSON file.');
-      } finally {
-        if (restoreFileInputRef.current) restoreFileInputRef.current.value = '';
-      }
-    };
-    reader.readAsText(file);
+    showNotify('WordPress code successfully converted and inserted into editor!');
   };
 
   const handleOpenNewBlog = () => {
     setEditingBlogId(null);
     setBlogTitle('');
     setBlogSlug('');
-    setIsSlugManual(false);
     setBlogExcerpt('');
-    setBlogMetaDescription('');
-    const defaultNewContent = '<h1 class="text-3xl font-extrabold text-black mt-6 mb-4">Article Title</h1>\n<p class="mb-6 text-slate-700 leading-relaxed text-lg">Start writing your tutorial here with proper spacing...</p>';
-    setBlogContent(defaultNewContent);
-    if (visualContentRef.current) visualContentRef.current.innerHTML = defaultNewContent;
-    setBlogCategory(customCategories[0] || 'AI Guides');
-    setIsNewCategoryMode(false);
-    setNewCategoryName('');
-    setBlogAuthor('Anwar');
+    setBlogContent('<h1>Article Title</h1>\n<p>Start writing your tutorial here...</p>');
+    setBlogCategory('AI Guides');
     setBlogImage('https://picsum.photos/seed/newpost/800/450');
     setBlogImageAlt('AI tutorial featured image');
-    setBlogImageSlug('ai-tutorial-featured');
     setBlogStatus('published');
-    setBlogNoIndex(false);
-    setArticleImages([]);
-    setFaqs([]);
-    setAnalysisResult(null);
-    setEditorMode('visual');
-    setShowPostSettings(true);
     setIsEditingBlog(true);
   };
 
@@ -801,107 +169,44 @@ export default function AdminPanelPage() {
     setEditingBlogId(b.id);
     setBlogTitle(b.title);
     setBlogSlug(b.slug);
-    setIsSlugManual(true);
-    setBlogExcerpt(b.excerpt || '');
-    setBlogMetaDescription(b.metaDescription || b.excerpt || '');
+    setBlogExcerpt(b.excerpt);
     setBlogContent(b.content);
-    if (visualContentRef.current) visualContentRef.current.innerHTML = b.content;
-    const cat = b.category || 'AI Guides';
-    if (!customCategories.includes(cat)) {
-      setCustomCategories(prev => [...prev, cat]);
-    }
-    setBlogCategory(cat);
-    setIsNewCategoryMode(false);
-    setNewCategoryName('');
-    setBlogAuthor(b.author || 'Anwar');
+    setBlogCategory(b.category);
     setBlogImage(b.image);
     setBlogImageAlt(b.imageAlt || '');
-    setBlogImageSlug(b.imageSlug || '');
     setBlogStatus(b.status || 'published');
-    setBlogNoIndex(!!b.noIndex);
-    setArticleImages([]);
-    const parsedFaqs: FAQItem[] = [];
-    if (b.content) {
-      const tempDiv = document.createElement('div');
-      tempDiv.innerHTML = b.content;
-      tempDiv.querySelectorAll('details').forEach(details => {
-        const summary = details.querySelector('summary');
-        const p = details.querySelector('p');
-        if (summary && p) {
-          const qText = summary.textContent?.replace('▼', '').trim() || '';
-          const aText = p.textContent?.trim() || '';
-          if (qText && aText) {
-            parsedFaqs.push({ question: qText, answer: aText });
-          }
-        }
-      });
-    }
-    setFaqs(parsedFaqs);
-    setAnalysisResult(null);
-    setEditorMode('visual');
-    setShowPostSettings(false);
     setIsEditingBlog(true);
   };
 
   const handleSaveBlog = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!blogTitle.trim()) {
-      alert('कृपया आर्टिकल का टाइटल (Title) भरें!');
-      return;
-    }
-    if (!blogSlug.trim()) {
-      alert('कृपया URL Slug भरें!');
-      return;
-    }
+    if (!blogTitle.trim() || !blogSlug.trim()) return;
 
-    let finalCategory = blogCategory;
-    if (isNewCategoryMode && newCategoryName.trim()) {
-      finalCategory = newCategoryName.trim();
-      if (!customCategories.includes(finalCategory)) {
-        const updatedCats = [...customCategories, finalCategory];
-        setCustomCategories(updatedCats);
-        if (typeof window !== 'undefined') localStorage.setItem(CATEGORIES_KEY, JSON.stringify(updatedCats));
-      }
-    }
-
-    if (visualContentRef.current) {
-      visualContentRef.current.querySelectorAll('.editor-selected-block').forEach(el => {
-        el.classList.remove('ring-2', 'ring-blue-400', 'bg-blue-50/20', 'rounded-xl', 'p-2', 'editor-selected-block');
-      });
-    }
-
-    const finalHtmlContent = visualContentRef.current ? visualContentRef.current.innerHTML : blogContent;
     const formattedSlug = blogSlug.toLowerCase().replace(/\s+/g, '-');
-    const postId = editingBlogId || ('blog-' + formattedSlug);
+    const postId = editingBlogId || ('blog-' + Date.now());
 
     const postToSave: BlogPost = {
       id: postId,
       title: blogTitle,
       slug: formattedSlug,
-      excerpt: blogMetaDescription || blogExcerpt,
-      metaDescription: blogMetaDescription,
-      content: finalHtmlContent,
-      category: finalCategory,
-      author: blogAuthor || 'Anwar',
+      excerpt: blogExcerpt,
+      content: blogContent,
+      category: blogCategory,
+      author: 'Admin', // default author since author field removed
       date: new Date().toLocaleDateString('hi-IN', { day: 'numeric', month: 'short', year: 'numeric' }),
       readTime: '5 min read',
       image: blogImage,
       imageAlt: blogImageAlt,
-      imageSlug: blogImageSlug,
-      status: blogStatus,
-      noIndex: blogNoIndex
+      status: blogStatus
     };
 
-    setIsSavingPost(true);
     try {
       await saveBlogPostToFirestore(postToSave);
-      await loadData(true);
+      await loadData();
       showNotify(editingBlogId ? 'Tutorial updated & synced with Firebase!' : 'New tutorial published to Firebase!');
       setIsEditingBlog(false);
     } catch (err) {
       alert('Error saving to Firebase: ' + (err as Error).message);
-    } finally {
-      setIsSavingPost(false);
     }
   };
 
@@ -909,7 +214,7 @@ export default function AdminPanelPage() {
     if (confirm('Are you sure you want to delete this tutorial post?')) {
       try {
         await deleteBlogPostFromFirestore(id);
-        await loadData(true);
+        await loadData();
         showNotify('Tutorial deleted.');
       } catch (err) {
         alert('Error deleting: ' + (err as Error).message);
@@ -918,347 +223,43 @@ export default function AdminPanelPage() {
   };
 
   // ==========================================
-  // RENDER CONTINUOUS VISUAL EDITOR
+  // RENDER FULL-PAGE BLOG EDITOR
   // ==========================================
   if (isEditingBlog) {
     return (
-      <div className="min-h-screen bg-slate-100 flex flex-col">
-        {/* Minimal Admin Header Bar */}
-        <header className="bg-slate-900 text-white px-4 py-3 flex items-center justify-between border-b border-slate-800">
-          <div className="flex items-center gap-3">
+      <>
+        <Navbar />
+        <main className="flex-1 max-w-5xl mx-auto px-6 py-10 space-y-8">
+          <div className="flex items-center justify-between">
             <button
               onClick={() => setIsEditingBlog(false)}
-              className="inline-flex items-center gap-2 text-xs font-bold text-slate-300 hover:text-white transition-colors"
+              className="inline-flex items-center gap-2 text-sm font-bold text-black hover:text-orange-600 transition-colors"
             >
               <ArrowLeft className="w-4 h-4" />
-              <span>Back to Admin Dashboard</span>
+              <span>Back to Tutorials Dashboard</span>
             </button>
-            <span className="text-slate-600">|</span>
-            <span className="text-xs font-bold text-orange-400">Anwar&apos;s Article Studio</span>
-          </div>
 
-          <div className="flex items-center gap-3">
-            <span className="text-xs font-bold text-slate-300">Status:</span>
-            <select
-              value={blogStatus}
-              onChange={(e) => setBlogStatus(e.target.value as any)}
-              className="px-3 py-1 bg-slate-800 rounded-lg text-xs font-bold text-white border border-slate-700"
-            >
-              <option value="published">Published</option>
-              <option value="draft">Draft</option>
-            </select>
-          </div>
-        </header>
-
-        <main className="flex-1 max-w-full px-[10px] py-6 space-y-6">
-          <div className="bg-white rounded-3xl border border-slate-200 p-4 sm:p-8 shadow-sm space-y-8">
-            <div className="flex items-center justify-between flex-wrap gap-4">
-              <div className="space-y-1">
-                <h1 className="text-2xl font-extrabold text-black tracking-tight">
-                  {editingBlogId ? 'WordPress Visual Editor (Edit Post)' : 'WordPress Visual Editor (New Post)'}
-                </h1>
-                <p className="text-black text-sm font-medium">
-                  Select text manually or click any block to format. Active formatting icons glow orange and can be clicked again to undo!
-                </p>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => setShowPostSettings(!showPostSettings)}
-                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-black font-bold rounded-xl text-xs inline-flex items-center gap-2 transition-colors border border-slate-300 shadow-sm"
+            <div className="flex items-center gap-3">
+              <span className="text-xs font-bold text-black">Post Status:</span>
+              <select
+                value={blogStatus}
+                onChange={(e) => setBlogStatus(e.target.value as any)}
+                className="px-3 py-1.5 bg-slate-100 rounded-xl text-xs font-bold text-black"
               >
-                <Settings className="w-4 h-4 text-orange-600" />
-                <span>{showPostSettings ? '▲ Hide Post Settings' : '▼ Show Post Settings (Title, Slug, Category, Image)'}</span>
-              </button>
+                <option value="published">Published</option>
+                <option value="draft">Draft</option>
+              </select>
             </div>
+          </div>
 
-            {/* Collapsible Post Settings Section */}
-            {showPostSettings && (
-              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-6 space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div>
-                    <label className="block text-xs font-bold text-black mb-2">Article Title *</label>
-                    <input
-                      type="text"
-                      required
-                      value={blogTitle}
-                      onChange={(e) => handleTitleChange(e.target.value)}
-                      placeholder="उदा: Top 10 AI Tools in Hindi"
-                      className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm text-black font-medium focus:ring-2 focus:ring-orange-600/20"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-black mb-2">URL Slug (Auto-generated) *</label>
-                    <input
-                      type="text"
-                      required
-                      value={blogSlug}
-                      onChange={(e) => {
-                        setBlogSlug(e.target.value);
-                        setIsSlugManual(true);
-                      }}
-                      placeholder="top-ai-tools-in-hindi"
-                      className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-mono text-orange-600 font-bold"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div>
-                    <label className="block text-xs font-bold text-black mb-2">Category *</label>
-                    {!isNewCategoryMode ? (
-                      <div className="flex gap-2">
-                        <select
-                          value={blogCategory}
-                          onChange={(e) => {
-                            if (e.target.value === '__new__') {
-                              setIsNewCategoryMode(true);
-                            } else {
-                              setBlogCategory(e.target.value);
-                            }
-                          }}
-                          className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm text-black font-medium"
-                        >
-                          {customCategories.map(cat => (
-                            <option key={cat} value={cat}>{cat}</option>
-                          ))}
-                          <option value="__new__">+ Add New Category...</option>
-                        </select>
-                      </div>
-                    ) : (
-                      <div className="flex gap-2">
-                        <input
-                          type="text"
-                          value={newCategoryName}
-                          onChange={(e) => setNewCategoryName(e.target.value)}
-                          placeholder="Enter new category name..."
-                          className="w-full px-4 py-3 bg-white border border-orange-300 rounded-xl text-sm text-black font-medium focus:ring-2 focus:ring-orange-600/20"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (newCategoryName.trim()) {
-                              const name = newCategoryName.trim();
-                              if (!customCategories.includes(name)) {
-                                setCustomCategories([...customCategories, name]);
-                              }
-                              setBlogCategory(name);
-                              setIsNewCategoryMode(false);
-                              setNewCategoryName('');
-                            }
-                          }}
-                          className="px-4 py-3 bg-orange-600 hover:bg-orange-700 text-white font-bold rounded-xl text-xs shrink-0"
-                        >
-                          Add
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setIsNewCategoryMode(false)}
-                          className="px-3 py-3 bg-slate-200 hover:bg-slate-300 text-black font-bold rounded-xl text-xs shrink-0"
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-black mb-2">Author (Default: Anwar)</label>
-                    <input
-                      type="text"
-                      value={blogAuthor}
-                      onChange={(e) => setBlogAuthor(e.target.value)}
-                      placeholder="Anwar"
-                      className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm text-black font-medium"
-                    />
-                  </div>
-                </div>
-
-                {/* Featured Image Section */}
-                <div className="space-y-3 bg-white border border-slate-200 p-6 rounded-2xl">
-                  <label className="block text-xs font-bold text-black">Featured Image (Local Upload or URL)</label>
-                  <div className="flex flex-col md:flex-row items-start md:items-center gap-4">
-                    <div className="w-32 h-20 relative rounded-xl overflow-hidden bg-slate-200 border border-slate-300 shrink-0">
-                      <Image
-                        src={blogImage}
-                        alt="Featured preview"
-                        fill
-                        sizes="128px"
-                        className="object-cover"
-                        referrerPolicy="no-referrer"
-                      />
-                    </div>
-                    <div className="space-y-2 flex-1 w-full">
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="file"
-                          accept="image/*"
-                          ref={featuredImageInputRef}
-                          onChange={handleFeaturedImageUpload}
-                          className="hidden"
-                          id="featuredImgUploadInput"
-                        />
-                        <label
-                          htmlFor="featuredImgUploadInput"
-                          className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-xl text-xs font-bold cursor-pointer inline-flex items-center gap-1.5 shadow-sm"
-                        >
-                          <Upload className="w-3.5 h-3.5" />
-                          <span>Upload Featured Image</span>
-                        </label>
-                      </div>
-                      <input
-                        type="text"
-                        value={blogImage.startsWith('data:image/') ? (blogImageSlug ? `[Image Slug: ${blogImageSlug}] (Local Base64 Upload)` : '[Local Uploaded Base64 Image]') : blogImage}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          if (!val.startsWith('[') && !val.startsWith('📁')) {
-                            setBlogImage(val);
-                          }
-                        }}
-                        placeholder="Or paste image URL here..."
-                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs text-black font-medium font-mono"
-                      />
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-3">
-                    <div>
-                      <label className="block text-xs font-bold text-black mb-1">Featured Image Alt Text (SEO)</label>
-                      <input
-                        type="text"
-                        value={blogImageAlt}
-                        onChange={(e) => setBlogImageAlt(e.target.value)}
-                        placeholder="उदा: AI tutorial banner image alt text"
-                        className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-black font-medium"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold text-black mb-1">Featured Image Slug / Identifier</label>
-                      <input
-                        type="text"
-                        value={blogImageSlug}
-                        onChange={(e) => setBlogImageSlug(e.target.value)}
-                        placeholder="उदा: ai-tutorial-banner-slug"
-                        className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-mono text-black font-medium"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-black mb-2">SEO Meta Description (RankMath Style)</label>
-                  <textarea
-                    rows={2}
-                    value={blogMetaDescription}
-                    onChange={(e) => setBlogMetaDescription(e.target.value)}
-                    placeholder="Enter RankMath style meta description for search engines and social sharing..."
-                    className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm text-black font-medium"
-                  />
-                </div>
-
-                <div className="flex items-center gap-3 pt-2">
-                  <input
-                    type="checkbox"
-                    id="blogNoIndexCheck"
-                    checked={blogNoIndex}
-                    onChange={(e) => setBlogNoIndex(e.target.checked)}
-                    className="w-4 h-4 text-orange-600 rounded border-slate-300 focus:ring-orange-500"
-                  />
-                  <label htmlFor="blogNoIndexCheck" className="text-xs font-bold text-black cursor-pointer">
-                    🚫 NoIndex / NoFollow (Hide this tutorial from Google search index & robots)
-                  </label>
-                </div>
-              </div>
-            )}
-
-            {/* AI Supervisor Widget */}
-            <div className="bg-gradient-to-br from-orange-600 to-amber-600 text-white rounded-2xl p-6 shadow-lg space-y-6">
-              <div className="flex items-center gap-2 font-bold text-lg">
-                <Bot className="w-6 h-6 text-amber-200" />
-                <span>AI Supervisor & SEO Auditor</span>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <label className="block text-xs font-bold text-white/90">Generate Post from Keyword / Title</label>
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={aiKeyword}
-                      onChange={(e) => setAiKeyword(e.target.value)}
-                      placeholder="उदा: ChatGPT se time table kaise banaye"
-                      className="w-full px-4 py-2.5 bg-white/10 backdrop-blur-md border border-white/30 rounded-xl text-xs text-white placeholder-white/70 font-medium focus:outline-none"
-                    />
-                    <button
-                      type="button"
-                      disabled={isGeneratingAi}
-                      onClick={handleAiGeneratePost}
-                      className="px-5 py-2.5 bg-white text-orange-600 hover:bg-orange-50 font-bold rounded-xl text-xs shadow-md transition-colors shrink-0 disabled:opacity-50"
-                    >
-                      {isGeneratingAi ? 'Generating...' : 'Generate Post'}
-                    </button>
-                  </div>
-                </div>
-
-                <div className="space-y-2 flex flex-col justify-end">
-                  <label className="block text-xs font-bold text-white/90">Analyze & Optimize Existing Article</label>
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                      disabled={isAnalyzingAi}
-                      onClick={handleAiAnalyzePost}
-                      className="flex-1 py-2.5 bg-black/30 hover:bg-black/40 text-white border border-white/30 font-bold rounded-xl text-xs shadow-md transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
-                    >
-                      <Award className="w-4 h-4 text-amber-200" />
-                      <span>{isAnalyzingAi ? 'Analyzing...' : 'Analyze SEO'}</span>
-                    </button>
-                    <button
-                      type="button"
-                      disabled={isOptimizingAi}
-                      onClick={handleAiOptimizePost}
-                      className="flex-1 py-2.5 bg-white text-orange-600 hover:bg-orange-50 font-bold rounded-xl text-xs shadow-md transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
-                    >
-                      <Sparkles className="w-4 h-4 text-orange-600" />
-                      <span>{isOptimizingAi ? 'Optimizing...' : 'Optimize Content'}</span>
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              {/* Analysis Results Box */}
-              {analysisResult && (
-                <div className="mt-6 p-6 bg-white/10 backdrop-blur-md border border-white/25 rounded-2xl space-y-4 text-white">
-                  <div className="flex flex-wrap items-center justify-between gap-4 border-b border-white/20 pb-4">
-                    <div>
-                      <div className="text-xs text-amber-200 font-bold">SEO Score</div>
-                      <div className="text-2xl font-extrabold">{analysisResult.seoScore} / 100</div>
-                    </div>
-                    <div>
-                      <div className="text-xs text-amber-200 font-bold">E-E-A-T Score</div>
-                      <div className="text-2xl font-extrabold">{analysisResult.eeatScore} / 100</div>
-                    </div>
-                    <div>
-                      <div className="text-xs text-amber-200 font-bold">Ranking Chances</div>
-                      <div className="text-xl font-bold">{analysisResult.rankingChances}</div>
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <div className="text-xs font-bold text-amber-200 flex items-center gap-1.5">
-                      <AlertTriangle className="w-4 h-4" />
-                      <span>Identified Mistakes & Recommendations:</span>
-                    </div>
-                    <ul className="list-disc pl-5 space-y-1 text-xs text-white/90">
-                      {analysisResult.mistakes.map((m, idx) => (
-                        <li key={idx}>{m}</li>
-                      ))}
-                    </ul>
-                  </div>
-
-                  <div className="space-y-1 pt-2 border-t border-white/20">
-                    <div className="text-xs font-bold text-amber-200">Competitor Comparison & Outranking Strategy:</div>
-                    <p className="text-xs text-white/90 leading-relaxed">{analysisResult.competitorComparison}</p>
-                  </div>
-                </div>
-              )}
+          <div className="bg-white rounded-3xl border border-slate-200 p-8 md:p-12 shadow-sm space-y-8">
+            <div className="space-y-2">
+              <h1 className="text-2xl md:text-3xl font-extrabold text-black tracking-tight">
+                {editingBlogId ? 'Edit WordPress Tutorial Post' : 'Create New WordPress Tutorial Post'}
+              </h1>
+              <p className="text-black text-sm font-medium">
+                Write or paste your WordPress article below. Local image upload and popup link insertion supported.
+              </p>
             </div>
 
             {/* WordPress Code Importer Widget */}
@@ -1280,13 +281,13 @@ export default function AdminPanelPage() {
               {showWpImporter && (
                 <div className="space-y-3 pt-2">
                   <p className="text-xs text-black leading-relaxed font-medium">
-                    अपने पुराने WordPress पोस्ट का HTML या Gutenberg ब्लॉक कोड यहाँ पेस्ट करें। &ldquo;Convert &amp; Insert&rdquo; पर क्लिक करते ही यह विजुअल एडिटर में आ जाएगा।
+                    अपने पुराने WordPress पोस्ट का HTML या Gutenberg ब्लॉक कोड यहाँ पेस्ट करें। "Convert & Insert" पर क्लिक करते ही यह साफ HTML फॉर्मेट में नीचे एडिटर में आ जाएगा।
                   </p>
                   <textarea
                     rows={5}
                     value={wpRawCode}
                     onChange={(e) => setWpRawCode(e.target.value)}
-                    placeholder="Paste WordPress post code here..."
+                    placeholder="Paste WordPress post code here (<!-- wp:paragraph --> ...)"
                     className="w-full p-4 bg-white border border-orange-200 rounded-xl text-xs font-mono text-black font-medium focus:ring-2 focus:ring-orange-600/20"
                   />
                   <button
@@ -1302,235 +303,165 @@ export default function AdminPanelPage() {
             </div>
 
             <form onSubmit={handleSaveBlog} className="space-y-6">
-              {/* ========================================== */}
-              {/* CONTINUOUS VISUAL EDITOR & STICKY TOOLBAR */}
-              {/* ========================================== */}
-              <div className="space-y-4">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                  <label className="text-sm font-extrabold text-black">WordPress Visual Editor (Fully Editable Document)</label>
-                  
-                  <div className="flex items-center gap-2 bg-slate-100 p-1 rounded-xl">
-                    <button
-                      type="button"
-                      onClick={() => setEditorMode('visual')}
-                      className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-                        editorMode === 'visual' ? 'bg-white text-orange-600 shadow-sm' : 'text-black hover:text-orange-600'
-                      }`}
-                    >
-                      <Eye className="w-3.5 h-3.5" />
-                      <span>Visual Editor (Normal)</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setEditorMode('html')}
-                      className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-                        editorMode === 'html' ? 'bg-white text-orange-600 shadow-sm' : 'text-black hover:text-orange-600'
-                      }`}
-                    >
-                      <Code2 className="w-3.5 h-3.5" />
-                      <span>HTML Code Mode</span>
-                    </button>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <label className="block text-xs font-bold text-black mb-2">Article Title *</label>
+                  <input
+                    type="text"
+                    required
+                    value={blogTitle}
+                    onChange={(e) => setBlogTitle(e.target.value)}
+                    placeholder="उदा: Top 10 AI Tools in Hindi"
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm text-black font-medium focus:ring-2 focus:ring-orange-600/20"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-black mb-2">Exact WordPress Slug (URL) *</label>
+                  <input
+                    type="text"
+                    required
+                    value={blogSlug}
+                    onChange={(e) => setBlogSlug(e.target.value)}
+                    placeholder="top-ai-tools-in-hindi"
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono text-orange-600 font-bold"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-black mb-2">Category</label>
+                <input
+                  type="text"
+                  value={blogCategory}
+                  onChange={(e) => setBlogCategory(e.target.value)}
+                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm text-black font-medium"
+                />
+              </div>
+
+              {/* Featured Image Local Upload Section */}
+              <div className="space-y-3 bg-slate-50 border border-slate-200 p-6 rounded-2xl">
+                <label className="block text-xs font-bold text-black">Featured Image (Local Upload or URL)</label>
+                <div className="flex flex-col md:flex-row items-start md:items-center gap-4">
+                  <div className="w-32 h-20 relative rounded-xl overflow-hidden bg-slate-200 border border-slate-300 shrink-0">
+                    <Image
+                      src={blogImage}
+                      alt="Featured preview"
+                      fill
+                      sizes="128px"
+                      className="object-cover"
+                      referrerPolicy="no-referrer"
+                    />
+                  </div>
+                  <div className="space-y-2 flex-1 w-full">
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="file"
+                        accept="image/*"
+                        ref={featuredImageInputRef}
+                        onChange={handleFeaturedImageUpload}
+                        className="hidden"
+                        id="featuredImgUploadInput"
+                      />
+                      <label
+                        htmlFor="featuredImgUploadInput"
+                        className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-xl text-xs font-bold cursor-pointer inline-flex items-center gap-1.5 shadow-sm"
+                      >
+                        <Upload className="w-3.5 h-3.5" />
+                        <span>Upload Featured Image from Computer</span>
+                      </label>
+                    </div>
+                    <input
+                      type="url"
+                      value={blogImage}
+                      onChange={(e) => setBlogImage(e.target.value)}
+                      placeholder="Or paste image URL here..."
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs text-black font-medium"
+                    />
                   </div>
                 </div>
+                <div>
+                  <label className="block text-xs font-bold text-black mb-1 mt-2">Image Alt Text (SEO)</label>
+                  <input
+                    type="text"
+                    value={blogImageAlt}
+                    onChange={(e) => setBlogImageAlt(e.target.value)}
+                    placeholder="उदा: AI tutorial banner image"
+                    className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-black font-medium"
+                  />
+                </div>
+              </div>
 
-                {/* Sticky Formatting Toolbar with Active Orange Highlights & Toggle/Undo */}
-                <div className="sticky top-12 z-20 bg-white/95 backdrop-blur-md p-3.5 rounded-2xl border border-slate-200 shadow-lg flex flex-wrap items-center gap-2">
-                  <button type="button" onClick={() => applyFormatting('undo')} className="px-3 py-1.5 bg-slate-100 hover:bg-orange-50 hover:text-orange-600 rounded-lg text-xs font-bold text-black transition-colors flex items-center gap-1" title="Undo">
-                    <Undo className="w-3.5 h-3.5" /> Undo
-                  </button>
-                  <button type="button" onClick={() => applyFormatting('redo')} className="px-3 py-1.5 bg-slate-100 hover:bg-orange-50 hover:text-orange-600 rounded-lg text-xs font-bold text-black transition-colors flex items-center gap-1" title="Redo">
-                    <Redo className="w-3.5 h-3.5" /> Redo
-                  </button>
-                  <span className="text-slate-300">|</span>
-                  <button
-                    type="button"
-                    onClick={() => applyBlockFormatting('H1')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors flex items-center gap-1 ${
-                      activeBlockType === 'H1'
-                        ? 'bg-orange-100 text-orange-700 border border-orange-300 font-extrabold shadow-sm'
-                        : 'bg-slate-100 text-black hover:bg-orange-50 hover:text-orange-600'
-                    }`}
-                  >
+              <div>
+                <label className="block text-xs font-bold text-black mb-2">Excerpt (Short Summary)</label>
+                <textarea
+                  rows={2}
+                  value={blogExcerpt}
+                  onChange={(e) => setBlogExcerpt(e.target.value)}
+                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm text-black font-medium"
+                />
+              </div>
+
+              {/* WordPress-Style Formatting Toolbar */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-black">Rich HTML Content Editor (WordPress Style)</label>
+                  <span className="text-xs text-black font-medium">Insert local images & links via popup</span>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-1.5 p-2.5 bg-slate-100 rounded-xl border border-slate-200">
+                  <button type="button" onClick={() => insertTag('<h1>', '</h1>')} className="px-3 py-1.5 bg-white hover:bg-orange-50 hover:text-orange-600 rounded-lg text-xs font-bold text-black shadow-sm flex items-center gap-1">
                     <Heading1 className="w-3.5 h-3.5" /> H1
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => applyBlockFormatting('H2')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors flex items-center gap-1 ${
-                      activeBlockType === 'H2'
-                        ? 'bg-orange-100 text-orange-700 border border-orange-300 font-extrabold shadow-sm'
-                        : 'bg-slate-100 text-black hover:bg-orange-50 hover:text-orange-600'
-                    }`}
-                  >
+                  <button type="button" onClick={() => insertTag('<h2>', '</h2>')} className="px-3 py-1.5 bg-white hover:bg-orange-50 hover:text-orange-600 rounded-lg text-xs font-bold text-black shadow-sm flex items-center gap-1">
                     <Heading2 className="w-3.5 h-3.5" /> H2
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => applyBlockFormatting('H3')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors flex items-center gap-1 ${
-                      activeBlockType === 'H3'
-                        ? 'bg-orange-100 text-orange-700 border border-orange-300 font-extrabold shadow-sm'
-                        : 'bg-slate-100 text-black hover:bg-orange-50 hover:text-orange-600'
-                    }`}
-                  >
+                  <button type="button" onClick={() => insertTag('<h3>', '</h3>')} className="px-3 py-1.5 bg-white hover:bg-orange-50 hover:text-orange-600 rounded-lg text-xs font-bold text-black shadow-sm flex items-center gap-1">
                     <Heading3 className="w-3.5 h-3.5" /> H3
                   </button>
                   <span className="text-slate-300">|</span>
-                  <button
-                    type="button"
-                    onClick={() => applyBlockFormatting('P')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${
-                      activeBlockType === 'P'
-                        ? 'bg-orange-100 text-orange-700 border border-orange-300 font-extrabold shadow-sm'
-                        : 'bg-slate-100 text-black hover:bg-orange-50 hover:text-orange-600'
-                    }`}
-                  >
+                  <button type="button" onClick={() => insertTag('<p>', '</p>')} className="px-3 py-1.5 bg-white hover:bg-orange-50 hover:text-orange-600 rounded-lg text-xs font-bold text-black shadow-sm">
                     Paragraph
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => applyBlockFormatting('bold')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors flex items-center gap-1 ${
-                      activeBold
-                        ? 'bg-orange-100 text-orange-700 border border-orange-300 font-extrabold shadow-sm'
-                        : 'bg-slate-100 text-black hover:bg-orange-50 hover:text-orange-600'
-                    }`}
-                  >
+                  <button type="button" onClick={() => insertTag('<strong>', '</strong>')} className="px-3 py-1.5 bg-white hover:bg-orange-50 hover:text-orange-600 rounded-lg text-xs font-bold text-black shadow-sm flex items-center gap-1">
                     <Bold className="w-3.5 h-3.5" /> Bold
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => applyBlockFormatting('italic')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors flex items-center gap-1 ${
-                      activeItalic
-                        ? 'bg-orange-100 text-orange-700 border border-orange-300 font-extrabold shadow-sm'
-                        : 'bg-slate-100 text-black hover:bg-orange-50 hover:text-orange-600'
-                    }`}
-                  >
+                  <button type="button" onClick={() => insertTag('<em>', '</em>')} className="px-3 py-1.5 bg-white hover:bg-orange-50 hover:text-orange-600 rounded-lg text-xs font-bold text-black shadow-sm flex items-center gap-1">
                     <Italic className="w-3.5 h-3.5" /> Italic
                   </button>
                   <span className="text-slate-300">|</span>
-                  <button
-                    type="button"
-                    onClick={handleInsertLink}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors flex items-center gap-1 ${
-                      activeLink
-                        ? 'bg-orange-100 text-orange-700 border border-orange-300 font-extrabold shadow-sm'
-                        : 'bg-slate-100 text-black hover:bg-orange-50 hover:text-orange-600'
-                    }`}
-                  >
-                    <LinkIcon className="w-3.5 h-3.5" /> Insert Link
+                  {/* Link Popup Button */}
+                  <button type="button" onClick={handleOpenLinkModal} className="px-3 py-1.5 bg-white hover:bg-orange-50 hover:text-orange-600 rounded-lg text-xs font-bold text-black shadow-sm flex items-center gap-1">
+                    <LinkIcon className="w-3.5 h-3.5" /> Insert Link (Popup)
                   </button>
-                  <button type="button" onClick={insertList} className="px-3 py-1.5 bg-slate-100 hover:bg-orange-50 hover:text-orange-600 rounded-lg text-xs font-bold text-black transition-colors flex items-center gap-1">
-                    <List className="w-3.5 h-3.5" /> Insert List
-                  </button>
-                  <button type="button" onClick={insertTable} className="px-3 py-1.5 bg-slate-100 hover:bg-orange-50 hover:text-orange-600 rounded-lg text-xs font-bold text-black transition-colors flex items-center gap-1">
-                    <Table className="w-3.5 h-3.5" /> Insert Table
-                  </button>
-                  <span className="text-slate-300">|</span>
+                  {/* Local Content Image Upload Button */}
                   <input
                     type="file"
                     accept="image/*"
                     ref={contentImageInputRef}
                     onChange={handleContentImageUpload}
                     className="hidden"
-                    id="visualImgUpload"
+                    id="contentImgUploadInput"
                   />
                   <label
-                    htmlFor="visualImgUpload"
-                    className="px-3.5 py-1.5 bg-orange-600 hover:bg-orange-700 text-white rounded-lg text-xs font-bold shadow-md inline-flex items-center gap-1.5 cursor-pointer transition-colors"
+                    htmlFor="contentImgUploadInput"
+                    className="px-3 py-1.5 bg-white hover:bg-orange-50 hover:text-orange-600 rounded-lg text-xs font-bold text-black shadow-sm flex items-center gap-1 cursor-pointer"
                   >
-                    <Upload className="w-3.5 h-3.5" />
-                    <span>+ Insert Image</span>
+                    <Upload className="w-3.5 h-3.5" /> Upload Image Locally
                   </label>
-                  <button
-                    type="button"
-                    onClick={insertYouTubeEmbed}
-                    className="px-3.5 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-bold shadow-md inline-flex items-center gap-1.5 transition-colors"
-                  >
-                    <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>
-                    <span>+ YouTube</span>
+                  <button type="button" onClick={() => insertTag('<ul>\n  <li>', '</li>\n</ul>')} className="px-3 py-1.5 bg-white hover:bg-orange-50 hover:text-orange-600 rounded-lg text-xs font-bold text-black shadow-sm">
+                    List
                   </button>
                 </div>
 
-                {/* Continuous Visual Editor or HTML Code Mode */}
-                {editorMode === 'visual' ? (
-                  <div
-                    ref={visualContentRef}
-                    contentEditable={true}
-                    suppressContentEditableWarning={true}
-                    onClick={handleVisualClick}
-                    onKeyUp={() => {
-                      const sel = window.getSelection();
-                      if (sel && sel.rangeCount > 0) {
-                        let node = sel.anchorNode;
-                        if (node && node.nodeType === Node.TEXT_NODE) node = node.parentNode;
-                        if (node && node instanceof HTMLElement) {
-                          const block = node.closest('p, h1, h2, h3, blockquote, ul, li, table, tr, div');
-                          if (block) updateActiveStates(block as HTMLElement);
-                        }
-                      }
-                    }}
-                    className="w-full min-h-[550px] p-6 sm:p-10 bg-slate-50 border border-slate-200 rounded-2xl text-black font-medium focus:outline-none focus:ring-2 focus:ring-orange-600/20 prose max-w-none [&>*]:cursor-text [&>*]:select-text [&>h1]:text-3xl [&>h1]:font-extrabold [&>h1]:mt-6 [&>h1]:mb-4 [&>h2]:text-2xl [&>h2]:font-bold [&>h2]:mt-6 [&>h2]:mb-3 [&>h3]:text-xl [&>h3]:font-semibold [&>h3]:mt-4 [&>h3]:mb-2 [&>p]:mb-6 [&>p]:leading-relaxed [&>p]:text-lg [&>img]:w-full [&>img]:rounded-2xl [&>img]:my-6 [&>img]:shadow-md [&>img]:object-cover"
-                  />
-                ) : (
-                  <textarea
-                    rows={20}
-                    value={blogContent}
-                    onChange={(e) => setBlogContent(e.target.value)}
-                    className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-mono text-black font-medium focus:ring-2 focus:ring-orange-600/20"
-                  />
-                )}
-              </div>
-
-              {/* FAQ Builder Section */}
-              <div className="space-y-4 bg-orange-50/50 border border-orange-200 p-6 rounded-2xl">
-                <div className="flex items-center gap-2 text-black font-bold text-sm">
-                  <HelpCircle className="w-4 h-4 text-orange-600" />
-                  <span>FAQ Builder & Schema Generator (FAQ Schema)</span>
-                </div>
-                <p className="text-xs text-black font-medium">Add frequently asked questions at the end of the article. They will automatically be formatted as toggle accordions on the frontend and include Google FAQ JSON-LD Schema.</p>
-
-                <div className="space-y-3">
-                  <input
-                    type="text"
-                    value={newFaqQ}
-                    onChange={(e) => setNewFaqQ(e.target.value)}
-                    placeholder="FAQ Question (उदा: What is ChatGPT in Hindi?)"
-                    className="w-full px-4 py-2.5 bg-white border border-orange-200 rounded-xl text-xs text-black font-medium"
-                  />
-                  <textarea
-                    rows={2}
-                    value={newFaqA}
-                    onChange={(e) => setNewFaqA(e.target.value)}
-                    placeholder="FAQ Answer..."
-                    className="w-full px-4 py-2.5 bg-white border border-orange-200 rounded-xl text-xs text-black font-medium"
-                  />
-                  <button
-                    type="button"
-                    onClick={handleAddFaq}
-                    className="px-5 py-2 bg-orange-600 hover:bg-orange-700 text-white font-bold rounded-xl text-xs shadow-sm transition-colors"
-                  >
-                    + Add FAQ & Generate Schema Block
-                  </button>
-                </div>
-
-                {faqs.length > 0 && (
-                  <div className="space-y-2 pt-3 border-t border-orange-200">
-                    <div className="text-xs font-bold text-black">Added FAQs ({faqs.length}):</div>
-                    {faqs.map((f, idx) => (
-                      <div key={idx} className="bg-white p-3 rounded-xl border border-orange-200 flex items-center justify-between gap-4 text-xs">
-                        <div>
-                          <strong className="text-black">{f.question}</strong>
-                          <p className="text-slate-600 line-clamp-1">{f.answer}</p>
-                        </div>
-                        <button type="button" onClick={() => handleDeleteFaq(idx)} className="text-red-600 hover:text-red-800 font-bold shrink-0">
-                          Delete
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                <textarea
+                  ref={contentRef}
+                  rows={16}
+                  required
+                  value={blogContent}
+                  onChange={(e) => setBlogContent(e.target.value)}
+                  placeholder="Write or paste HTML article content here..."
+                  className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-mono text-black font-medium focus:ring-2 focus:ring-orange-600/20"
+                />
               </div>
 
               <div className="flex items-center justify-end gap-4 pt-6 border-t border-slate-100">
@@ -1543,260 +474,61 @@ export default function AdminPanelPage() {
                 </button>
                 <button
                   type="submit"
-                  disabled={isSavingPost}
-                  className="px-8 py-3 bg-orange-600 hover:bg-orange-700 text-white font-bold rounded-xl text-xs shadow-md inline-flex items-center gap-2 disabled:opacity-75"
+                  className="px-8 py-3 bg-orange-600 hover:bg-orange-700 text-white font-bold rounded-xl text-xs shadow-md"
                 >
-                  {isSavingPost ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      <span>Saving & Publishing...</span>
-                    </>
-                  ) : (
-                    <span>Save & Publish to Firebase</span>
-                  )}
+                  Save & Publish to Firebase
                 </button>
               </div>
             </form>
           </div>
         </main>
 
-        {/* Image Alt Text & Slug Edit Modal */}
-        {showImageModal && (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-3xl max-w-md w-full p-6 space-y-6 shadow-2xl border border-slate-200">
-              <div className="flex items-center justify-between border-b border-slate-100 pb-4">
-                <div className="flex items-center gap-2 font-bold text-black text-lg">
-                  <ImageIcon className="w-5 h-5 text-orange-600" />
-                  <span>Edit Image SEO & Alt Text</span>
-                </div>
-                <button
-                  onClick={() => setShowImageModal(false)}
-                  className="p-2 hover:bg-slate-100 rounded-xl text-slate-500 transition-colors"
-                >
+        {/* Link Insertion Popup Modal */}
+        {showLinkModal && (
+          <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className="bg-white rounded-3xl max-w-md w-full p-8 space-y-6 shadow-2xl">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <h3 className="text-lg font-bold text-black">Insert Hyperlink</h3>
+                <button onClick={() => setShowLinkModal(false)} className="text-slate-400 hover:text-black">
                   <X className="w-5 h-5" />
                 </button>
               </div>
 
-              <div className="space-y-4">
-                <div className="h-40 relative rounded-xl overflow-hidden bg-slate-100 border border-slate-200">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={selectedImageEl?.src || ''}
-                    alt="Preview"
-                    className="w-full h-full object-cover"
-                    referrerPolicy="no-referrer"
-                  />
-                </div>
-
+              <form onSubmit={handleConfirmInsertLink} className="space-y-4">
                 <div>
-                  <label className="block text-xs font-bold text-black mb-1.5">Image Alt Text (for SEO & Accessibility)</label>
-                  <input
-                    type="text"
-                    value={editImageAlt}
-                    onChange={(e) => setEditImageAlt(e.target.value)}
-                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-black focus:ring-2 focus:ring-orange-600/20"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-black mb-1.5">Image URL Slug / Identifier</label>
-                  <input
-                    type="text"
-                    value={editImageSlug}
-                    onChange={(e) => setEditImageSlug(e.target.value)}
-                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono text-black font-medium focus:ring-2 focus:ring-orange-600/20"
-                  />
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between gap-3 pt-4 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (selectedImageEl && confirm('Are you sure you want to delete this image?')) {
-                      selectedImageEl.remove();
-                      if (visualContentRef.current) setBlogContent(visualContentRef.current.innerHTML);
-                      setShowImageModal(false);
-                      showNotify('Image deleted.');
-                    }
-                  }}
-                  className="px-4 py-2.5 bg-red-50 hover:bg-red-100 text-red-600 font-bold rounded-xl text-xs transition-colors"
-                >
-                  Delete Image
-                </button>
-
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setShowImageModal(false)}
-                    className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-black font-bold rounded-xl text-xs transition-colors"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (selectedImageEl) {
-                        selectedImageEl.setAttribute('alt', editImageAlt);
-                        selectedImageEl.setAttribute('data-img-slug', editImageSlug);
-                        if (visualContentRef.current) setBlogContent(visualContentRef.current.innerHTML);
-                        setShowImageModal(false);
-                        showNotify('Image alt text & slug updated successfully!');
-                      }
-                    }}
-                    className="px-5 py-2.5 bg-orange-600 hover:bg-orange-700 text-white font-bold rounded-xl text-xs shadow-sm transition-colors"
-                  >
-                    Save Image Changes
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Edit Clicked Link Popup Modal */}
-        {showEditLinkModal && (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-3xl max-w-md w-full p-6 space-y-6 shadow-2xl border border-slate-200">
-              <div className="flex items-center justify-between border-b border-slate-100 pb-4">
-                <div className="flex items-center gap-2 font-bold text-black text-lg">
-                  <LinkIcon className="w-5 h-5 text-orange-600" />
-                  <span>Edit Inserted Link</span>
-                </div>
-                <button
-                  onClick={() => setShowEditLinkModal(false)}
-                  className="p-2 hover:bg-slate-100 rounded-xl text-slate-500 transition-colors"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-xs font-bold text-black mb-1.5">Link URL (Target)</label>
-                  <input
-                    type="url"
-                    value={editLinkUrl}
-                    onChange={(e) => setEditLinkUrl(e.target.value)}
-                    placeholder="https://example.com"
-                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono text-black font-medium focus:ring-2 focus:ring-orange-600/20"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-black mb-1.5">Link Text (Anchor Text)</label>
-                  <input
-                    type="text"
-                    value={editLinkText}
-                    onChange={(e) => setEditLinkText(e.target.value)}
-                    placeholder="Link text..."
-                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-black focus:ring-2 focus:ring-orange-600/20"
-                  />
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between gap-3 pt-4 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (selectedLinkEl && confirm('Are you sure you want to remove this link (keep text)?')) {
-                      const textContent = selectedLinkEl.textContent || '';
-                      const textNode = document.createTextNode(textContent);
-                      selectedLinkEl.replaceWith(textNode);
-                      if (visualContentRef.current) setBlogContent(visualContentRef.current.innerHTML);
-                      setShowEditLinkModal(false);
-                      showNotify('Link removed successfully.');
-                    }
-                  }}
-                  className="px-4 py-2.5 bg-red-50 hover:bg-red-100 text-red-600 font-bold rounded-xl text-xs transition-colors"
-                >
-                  Remove Link
-                </button>
-
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setShowEditLinkModal(false)}
-                    className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-black font-bold rounded-xl text-xs transition-colors"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      /* eslint-disable react-hooks/immutability */
-                      if (selectedLinkEl) {
-                        selectedLinkEl.setAttribute('href', editLinkUrl);
-                        selectedLinkEl.textContent = editLinkText;
-                        if (visualContentRef.current) setBlogContent(visualContentRef.current.innerHTML);
-                        setShowEditLinkModal(false);
-                        showNotify('Link updated successfully!');
-                      }
-                      /* eslint-enable react-hooks/immutability */
-                    }}
-                    className="px-5 py-2.5 bg-orange-600 hover:bg-orange-700 text-white font-bold rounded-xl text-xs shadow-sm transition-colors"
-                  >
-                    Save Link Changes
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Link Addition Popup Modal */}
-        {showLinkAddModal && (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-3xl max-w-md w-full p-6 space-y-6 shadow-2xl border border-slate-200">
-              <div className="flex items-center justify-between border-b border-slate-100 pb-4">
-                <div className="flex items-center gap-2 font-bold text-black text-lg">
-                  <LinkIcon className="w-5 h-5 text-orange-600" />
-                  <span>Insert Hyperlink (Orange Highlight)</span>
-                </div>
-                <button
-                  onClick={() => setShowLinkAddModal(false)}
-                  className="p-2 hover:bg-slate-100 rounded-xl text-slate-500 transition-colors"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-
-              <form onSubmit={handleConfirmLinkModal} className="space-y-4">
-                <div>
-                  <label className="block text-xs font-bold text-black mb-1.5">Target URL (Link)</label>
+                  <label className="block text-xs font-bold text-black mb-1">Target URL *</label>
                   <input
                     type="url"
                     required
-                    value={linkModalUrl}
-                    onChange={(e) => setLinkModalUrl(e.target.value)}
+                    value={linkInputUrl}
+                    onChange={(e) => setLinkInputUrl(e.target.value)}
                     placeholder="https://example.com"
-                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono text-black font-medium focus:ring-2 focus:ring-orange-600/20"
+                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-black font-medium focus:ring-2 focus:ring-orange-600/20"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-black mb-1.5">Link Text (Anchor Text)</label>
+                  <label className="block text-xs font-bold text-black mb-1">Link Text (Anchor Text)</label>
                   <input
                     type="text"
-                    required
-                    value={linkModalText}
-                    onChange={(e) => setLinkModalText(e.target.value)}
+                    value={linkInputText}
+                    onChange={(e) => setLinkInputText(e.target.value)}
                     placeholder="Click here or selected text"
-                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-black focus:ring-2 focus:ring-orange-600/20"
+                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-black font-medium focus:ring-2 focus:ring-orange-600/20"
                   />
                 </div>
 
                 <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100">
                   <button
                     type="button"
-                    onClick={() => setShowLinkAddModal(false)}
-                    className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-black font-bold rounded-xl text-xs transition-colors"
+                    onClick={() => setShowLinkModal(false)}
+                    className="px-4 py-2 text-xs font-bold text-black hover:bg-slate-100 rounded-xl"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
-                    className="px-5 py-2.5 bg-orange-600 hover:bg-orange-700 text-white font-bold rounded-xl text-xs shadow-sm transition-colors"
+                    className="px-5 py-2.5 bg-orange-600 hover:bg-orange-700 text-white font-bold rounded-xl text-xs shadow-md"
                   >
                     Insert Link
                   </button>
@@ -1805,263 +537,110 @@ export default function AdminPanelPage() {
             </div>
           </div>
         )}
-      </div>
+
+        <Footer />
+      </>
     );
   }
 
+  // ==========================================
+  // RENDER MAIN ADMIN DASHBOARD (Tutorials Only)
+  // ==========================================
   return (
-    <div className="min-h-screen bg-slate-100 flex flex-col">
-      {/* Minimal Admin Header Bar */}
-      <header className="bg-slate-900 text-white px-4 py-3 flex items-center justify-between border-b border-slate-800">
-        <div className="flex items-center gap-3">
-          <Link href="/" className="inline-flex items-center gap-2 text-xs font-bold text-slate-300 hover:text-white transition-colors">
-            <ArrowLeft className="w-4 h-4" />
-            <span>View Live Site</span>
-          </Link>
-          <span className="text-slate-600">|</span>
-          <span className="text-xs font-bold text-orange-400">Anwar&apos;s Admin Dashboard</span>
-        </div>
+    <>
+      <Navbar />
 
-        <div className="flex items-center gap-3">
-          <button
-            onClick={handleClearCacheAndRefresh}
-            className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-xs font-bold inline-flex items-center gap-1.5 border border-slate-700"
-          >
-            <RefreshCw className="w-3.5 h-3.5" />
-            <span>Clear Cache</span>
-          </button>
-        </div>
-      </header>
-
-      <main className="flex-1 max-w-full px-[10px] py-6 space-y-6">
-        {/* Admin Dashboard Header */}
-        <div className="bg-gradient-to-r from-orange-600 to-amber-600 rounded-3xl p-6 sm:p-10 text-white shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
-          <div className="space-y-2">
-            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 bg-white/20 backdrop-blur-md rounded-full text-xs font-bold">
-              <Database className="w-3.5 h-3.5 text-amber-200" />
-              <span>Admin Management Hub (Anwar)</span>
+      <main className="flex-1 max-w-7xl mx-auto px-6 py-12 space-y-8">
+        {/* Header */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="space-y-1">
+            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-orange-50 border border-orange-200 text-orange-700 text-xs font-bold">
+              <Database className="w-3.5 h-3.5 text-orange-600" />
+              <span>Firebase Firestore + WordPress Admin</span>
             </div>
-            <h1 className="text-2xl sm:text-4xl font-extrabold tracking-tight">AI Tool Hindi Admin Panel</h1>
-            <p className="text-white/90 text-sm max-w-xl font-medium">
-              Manage all tutorials, categories, backups, and 24-hour caching seamlessly with Firebase synchronization.
+            <h1 className="text-3xl font-extrabold text-black tracking-tight">Tutorials Content Management</h1>
+            <p className="text-black text-sm font-medium">
+              Manage your high-traffic Hindi AI tutorials, import WordPress code, and publish instantly to Firebase.
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-3">
-            <button
-              onClick={handleExportBackup}
-              className="px-4 py-2.5 bg-white text-orange-600 hover:bg-orange-50 rounded-xl text-xs font-bold inline-flex items-center gap-2 shadow-md transition-all"
-            >
-              <Database className="w-4 h-4" />
-              <span>Backup All Articles (JSON)</span>
-            </button>
-
-            <input
-              type="file"
-              accept=".json"
-              ref={restoreFileInputRef}
-              onChange={handleImportBackup}
-              className="hidden"
-              id="restoreJsonInput"
-            />
-            <label
-              htmlFor="restoreJsonInput"
-              className="px-4 py-2.5 bg-black/30 hover:bg-black/40 border border-white/35 text-white rounded-xl text-xs font-bold inline-flex items-center gap-2 cursor-pointer shadow-md transition-all"
-            >
-              <Upload className="w-4 h-4" />
-              <span>Restore Backup</span>
-            </label>
-          </div>
-        </div>
-
-        {/* Navigation Tabs */}
-        <div className="flex items-center gap-3 border-b border-slate-200 pb-3">
           <button
-            onClick={() => setActiveTab('tutorials')}
-            className={`px-5 py-2.5 rounded-2xl text-xs font-bold transition-all flex items-center gap-2 ${
-              activeTab === 'tutorials' ? 'bg-orange-600 text-white shadow-md' : 'bg-white text-black hover:bg-slate-100 border border-slate-200'
-            }`}
+            onClick={handleOpenNewBlog}
+            className="px-5 py-2.5 bg-orange-600 hover:bg-orange-700 text-white font-bold rounded-xl text-xs shadow-md transition-colors inline-flex items-center gap-2"
           >
-            <FileText className="w-4 h-4" />
-            <span>Tutorials Manager ({posts.length})</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('categories')}
-            className={`px-5 py-2.5 rounded-2xl text-xs font-bold transition-all flex items-center gap-2 ${
-              activeTab === 'categories' ? 'bg-orange-600 text-white shadow-md' : 'bg-white text-black hover:bg-slate-100 border border-slate-200'
-            }`}
-          >
-            <Folder className="w-4 h-4" />
-            <span>Categories Manager ({customCategories.length})</span>
+            <Plus className="w-4 h-4" />
+            <span>Add New Tutorial Post</span>
           </button>
         </div>
 
-        {/* Tab 1: Tutorials Manager */}
-        {activeTab === 'tutorials' && (
-          <div className="space-y-6">
-            <div className="flex items-center justify-between">
-              <h2 className="text-xl font-extrabold text-black">All Tutorial Articles</h2>
-              <button
-                onClick={handleOpenNewBlog}
-                className="px-5 py-2.5 bg-orange-600 hover:bg-orange-700 text-white font-bold rounded-xl text-xs shadow-md inline-flex items-center gap-2 transition-colors"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Create New Tutorial</span>
-              </button>
-            </div>
-
-            <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
-              {loading ? (
-                <div className="p-12 text-center text-slate-500 font-medium text-sm">Loading tutorials from Firebase...</div>
-              ) : posts.length === 0 ? (
-                <div className="p-12 text-center text-slate-500 font-medium text-sm">No tutorial articles found. Click &quot;Create New Tutorial&quot; above.</div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left border-collapse">
-                    <thead>
-                      <tr className="bg-slate-50 border-b border-slate-200 text-xs font-extrabold text-black">
-                        <th className="p-4">Title & Slug</th>
-                        <th className="p-4">Category</th>
-                        <th className="p-4">Author</th>
-                        <th className="p-4">Status</th>
-                        <th className="p-4 text-right">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 text-xs">
-                      {posts.map((p) => (
-                        <tr key={p.id} className="hover:bg-slate-50/80 transition-colors">
-                          <td className="p-4 space-y-1">
-                            <div className="font-bold text-black text-sm">{p.title}</div>
-                            <div className="text-orange-600 font-mono text-[11px]">/{p.slug}</div>
-                          </td>
-                          <td className="p-4 font-semibold text-black">
-                            <span className="px-2.5 py-1 bg-orange-50 text-orange-700 rounded-lg">{p.category || 'AI Guides'}</span>
-                          </td>
-                          <td className="p-4 font-bold text-black">{p.author || 'Anwar'}</td>
-                          <td className="p-4 font-bold">
-                            <span className={`px-2.5 py-1 rounded-lg ${p.status === 'draft' ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'}`}>
-                              {p.status || 'published'}
-                            </span>
-                          </td>
-                          <td className="p-4 text-right space-x-2">
-                            <Link
-                              href={`/${p.slug}`}
-                              target="_blank"
-                              className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-black font-bold rounded-lg text-xs inline-flex items-center gap-1 transition-colors"
-                            >
-                              <ExternalLink className="w-3.5 h-3.5" />
-                              View
-                            </Link>
-                            <button
-                              onClick={() => handleOpenEditBlog(p)}
-                              className="px-3 py-1.5 bg-orange-50 hover:bg-orange-100 text-orange-700 font-bold rounded-lg text-xs transition-colors"
-                            >
-                              Edit
-                            </button>
-                            <button
-                              onClick={() => handleDeleteBlog(p.id)}
-                              className="px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 font-bold rounded-lg text-xs transition-colors"
-                            >
-                              Delete
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
+        {notification && (
+          <div className="p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-2xl text-sm font-bold flex items-center gap-2 shadow-sm">
+            <CheckCircle className="w-5 h-5 text-emerald-600 shrink-0" />
+            <span>{notification}</span>
           </div>
         )}
 
-        {/* Tab 2: Categories Management */}
-        {activeTab === 'categories' && (
-          <div className="space-y-8">
-            <div className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 shadow-sm space-y-4">
-              <h2 className="text-lg font-bold text-black">Add New Category (नई कैटेगरी जोड़ें)</h2>
-              <form onSubmit={handleAddGlobalCategory} className="flex flex-col sm:flex-row gap-3">
-                <input
-                  type="text"
-                  value={newCatInput}
-                  onChange={(e) => setNewCatInput(e.target.value)}
-                  placeholder="Category Name (उदा: Prompt Engineering)..."
-                  className="flex-1 px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm text-black font-medium focus:ring-2 focus:ring-orange-600/20"
-                />
-                <button
-                  type="submit"
-                  className="px-6 py-3 bg-orange-600 hover:bg-orange-700 text-white font-bold rounded-xl text-sm shadow-md transition-colors"
-                >
-                  Add Category
-                </button>
-              </form>
-            </div>
+        {/* Posts Table */}
+        <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+          <div className="p-6 border-b border-slate-100 flex items-center justify-between">
+            <h2 className="text-lg font-bold text-black">All Tutorial Articles ({posts.length})</h2>
+            <span className="text-xs font-semibold text-slate-500">Synced with Firebase Firestore</span>
+          </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {customCategories.map((cat) => {
-                const catSlug = cat.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
-                const catPosts = posts.filter(p => p.category?.toLowerCase() === cat.toLowerCase());
-                return (
-                  <div key={cat} className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm space-y-4 flex flex-col justify-between">
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <Folder className="w-5 h-5 text-orange-600" />
-                          <h3 className="font-extrabold text-black text-lg">{cat}</h3>
-                        </div>
+          {loading ? (
+            <div className="py-16 text-center text-black font-medium">Loading from Firebase...</div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse text-sm">
+                <thead>
+                  <tr className="bg-slate-50 border-b border-slate-200 text-black font-bold text-xs uppercase tracking-wider">
+                    <th className="py-4 px-6">Title & WordPress Slug</th>
+                    <th className="py-4 px-6">Category</th>
+                    <th className="py-4 px-6">Status</th>
+                    <th className="py-4 px-6">Date</th>
+                    <th className="py-4 px-6 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {posts.map((p) => (
+                    <tr key={p.id} className="hover:bg-slate-50/50 transition-colors">
+                      <td className="py-4 px-6">
+                        <div className="font-bold text-black line-clamp-1">{p.title}</div>
+                        <div className="text-xs font-mono text-orange-600 font-bold mt-0.5">/{p.slug}</div>
+                      </td>
+                      <td className="py-4 px-6 text-black font-medium">{p.category}</td>
+                      <td className="py-4 px-6">
+                        <span className={`px-2.5 py-1 text-xs font-bold rounded-full ${
+                          p.status === 'draft' ? 'bg-amber-50 text-amber-800 border border-amber-200' : 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                        }`}>
+                          {p.status === 'draft' ? 'Draft' : 'Published'}
+                        </span>
+                      </td>
+                      <td className="py-4 px-6 text-black/75 text-xs font-medium">{p.date}</td>
+                      <td className="py-4 px-6 text-right space-x-2">
                         <button
-                          onClick={() => handleDeleteGlobalCategory(cat)}
-                          className="p-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-xl text-xs font-bold transition-colors"
-                          title="Delete Category"
+                          onClick={() => handleOpenEditBlog(p)}
+                          className="px-3 py-1.5 bg-slate-100 hover:bg-orange-50 hover:text-orange-600 text-black font-bold rounded-lg text-xs transition-colors"
                         >
-                          <Trash2 className="w-4 h-4" />
+                          Edit
                         </button>
-                      </div>
-
-                      <div className="text-xs text-orange-600 font-mono font-bold">
-                        Archive URL: /{catSlug}
-                      </div>
-
-                      <div className="space-y-1.5 pt-2 border-t border-slate-100">
-                        <div className="text-xs font-bold text-black/70">Articles in this category ({catPosts.length}):</div>
-                        {catPosts.length === 0 ? (
-                          <div className="text-xs text-slate-400 italic">No articles assigned yet.</div>
-                        ) : (
-                          <ul className="space-y-1">
-                            {catPosts.map(p => (
-                              <li key={p.id} className="text-xs text-slate-700 font-medium flex items-center justify-between">
-                                <Link href={`/${p.slug}`} target="_blank" className="hover:text-orange-600 truncate max-w-[220px]">
-                                  • {p.title}
-                                </Link>
-                                <span className="text-[10px] text-slate-400 font-mono">/{p.slug}</span>
-                              </li>
-                            ))}
-                          </ul>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs font-bold text-slate-500">
-                      <span>Total Tutorials: {catPosts.length}</span>
-                      <Link href={`/${catSlug}`} target="_blank" className="text-orange-600 hover:underline inline-flex items-center gap-1">
-                        View Archive <ExternalLink className="w-3 h-3" />
-                      </Link>
-                    </div>
-                  </div>
-                );
-              })}
+                        <button
+                          onClick={() => handleDeleteBlog(p.id)}
+                          className="px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 font-bold rounded-lg text-xs transition-colors"
+                        >
+                          Delete
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </main>
 
-      {/* Floating Notification Toast */}
-      {notification && (
-        <div className="fixed bottom-6 right-6 z-50 bg-slate-900 text-white px-5 py-3 rounded-2xl shadow-2xl border border-slate-800 text-xs font-bold animate-bounce flex items-center gap-2">
-          <CheckCircle className="w-4 h-4 text-emerald-400" />
-          <span>{notification}</span>
-        </div>
-      )}
-    </div>
+      <Footer />
+    </>
   );
 }
