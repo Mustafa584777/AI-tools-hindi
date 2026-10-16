@@ -387,10 +387,11 @@ export default function AdminPanelPage() {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (file.size > 20 * 1024 * 1024) {
-      alert('Video file size is quite large (>20MB). For best web performance, please use compressed MP4 clips.');
+    if (file.size > 25 * 1024 * 1024) {
+      alert('Video file size is quite large (>25MB). Please use compressed MP4 clips for web performance.');
     }
 
+    showNotify('Uploading and encoding MP4 video...');
     const reader = new FileReader();
     reader.onload = (uploadEvent) => {
       const base64VideoUrl = uploadEvent.target?.result as string;
@@ -403,17 +404,11 @@ export default function AdminPanelPage() {
         </div>
       `;
 
-      if (selectedBlockElementRef.current && visualContentRef.current?.contains(selectedBlockElementRef.current)) {
-        const tempDiv = document.createElement('div');
-        tempDiv.innerHTML = mp4EmbedHtml;
-        const node = tempDiv.firstChild;
-        selectedBlockElementRef.current.after(node!);
-        setBlogContent(visualContentRef.current.innerHTML);
-        showNotify('Local MP4 video inserted right after selected block!');
-      } else {
-        insertHtmlAtSelection(mp4EmbedHtml);
-        showNotify('Local MP4 video uploaded & inserted successfully!');
-      }
+      insertHtmlAtSelection(mp4EmbedHtml);
+      showNotify('Local MP4 video successfully uploaded & inserted!');
+    };
+    reader.onerror = () => {
+      alert('Error reading video file.');
     };
     reader.readAsDataURL(file);
     if (contentVideoInputRef.current) contentVideoInputRef.current.value = '';
@@ -2057,6 +2052,89 @@ export default function AdminPanelPage() {
             </button>
           </div>
         </div>
+
+        {/* Local Image Database Stats Screen */}
+        {(() => {
+          let totalImagesCount = 0;
+          let localBase64ImagesCount = 0;
+          let externalWpImagesCount = 0;
+
+          posts.forEach(p => {
+            if (p.image) {
+              totalImagesCount++;
+              if (p.image.startsWith('data:')) localBase64ImagesCount++;
+              else externalWpImagesCount++;
+            }
+            if (p.content) {
+              const matches = p.content.match(/<img[^>]+src="([^">]+)"/g);
+              if (matches) {
+                matches.forEach(m => {
+                  totalImagesCount++;
+                  if (m.includes('src="data:')) localBase64ImagesCount++;
+                  else externalWpImagesCount++;
+                });
+              }
+            }
+          });
+
+          const migrationPercentage = totalImagesCount > 0 ? Math.round((localBase64ImagesCount / totalImagesCount) * 100) : 100;
+
+          return (
+            <div className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 shadow-sm space-y-6">
+              <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+                <div>
+                  <h2 className="text-lg font-extrabold text-black flex items-center gap-2">
+                    <Database className="w-5 h-5 text-orange-600" />
+                    <span>Local Image Database & Vercel Migration Stats</span>
+                  </h2>
+                  <p className="text-xs text-slate-500 font-medium mt-1">
+                    Real-time metrics showing how many images are securely stored locally (Base64) across your articles.
+                  </p>
+                </div>
+                <button
+                  onClick={handleMigrateAllImages}
+                  disabled={isMigratingImages}
+                  className="px-4 py-2.5 bg-orange-600 hover:bg-orange-700 text-white rounded-xl text-xs font-bold inline-flex items-center gap-2 shadow-sm transition-all disabled:opacity-50"
+                >
+                  {isMigratingImages ? <Loader2 className="w-4 h-4 animate-spin text-white" /> : <ImageIcon className="w-4 h-4 text-white" />}
+                  <span>{isMigratingImages ? 'Migrating External Images...' : 'Run WP Image Migration Again (100% Safe)'}</span>
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 space-y-1">
+                  <div className="text-xs font-bold text-slate-500">Total Articles</div>
+                  <div className="text-2xl font-extrabold text-black">{posts.length}</div>
+                </div>
+                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 space-y-1">
+                  <div className="text-xs font-bold text-slate-500">Total Images Tracked</div>
+                  <div className="text-2xl font-extrabold text-black">{totalImagesCount}</div>
+                </div>
+                <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-5 space-y-1">
+                  <div className="text-xs font-bold text-emerald-800">Locally Secured (Base64)</div>
+                  <div className="text-2xl font-extrabold text-emerald-600">{localBase64ImagesCount}</div>
+                </div>
+                <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5 space-y-1">
+                  <div className="text-xs font-bold text-amber-800">External WP URLs</div>
+                  <div className="text-2xl font-extrabold text-amber-600">{externalWpImagesCount}</div>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-xs font-bold text-black">
+                  <span>Vercel Migration Readiness</span>
+                  <span className={migrationPercentage === 100 ? 'text-emerald-600' : 'text-amber-600'}>{migrationPercentage}% Secured</span>
+                </div>
+                <div className="w-full bg-slate-100 rounded-full h-3 overflow-hidden">
+                  <div className="bg-emerald-600 h-3 rounded-full transition-all duration-500" style={{ width: `${migrationPercentage}%` }}></div>
+                </div>
+                <p className="text-[11px] text-slate-500 italic">
+                  Note: Running &quot;Migrate WP Images to Local&quot; multiple times is 100% safe and idempotent. Already converted Base64 images are skipped automatically, and exact WordPress slugs remain untouched.
+                </p>
+              </div>
+            </div>
+          );
+        })()}
 
         {/* Navigation Tabs */}
         <div className="flex items-center gap-3 border-b border-slate-200 pb-3">
