@@ -1579,11 +1579,11 @@ export default function AdminPanelPage() {
 
               <div className="space-y-4">
                 <div className="h-40 relative rounded-xl overflow-hidden bg-slate-100 border border-slate-200">
-                  <Image
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
                     src={selectedImageEl?.src || ''}
                     alt="Preview"
-                    fill
-                    className="object-cover"
+                    className="w-full h-full object-cover"
                     referrerPolicy="no-referrer"
                   />
                 </div>
