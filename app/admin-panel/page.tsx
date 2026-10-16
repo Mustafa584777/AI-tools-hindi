@@ -535,7 +535,7 @@ export default function AdminPanelPage() {
     if (featuredImageInputRef.current) featuredImageInputRef.current.value = '';
   };
 
-  const handleConvertWpCode = () => {
+  const handleConvertWpCode = async () => {
     if (!wpRawCode.trim()) return;
 
     let cleaned = wpRawCode
@@ -553,10 +553,11 @@ export default function AdminPanelPage() {
     const parser = new DOMParser();
     const doc = parser.parseFromString(cleaned, 'text/html');
     const imgs = doc.querySelectorAll('img');
-    let firstImgSrc = '';
+    let firstLocalImgSrc = '';
     let firstImgSlug = '';
 
-    imgs.forEach((img, idx) => {
+    for (let idx = 0; idx < imgs.length; idx++) {
+      const img = imgs[idx];
       const oldSrc = img.getAttribute('src') || '';
       const oldAlt = img.getAttribute('alt') || `Tutorial image ${idx + 1}`;
       
@@ -579,16 +580,29 @@ export default function AdminPanelPage() {
         }
       }
 
+      let localSrc = oldSrc;
+      if (oldSrc && !oldSrc.startsWith('data:')) {
+        try {
+          const res = await fetch(`/api/fetch-image?url=${encodeURIComponent(oldSrc)}`);
+          const data = await res.json();
+          if (data.dataUrl) {
+            localSrc = data.dataUrl;
+          }
+        } catch (e) {
+          console.warn('Failed to convert image to local base64:', e);
+        }
+      }
+
       if (idx === 0) {
-        firstImgSrc = oldSrc;
+        firstLocalImgSrc = localSrc;
         firstImgSlug = imgSlug;
       }
 
-      img.setAttribute('src', oldSrc);
+      img.setAttribute('src', localSrc);
       img.setAttribute('alt', oldAlt);
       img.setAttribute('data-img-slug', imgSlug);
       img.className = 'w-full rounded-2xl my-6 shadow-md object-cover cursor-pointer hover:ring-2 hover:ring-orange-500 transition-all';
-    });
+    }
 
     cleaned = doc.body.innerHTML;
 
@@ -598,14 +612,14 @@ export default function AdminPanelPage() {
       visualContentRef.current.innerHTML = updated;
     }
 
-    if (firstImgSrc && (blogImage.includes('picsum.photos/seed/newpost') || blogImage.includes('blogdefault'))) {
-      setBlogImage(firstImgSrc);
+    if (firstLocalImgSrc && (blogImage.includes('picsum.photos/seed/newpost') || blogImage.includes('blogdefault'))) {
+      setBlogImage(firstLocalImgSrc);
       setBlogImageSlug(firstImgSlug);
     }
 
     setWpRawCode('');
     setShowWpImporter(false);
-    showNotify('WordPress code imported: Images processed with auto-slugs and clean optimized URLs!');
+    showNotify('WordPress code imported & all images successfully converted to local permanent storage (Base64)!');
   };
 
   // FAQ Builder Handlers
