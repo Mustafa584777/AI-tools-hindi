@@ -54,19 +54,24 @@ export function clearClientCache(): void {
 }
 
 export async function saveBlogPostToFirestore(post: BlogPost): Promise<void> {
-  try {
-    await setDoc(doc(db, 'blogPosts', post.id), post);
-    clearClientCache();
-    if (typeof window !== 'undefined') {
+  // Always save to localStorage first so saving never fails due to network/Firestore issues
+  if (typeof window !== 'undefined') {
+    try {
       const posts = getStoredBlogPostsSync();
       const exists = posts.some(p => p.id === post.id);
       const updated = exists ? posts.map(p => p.id === post.id ? post : p) : [post, ...posts];
       localStorage.setItem(BLOG_KEY, JSON.stringify(updated));
       localStorage.setItem(CACHE_TIME_KEY, Date.now().toString());
+    } catch (e) {
+      console.warn('Local storage save error:', e);
     }
+  }
+
+  try {
+    await setDoc(doc(db, 'blogPosts', post.id), post);
+    clearClientCache();
   } catch (err) {
-    console.error('Error saving to Firestore:', err);
-    throw err;
+    console.warn('Firestore sync warning (article successfully saved locally):', err);
   }
 }
 

@@ -838,7 +838,14 @@ export default function AdminPanelPage() {
 
   const handleSaveBlog = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!blogTitle.trim() || !blogSlug.trim()) return;
+    if (!blogTitle.trim()) {
+      alert('कृपया आर्टिकल का टाइटल (Title) भरें!');
+      return;
+    }
+    if (!blogSlug.trim()) {
+      alert('कृपया URL Slug भरें!');
+      return;
+    }
 
     let finalCategory = blogCategory;
     if (isNewCategoryMode && newCategoryName.trim()) {
