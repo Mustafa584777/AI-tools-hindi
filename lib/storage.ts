@@ -9,16 +9,24 @@ const CACHE_TIME_KEY = 'aitoolhindi_cache_timestamp';
 const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
 
 export async function fetchBlogPostsFromFirestore(forceRefresh = false): Promise<BlogPost[]> {
-  if (typeof window !== 'undefined' && !forceRefresh) {
+  let localPosts: BlogPost[] = [];
+  if (typeof window !== 'undefined') {
+    try {
+      const local = localStorage.getItem(BLOG_KEY);
+      if (local) localPosts = JSON.parse(local);
+    } catch (e) {
+      console.warn('Local read error:', e);
+    }
+  }
+
+  if (typeof window !== 'undefined' && !forceRefresh && localPosts.length > 0) {
     try {
       const cachedTime = localStorage.getItem(CACHE_TIME_KEY);
-      const cachedData = localStorage.getItem(BLOG_KEY);
-      if (cachedTime && cachedData) {
+      if (cachedTime) {
         const age = Date.now() - parseInt(cachedTime, 10);
         if (age < CACHE_TTL) {
-          const parsed: BlogPost[] = JSON.parse(cachedData);
-          parsed.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-          return parsed;
+          localPosts.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+          return localPosts;
         }
       }
     } catch (e) {
@@ -28,27 +36,29 @@ export async function fetchBlogPostsFromFirestore(forceRefresh = false): Promise
 
   try {
     const querySnapshot = await getDocs(collection(db, 'blogPosts'));
-    const posts: BlogPost[] = [];
+    const firestorePosts: BlogPost[] = [];
     querySnapshot.forEach((docSnap) => {
-      posts.push(docSnap.data() as BlogPost);
+      firestorePosts.push(docSnap.data() as BlogPost);
     });
 
-    posts.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+    // Merge localPosts and firestorePosts so local items are never wiped out
+    const postMap = new Map<string, BlogPost>();
+    localPosts.forEach(p => postMap.set(p.id, p));
+    firestorePosts.forEach(p => postMap.set(p.id, p));
+    const mergedPosts = Array.from(postMap.values());
 
-    if (typeof window !== 'undefined') {
-      localStorage.setItem(BLOG_KEY, JSON.stringify(posts));
+    mergedPosts.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+
+    if (typeof window !== 'undefined' && mergedPosts.length > 0) {
+      localStorage.setItem(BLOG_KEY, JSON.stringify(mergedPosts));
       localStorage.setItem(CACHE_TIME_KEY, Date.now().toString());
     }
 
-    return posts;
+    return mergedPosts.length > 0 ? mergedPosts : localPosts;
   } catch (err) {
-    console.error('Error fetching from Firestore, falling back to localStorage cache:', err);
-    if (typeof window === 'undefined') return [];
-    const local = localStorage.getItem(BLOG_KEY);
-    if (!local) return [];
-    const parsed: BlogPost[] = JSON.parse(local);
-    parsed.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-    return parsed;
+    console.error('Error fetching from Firestore, falling back to local posts:', err);
+    localPosts.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+    return localPosts;
   }
 }
 
@@ -85,6 +95,32 @@ export async function saveBlogPostToFirestore(post: BlogPost): Promise<void> {
   } catch (err) {
     console.warn('Firestore sync warning (article successfully saved locally):', err);
   }
+}
+
+export async function restoreBackupPosts(importedPosts: BlogPost[]): Promise<void> {
+  const validPosts = importedPosts.map(p => ({
+    ...p,
+    id: p.id || ('blog-' + (p.slug || Math.random().toString(36).substring(7))),
+    slug: p.slug || 'imported-article',
+    title: p.title || 'Untitled',
+    content: p.content || '',
+    status: p.status || 'published',
+    createdAt: p.createdAt || Date.now()
+  }));
+
+  if (typeof window !== 'undefined') {
+    localStorage.setItem(BLOG_KEY, JSON.stringify(validPosts));
+    localStorage.setItem(CACHE_TIME_KEY, Date.now().toString());
+  }
+
+  for (const post of validPosts) {
+    try {
+      await setDoc(doc(db, 'blogPosts', post.id), post);
+    } catch (e) {
+      console.warn('Firestore restore warning for post:', post.id, e);
+    }
+  }
+  clearClientCache();
 }
 
 export async function deleteBlogPostFromFirestore(id: string): Promise<void> {

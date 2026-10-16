@@ -10,7 +10,8 @@ import {
   saveBlogPostToFirestore, 
   deleteBlogPostFromFirestore,
   getStoredBlogPostsSync,
-  clearClientCache
+  clearClientCache,
+  restoreBackupPosts
 } from '@/lib/storage';
 import { BlogPost } from '@/lib/types';
 
@@ -843,9 +844,7 @@ export default function AdminPanelPage() {
         }
 
         if (confirm(`Are you sure you want to restore ${importedPosts.length} articles? This will sync them to Firestore and update existing items.`)) {
-          for (const post of importedPosts) {
-            await saveBlogPostToFirestore(post);
-          }
+          await restoreBackupPosts(importedPosts);
           await loadData(true);
           showNotify(`Successfully restored ${importedPosts.length} articles!`);
         }
