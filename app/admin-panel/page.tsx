@@ -41,6 +41,7 @@ export default function AdminPanelPage() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'tutorials' | 'categories'>('tutorials');
   const [tutorialSubTab, setTutorialSubTab] = useState<'published' | 'draft'>('published');
+  const [isMigratingImages, setIsMigratingImages] = useState(false);
 
   // Categories list state
   const [customCategories, setCustomCategories] = useState<string[]>(['AI Guides', 'Image Tutorials', 'Video Tutorials', 'ChatGPT Guides']);
@@ -819,6 +820,82 @@ export default function AdminPanelPage() {
       }
     };
     reader.readAsText(file);
+  };
+
+  const handleMigrateAllImages = async () => {
+    if (!confirm('Are you sure you want to scan all published/draft articles and convert any external/WordPress image URLs into permanent local Base64 images? Exact slugs and SEO URLs will remain 100% untouched.')) {
+      return;
+    }
+
+    setIsMigratingImages(true);
+    try {
+      const currentPosts = await fetchBlogPostsFromFirestore(true);
+      let updatedCount = 0;
+
+      for (const post of currentPosts) {
+        let contentChanged = false;
+        let newContent = post.content;
+        let newFeaturedImage = post.image;
+
+        if (newFeaturedImage && newFeaturedImage.startsWith('http') && !newFeaturedImage.includes('picsum.photos') && !newFeaturedImage.startsWith('data:')) {
+          try {
+            const res = await fetch(`/api/fetch-image?url=${encodeURIComponent(newFeaturedImage)}`);
+            const data = await res.json();
+            if (data.dataUrl && data.dataUrl.startsWith('data:')) {
+              newFeaturedImage = data.dataUrl;
+              contentChanged = true;
+            }
+          } catch (e) {
+            console.warn('Failed to migrate featured image for slug:', post.slug, e);
+          }
+        }
+
+        if (newContent && newContent.includes('<img')) {
+          const parser = new DOMParser();
+          const doc = parser.parseFromString(newContent, 'text/html');
+          const imgs = doc.querySelectorAll('img');
+          let imgUpdated = false;
+
+          for (const img of Array.from(imgs)) {
+            const src = img.getAttribute('src') || '';
+            if (src && src.startsWith('http') && !src.startsWith('data:') && !src.includes('picsum.photos')) {
+              try {
+                const res = await fetch(`/api/fetch-image?url=${encodeURIComponent(src)}`);
+                const data = await res.json();
+                if (data.dataUrl && data.dataUrl.startsWith('data:')) {
+                  img.setAttribute('src', data.dataUrl);
+                  imgUpdated = true;
+                }
+              } catch (e) {
+                console.warn('Failed to migrate content image:', src, e);
+              }
+            }
+          }
+
+          if (imgUpdated) {
+            newContent = doc.body.innerHTML;
+            contentChanged = true;
+          }
+        }
+
+        if (contentChanged) {
+          const migratedPost: BlogPost = {
+            ...post,
+            image: newFeaturedImage,
+            content: newContent
+          };
+          await saveBlogPostToFirestore(migratedPost);
+          updatedCount++;
+        }
+      }
+
+      await loadData(true);
+      showNotify(`Successfully migrated images for ${updatedCount} articles to local base64! Slugs remained 100% untouched.`);
+    } catch (err) {
+      alert('Error migrating images: ' + (err as Error).message);
+    } finally {
+      setIsMigratingImages(false);
+    }
   };
 
   const handleOpenNewBlog = () => {
@@ -1918,6 +1995,15 @@ export default function AdminPanelPage() {
               <Upload className="w-4 h-4" />
               <span>Restore Backup</span>
             </label>
+
+            <button
+              onClick={handleMigrateAllImages}
+              disabled={isMigratingImages}
+              className="px-4 py-2.5 bg-black/40 hover:bg-black/50 border border-white/35 text-white rounded-xl text-xs font-bold inline-flex items-center gap-2 shadow-md transition-all disabled:opacity-50"
+            >
+              {isMigratingImages ? <Loader2 className="w-4 h-4 animate-spin text-amber-200" /> : <ImageIcon className="w-4 h-4 text-amber-200" />}
+              <span>{isMigratingImages ? 'Migrating Images...' : 'Migrate WP Images to Local'}</span>
+            </button>
           </div>
         </div>
 
