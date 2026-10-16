@@ -533,14 +533,13 @@ export default function AdminPanelPage() {
       }
 
       const imgSlug = baseName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || `wp-image-${idx + 1}`;
-      const cleanSrc = `https://picsum.photos/seed/${imgSlug}/800/450`;
 
       if (idx === 0) {
-        firstImgSrc = cleanSrc;
+        firstImgSrc = oldSrc;
         firstImgSlug = imgSlug;
       }
 
-      img.setAttribute('src', cleanSrc);
+      img.setAttribute('src', oldSrc);
       img.setAttribute('alt', oldAlt);
       img.setAttribute('data-img-slug', imgSlug);
       img.className = 'w-full rounded-2xl my-6 shadow-md object-cover cursor-pointer hover:ring-2 hover:ring-orange-500 transition-all';
@@ -1632,13 +1631,9 @@ export default function AdminPanelPage() {
                       if (selectedImageEl) {
                         selectedImageEl.setAttribute('alt', editImageAlt);
                         selectedImageEl.setAttribute('data-img-slug', editImageSlug);
-                        if (editImageSlug.trim()) {
-                          const newSrc = `https://picsum.photos/seed/${editImageSlug.trim()}/800/450`;
-                          selectedImageEl.setAttribute('src', newSrc);
-                        }
                         if (visualContentRef.current) setBlogContent(visualContentRef.current.innerHTML);
                         setShowImageModal(false);
-                        showNotify('Image alt text, slug & URL updated successfully!');
+                        showNotify('Image alt text & slug updated successfully!');
                       }
                     }}
                     className="px-5 py-2.5 bg-orange-600 hover:bg-orange-700 text-white font-bold rounded-xl text-xs shadow-sm transition-colors"
