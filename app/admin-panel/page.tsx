@@ -523,16 +523,24 @@ export default function AdminPanelPage() {
       const oldSrc = img.getAttribute('src') || '';
       const oldAlt = img.getAttribute('alt') || `Tutorial image ${idx + 1}`;
       
-      let baseName = oldAlt;
-      if (oldSrc && oldSrc.includes('/')) {
-        const urlParts = oldSrc.split('/');
-        const filename = urlParts[urlParts.length - 1]?.split('?')[0] || '';
-        if (filename && filename.includes('.')) {
-          baseName = filename.substring(0, filename.lastIndexOf('.'));
+      let imgSlug = `wp-image-${idx + 1}`;
+      if (oldSrc) {
+        try {
+          const urlObj = new URL(oldSrc, window.location.origin);
+          let pathname = urlObj.pathname;
+          if (pathname.startsWith('/')) {
+            pathname = pathname.substring(1);
+          }
+          if (pathname) {
+            imgSlug = pathname;
+          }
+        } catch {
+          let cleanPath = oldSrc.replace(/^https?:\/\/[^\/]+\//, '');
+          if (cleanPath) {
+            imgSlug = cleanPath;
+          }
         }
       }
-
-      const imgSlug = baseName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || `wp-image-${idx + 1}`;
 
       if (idx === 0) {
         firstImgSrc = oldSrc;
