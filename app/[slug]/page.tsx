@@ -1,138 +1,17 @@
-import { Metadata } from 'next';
+'use client';
+
+import { useState, useEffect } from 'react';
+import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
-import { ArrowLeft, Clock, Calendar, User, Share2, Folder } from 'lucide-react';
+import { ArrowLeft, Clock, Calendar, Share2, Folder } from 'lucide-react';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
-import { fetchBlogPostsFromFirestore } from '@/lib/storage';
+import { fetchBlogPostsFromFirestore, getStoredBlogPostsSync } from '@/lib/storage';
 import { BlogPost } from '@/lib/types';
 import ArticleContent from '@/components/ArticleContent';
 
 export const dynamic = 'force-dynamic';
-
-async function getPostBySlug(slug: string): Promise<BlogPost | null> {
-  try {
-    const posts = await fetchBlogPostsFromFirestore(true);
-    return posts.find(p => p.slug === slug) || null;
-  } catch {
-    return null;
-  }
-}
-
-async function getAllPosts(): Promise<BlogPost[]> {
-  try {
-    return await fetchBlogPostsFromFirestore(true);
-  } catch {
-    return [];
-  }
-}
-
-export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
-  const { slug } = await params;
-  const post = await getPostBySlug(slug);
-
-  if (!post) {
-    return {
-      title: 'Page Not Found | AI Tool Hindi',
-      description: 'The requested page does not exist on AI Tool Hindi.',
-    };
-  }
-
-  const url = `https://aitoolhindi.online/${post.slug}`;
-  const seoTitle = `${post.title} | AI Tool Hindi`;
-  const seoDescription = post.metaDescription || post.excerpt || 'हिंदी में सीखें आर्टिफिशियल इंटेलिजेंस और AI टूल्स की पूरी जानकारी।';
-
-  return {
-    title: seoTitle,
-    description: seoDescription,
-    robots: {
-      index: !post.noIndex,
-      follow: !post.noIndex,
-      googleBot: {
-        index: !post.noIndex,
-        follow: !post.noIndex,
-        'max-snippet': -1,
-        'max-video-preview': -1,
-        'max-image-preview': 'large',
-      },
-    },
-    alternates: {
-      canonical: url,
-    },
-    openGraph: {
-      title: post.title,
-      description: seoDescription,
-      url: url,
-      siteName: 'AI Tool Hindi',
-      type: 'article',
-      locale: 'hi_IN',
-      publishedTime: post.date,
-      modifiedTime: post.date,
-      authors: [post.author || 'Anwar'],
-      images: [
-        {
-          url: post.image,
-          width: 1200,
-          height: 630,
-          alt: post.imageAlt || post.title,
-        },
-      ],
-    },
-    twitter: {
-      card: 'summary_large_image',
-      title: post.title,
-      description: seoDescription,
-      site: '@aitool_hindi',
-      creator: '@aitool_hindi',
-      images: [post.image],
-    },
-  };
-}
-
-function getProcessedContentWithTOC(html: string) {
-  if (typeof window === 'undefined') return html;
-
-  const parser = new DOMParser();
-  const doc = parser.parseFromString(html, 'text/html');
-
-  const h2s = Array.from(doc.querySelectorAll('h2'));
-  if (h2s.length === 0) return html;
-
-  const headings: { id: string; text: string }[] = [];
-  h2s.forEach((h2, idx) => {
-    const id = `toc-heading-${idx}-${h2.textContent?.toLowerCase().replace(/[^a-z0-9]+/g, '-') || idx}`;
-    h2.id = id;
-    headings.push({ id, text: h2.textContent || '' });
-  });
-
-  if (doc.querySelector('.auto-toc-box')) return doc.body.innerHTML;
-
-  const paragraphs = Array.from(doc.querySelectorAll('p'));
-  const tocHtml = `
-    <div class="auto-toc-box my-8 p-6 bg-orange-50/70 border border-orange-200 rounded-2xl shadow-sm space-y-3">
-      <div class="flex items-center gap-2 font-extrabold text-black text-base">
-        <svg class="w-5 h-5 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h7"/></svg>
-        <span>Table of Contents (विषय सूची)</span>
-      </div>
-      <ul class="space-y-1.5 pl-5 list-disc text-sm font-bold text-orange-600">
-        ${headings.map(h => `<li><a href="#${h.id}" class="no-underline hover:text-orange-800 text-orange-600">${h.text}</a></li>`).join('')}
-      </ul>
-    </div>
-  `;
-
-  if (paragraphs.length >= 3) {
-    const thirdP = paragraphs[2];
-    const tempContainer = doc.createElement('div');
-    tempContainer.innerHTML = tocHtml;
-    thirdP.after(tempContainer.firstElementChild!);
-  } else if (doc.body.firstChild) {
-    const tempContainer = doc.createElement('div');
-    tempContainer.innerHTML = tocHtml;
-    doc.body.insertBefore(tempContainer.firstElementChild!, doc.body.firstChild);
-  }
-
-  return doc.body.innerHTML;
-}
 
 function extractFaqsFromHtml(html: string): { question: string; answer: string }[] {
   const faqs: { question: string; answer: string }[] = [];
@@ -154,17 +33,56 @@ function extractFaqsFromHtml(html: string): { question: string; answer: string }
   return faqs;
 }
 
-export default async function SlugPage({ params }: { params: Promise<{ slug: string }> }) {
-  const { slug } = await params;
-  const posts = await getAllPosts();
+export default function SlugPage() {
+  const params = useParams();
+  const slug = params?.slug as string;
+  const [posts, setPosts] = useState<BlogPost[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    async function loadData() {
+      try {
+        const allPosts = await fetchBlogPostsFromFirestore();
+        setPosts(allPosts);
+      } catch {
+        setPosts(getStoredBlogPostsSync());
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadData();
+  }, []);
+
   const post = posts.find(p => p.slug === slug);
 
-  const matchedCategory = posts.find(p =>
+  // Check if this slug is a category archive slug
+  const matchedCategory = posts.find(p => 
     p.category && p.category.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '') === slug
   )?.category;
 
+  useEffect(() => {
+    if (post) {
+      document.title = `${post.title} | AI Tool Hindi`;
+    } else if (matchedCategory) {
+      document.title = `${matchedCategory} Archives | AI Tool Hindi`;
+    }
+  }, [post, matchedCategory]);
+
+  if (loading) {
+    return (
+      <>
+        <Navbar />
+        <main className="flex-1 max-w-4xl mx-auto px-4 sm:px-6 py-24 text-center text-black font-medium">
+          Loading tutorial...
+        </main>
+        <Footer />
+      </>
+    );
+  }
+
   if (matchedCategory) {
-    const categoryPosts = posts.filter(p =>
+    const categoryPosts = posts.filter(p => 
       p.category && p.category.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '') === slug && p.status !== 'draft'
     );
 
@@ -220,7 +138,7 @@ export default async function SlugPage({ params }: { params: Promise<{ slug: str
                         {p.title}
                       </h3>
                       <p className="text-black text-sm leading-relaxed line-clamp-2 font-medium">
-                        {p.excerpt}
+                        {p.metaDescription || p.excerpt}
                       </p>
                     </div>
 
@@ -254,6 +172,14 @@ export default async function SlugPage({ params }: { params: Promise<{ slug: str
       </>
     );
   }
+
+  const handleShare = () => {
+    if (typeof window !== 'undefined') {
+      navigator.clipboard.writeText(window.location.href);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 3000);
+    }
+  };
 
   const blogPostingSchema = {
     '@context': 'https://schema.org',
@@ -352,6 +278,14 @@ export default async function SlugPage({ params }: { params: Promise<{ slug: str
                   {post.readTime}
                 </span>
               </div>
+
+              <button
+                onClick={handleShare}
+                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-black rounded-lg font-bold transition-colors"
+              >
+                <Share2 className="w-3.5 h-3.5" />
+                <span>{copied ? 'Link Copied!' : 'Share Article'}</span>
+              </button>
             </div>
 
             {/* WordPress HTML Content Renderer with TOC */}
