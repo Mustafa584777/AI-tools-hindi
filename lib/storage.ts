@@ -24,8 +24,35 @@ export const INITIAL_BLOG_POSTS: BlogPost[] = [
 
 const BLOG_KEY = 'aitoolhindi_blog_posts_firebase_sync_v2';
 const CACHE_TIME_KEY = 'aitoolhindi_cache_timestamp';
+const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours cache to prevent exhausting Firestore reads quota
 
-export async function fetchBlogPostsFromFirestore(forceRefresh = true): Promise<BlogPost[]> {
+export async function fetchBlogPostsFromFirestore(forceRefresh = false): Promise<BlogPost[]> {
+  let localPosts: BlogPost[] = [];
+  if (typeof window !== 'undefined') {
+    try {
+      const local = localStorage.getItem(BLOG_KEY);
+      if (local) localPosts = JSON.parse(local);
+    } catch (e) {
+      console.warn('Local read error:', e);
+    }
+  }
+
+  // If not forceRefresh and we have valid local posts within cache TTL, use local cache to save Firestore reads quota
+  if (typeof window !== 'undefined' && !forceRefresh && localPosts.length > 0) {
+    try {
+      const cachedTime = localStorage.getItem(CACHE_TIME_KEY);
+      if (cachedTime) {
+        const age = Date.now() - parseInt(cachedTime, 10);
+        if (age < CACHE_TTL) {
+          localPosts.sort((a: BlogPost, b: BlogPost) => (b.createdAt || 0) - (a.createdAt || 0));
+          return localPosts;
+        }
+      }
+    } catch (e) {
+      console.warn('Cache time read error:', e);
+    }
+  }
+
   try {
     const querySnapshot = await getDocs(collection(db, 'blogPosts'));
     const firestorePosts: BlogPost[] = [];
@@ -33,37 +60,25 @@ export async function fetchBlogPostsFromFirestore(forceRefresh = true): Promise<
       firestorePosts.push(docSnap.data() as BlogPost);
     });
 
-    if (firestorePosts.length > 0) {
-      firestorePosts.sort((a: BlogPost, b: BlogPost) => (b.createdAt || 0) - (a.createdAt || 0));
-      if (typeof window !== 'undefined') {
-        localStorage.setItem(BLOG_KEY, JSON.stringify(firestorePosts));
-        localStorage.setItem(CACHE_TIME_KEY, Date.now().toString());
-      }
-      return firestorePosts;
-    }
-
-    // Fallback to local cache if Firestore is empty
-    let localPosts: BlogPost[] = [];
-    if (typeof window !== 'undefined') {
-      const local = localStorage.getItem(BLOG_KEY);
-      if (local) localPosts = JSON.parse(local);
-    }
-
     const postMap = new Map<string, BlogPost>();
     INITIAL_BLOG_POSTS.forEach(p => postMap.set(p.id, p));
     localPosts.forEach(p => postMap.set(p.id, p));
+    firestorePosts.forEach(p => postMap.set(p.id, p));
     const merged = Array.from(postMap.values());
     merged.sort((a: BlogPost, b: BlogPost) => (b.createdAt || 0) - (a.createdAt || 0));
-    return merged;
+
+    if (typeof window !== 'undefined' && merged.length > 0) {
+      localStorage.setItem(BLOG_KEY, JSON.stringify(merged));
+      localStorage.setItem(CACHE_TIME_KEY, Date.now().toString());
+    }
+
+    const finalPosts = firestorePosts.length > 0 ? merged : (localPosts.length > 0 ? localPosts : merged);
+    return finalPosts;
   } catch (err) {
     console.error('Error fetching from Firestore database:', err);
-    if (typeof window !== 'undefined') {
-      const local = localStorage.getItem(BLOG_KEY);
-      if (local) {
-        const posts: BlogPost[] = JSON.parse(local);
-        posts.sort((a: BlogPost, b: BlogPost) => (b.createdAt || 0) - (a.createdAt || 0));
-        return posts;
-      }
+    if (typeof window !== 'undefined' && localPosts.length > 0) {
+      localPosts.sort((a: BlogPost, b: BlogPost) => (b.createdAt || 0) - (a.createdAt || 0));
+      return localPosts;
     }
     return INITIAL_BLOG_POSTS;
   }
@@ -82,7 +97,6 @@ export async function saveBlogPostToFirestore(post: BlogPost): Promise<void> {
     createdAt: post.createdAt || Date.now()
   };
 
-  // Primary: Save directly to Firestore database so everyone can access globally
   try {
     await setDoc(doc(db, 'blogPosts', postWithTime.id), postWithTime);
     clearClientCache();
