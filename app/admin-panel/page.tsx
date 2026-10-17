@@ -43,6 +43,7 @@ export default function AdminPanelPage() {
   const [activeTab, setActiveTab] = useState<'tutorials' | 'categories'>('tutorials');
   const [tutorialSubTab, setTutorialSubTab] = useState<'published' | 'draft'>('published');
   const [isMigratingImages, setIsMigratingImages] = useState(false);
+  const [migrationProgress, setMigrationProgress] = useState<{ current: number; total: number; text: string }>({ current: 0, total: 0, text: '' });
 
   // Categories list state
   const [customCategories, setCustomCategories] = useState<string[]>(['AI Guides', 'Image Tutorials', 'Video Tutorials', 'ChatGPT Guides']);
@@ -854,16 +855,22 @@ export default function AdminPanelPage() {
   };
 
   const handleMigrateAllImages = async () => {
-    if (!confirm('Are you sure you want to scan all published/draft articles and convert any external/WordPress image URLs into permanent local Base64 images? Exact slugs and SEO URLs will remain 100% untouched.')) {
+    if (!confirm('Are you sure you want to scan all published/draft articles and convert external WordPress image URLs into local Base64 images? Exact slugs and SEO URLs will remain 100% untouched.')) {
       return;
     }
 
     setIsMigratingImages(true);
+    setMigrationProgress({ current: 0, total: 100, text: 'Fetching articles...' });
     try {
       const currentPosts = await fetchBlogPostsFromFirestore(true);
+      const total = currentPosts.length;
       let updatedCount = 0;
 
-      for (const post of currentPosts) {
+      for (let i = 0; i < total; i++) {
+        const post = currentPosts[i];
+        const percent = Math.round(((i + 1) / total) * 100);
+        setMigrationProgress({ current: percent, total, text: `Migrating article ${i + 1} of ${total}: "${post.title.substring(0, 25)}..."` });
+
         let contentChanged = false;
         let newContent = post.content;
         let newFeaturedImage = post.image;
@@ -877,17 +884,17 @@ export default function AdminPanelPage() {
               contentChanged = true;
             }
           } catch (e) {
-            console.warn('Failed to migrate featured image for slug:', post.slug, e);
+            console.warn('Featured image fetch error:', e);
           }
         }
 
         if (newContent && newContent.includes('<img')) {
           const parser = new DOMParser();
           const doc = parser.parseFromString(newContent, 'text/html');
-          const imgs = doc.querySelectorAll('img');
+          const imgs = Array.from(doc.querySelectorAll('img'));
           let imgUpdated = false;
 
-          for (const img of Array.from(imgs)) {
+          await Promise.all(imgs.map(async (img) => {
             const src = img.getAttribute('src') || '';
             if (src && src.startsWith('http') && !src.startsWith('data:') && !src.includes('picsum.photos')) {
               try {
@@ -898,10 +905,10 @@ export default function AdminPanelPage() {
                   imgUpdated = true;
                 }
               } catch (e) {
-                console.warn('Failed to migrate content image:', src, e);
+                console.warn('Content image fetch error:', e);
               }
             }
-          }
+          }));
 
           if (imgUpdated) {
             newContent = doc.body.innerHTML;
@@ -920,12 +927,14 @@ export default function AdminPanelPage() {
         }
       }
 
+      setMigrationProgress({ current: 100, total, text: 'Migration completed successfully!' });
       await loadData(true);
-      showNotify(`Successfully migrated images for ${updatedCount} articles to local base64! Slugs remained 100% untouched.`);
+      showNotify(`Successfully migrated images for ${updatedCount} articles! Slugs untouched.`);
     } catch (err) {
       alert('Error migrating images: ' + (err as Error).message);
     } finally {
       setIsMigratingImages(false);
+      setTimeout(() => setMigrationProgress({ current: 0, total: 0, text: '' }), 4000);
     }
   };
 
@@ -2048,9 +2057,15 @@ export default function AdminPanelPage() {
               className="px-4 py-2.5 bg-black/40 hover:bg-black/50 border border-white/35 text-white rounded-xl text-xs font-bold inline-flex items-center gap-2 shadow-md transition-all disabled:opacity-50"
             >
               {isMigratingImages ? <Loader2 className="w-4 h-4 animate-spin text-amber-200" /> : <ImageIcon className="w-4 h-4 text-amber-200" />}
-              <span>{isMigratingImages ? 'Migrating Images...' : 'Migrate WP Images to Local'}</span>
+              <span>{isMigratingImages ? `Migrating... ${migrationProgress.current}%` : 'Migrate WP Images to Local'}</span>
             </button>
           </div>
+          {isMigratingImages && (
+            <div className="mt-3 bg-black/30 backdrop-blur-md px-4 py-2 rounded-xl text-xs text-white font-medium flex items-center justify-between">
+              <span className="truncate max-w-[280px]">{migrationProgress.text}</span>
+              <span className="font-extrabold text-amber-300">{migrationProgress.current}%</span>
+            </div>
+          )}
         </div>
 
         {/* Local Image Database Stats Screen */}
@@ -2097,9 +2112,20 @@ export default function AdminPanelPage() {
                   className="px-4 py-2.5 bg-orange-600 hover:bg-orange-700 text-white rounded-xl text-xs font-bold inline-flex items-center gap-2 shadow-sm transition-all disabled:opacity-50"
                 >
                   {isMigratingImages ? <Loader2 className="w-4 h-4 animate-spin text-white" /> : <ImageIcon className="w-4 h-4 text-white" />}
-                  <span>{isMigratingImages ? 'Migrating External Images...' : 'Run WP Image Migration Again (100% Safe)'}</span>
+                  <span>{isMigratingImages ? `Migrating Images (${migrationProgress.current}%)...` : 'Run WP Image Migration Again (100% Safe)'}</span>
                 </button>
               </div>
+              {isMigratingImages && (
+                <div className="space-y-1.5 bg-slate-50 border border-slate-200 p-3 rounded-2xl">
+                  <div className="flex items-center justify-between text-xs font-bold text-black">
+                    <span>{migrationProgress.text}</span>
+                    <span className="text-orange-600 font-extrabold">{migrationProgress.current}%</span>
+                  </div>
+                  <div className="w-full bg-slate-200 rounded-full h-2 overflow-hidden">
+                    <div className="bg-orange-600 h-2 rounded-full transition-all duration-300" style={{ width: `${migrationProgress.current}%` }}></div>
+                  </div>
+                </div>
+              )}
 
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 space-y-1">
