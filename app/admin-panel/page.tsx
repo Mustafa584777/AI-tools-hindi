@@ -862,7 +862,7 @@ export default function AdminPanelPage() {
     setIsMigratingImages(true);
     setMigrationProgress({ current: 0, total: 100, text: 'Fetching articles...' });
     try {
-      const currentPosts = await fetchBlogPostsFromFirestore(true);
+      const currentPosts = getStoredBlogPostsSync();
       const total = currentPosts.length;
       let updatedCount = 0;
 

@@ -57,12 +57,15 @@ export async function fetchBlogPostsFromFirestore(forceRefresh = false): Promise
 
     mergedPosts.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
 
-    if (typeof window !== 'undefined' && mergedPosts.length > 0) {
-      localStorage.setItem(BLOG_KEY, JSON.stringify(mergedPosts));
+    // CRITICAL: Never wipe local posts if firestore returned empty posts!
+    const finalPosts = firestorePosts.length > 0 ? mergedPosts : (localPosts.length > 0 ? localPosts : mergedPosts);
+
+    if (typeof window !== 'undefined' && finalPosts.length > 0) {
+      localStorage.setItem(BLOG_KEY, JSON.stringify(finalPosts));
       localStorage.setItem(CACHE_TIME_KEY, Date.now().toString());
     }
 
-    return mergedPosts;
+    return finalPosts;
   } catch (err) {
     console.error('Error fetching from Firestore, falling back to local/initial posts:', err);
     const postMap = new Map<string, BlogPost>();
@@ -102,7 +105,6 @@ export async function saveBlogPostToFirestore(post: BlogPost): Promise<void> {
 
   try {
     await setDoc(doc(db, 'blogPosts', postWithTime.id), postWithTime);
-    clearClientCache();
   } catch (err) {
     console.warn('Firestore sync warning (article successfully saved locally):', err);
   }
@@ -131,13 +133,11 @@ export async function restoreBackupPosts(importedPosts: BlogPost[]): Promise<voi
       console.warn('Firestore restore warning for post:', post.id, e);
     }
   }
-  clearClientCache();
 }
 
 export async function deleteBlogPostFromFirestore(id: string): Promise<void> {
   try {
     await deleteDoc(doc(db, 'blogPosts', id));
-    clearClientCache();
     if (typeof window !== 'undefined') {
       const posts = getStoredBlogPostsSync();
       const updated = posts.filter(p => p.id !== id);
