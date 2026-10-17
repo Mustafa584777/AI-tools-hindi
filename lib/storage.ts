@@ -2,7 +2,25 @@ import { BlogPost } from './types';
 import { db } from './firebase';
 import { collection, getDocs, doc, setDoc, deleteDoc } from 'firebase/firestore';
 
-export const INITIAL_BLOG_POSTS: BlogPost[] = [];
+export const INITIAL_BLOG_POSTS: BlogPost[] = [
+  {
+    id: 'blog-ai-se-time-table-kaise-banaye',
+    slug: 'ai-se-time-table-kaise-banaye',
+    title: 'AI से पढ़ाई का टाइम टेबल कैसे बनाएं: Best ChatGPT Prompts & Tools',
+    excerpt: 'हिंदी में सीखें ChatGPT और दूसरे AI tools से पढ़ाई का टाइम टेबल बनाने का आसान तरीका, copy-paste prompt और Google Calendar में डालने के steps!',
+    metaDescription: 'हिंदी में सीखें ChatGPT और दूसरे AI tools से पढ़ाई का टाइम टेबल बनाने का आसान तरीका, copy-paste prompt और Google Calendar में डालने के steps!',
+    content: `<h2 class="text-2xl font-bold text-black mt-6 mb-3">AI से Time Table बनाना क्यों जरूरी है?</h2>\n<p class="mb-6 text-slate-700 leading-relaxed text-lg">आज के समय में पढ़ाई या ऑफिस का शेड्यूल मैनेज करना एक चुनौती बन गया है। AI (Artificial Intelligence) की मदद से आप मात्र 1 मिनट में अपना परफेक्ट स्टडी टाइम टेबल तैयार कर सकते हैं।</p>\n<h2 class="text-2xl font-bold text-black mt-6 mb-3">ChatGPT के लिए Best Prompt</h2>\n<p class="mb-6 text-slate-700 leading-relaxed text-lg">आप ChatGPT में यह प्रॉम्प्ट कॉपी-पेस्ट कर सकते हैं: "मुझे एक ऐसा स्टडी टाइम टेबल बनाकर दो जिसमें सुबह 6 बजे से रात 10 बजे तक का शेड्यूल हो और बीच में 15 मिनट के ब्रेक्स हों।"</p>`,
+    category: 'AI Guides',
+    author: 'Anwar',
+    date: '15 Oct 2026',
+    readTime: '6 min read',
+    image: 'https://picsum.photos/seed/timetable/800/450',
+    imageAlt: 'AI se time table kaise banaye banner',
+    imageSlug: 'ai-time-table-banner',
+    status: 'published',
+    createdAt: Date.now()
+  }
+];
 
 const BLOG_KEY = 'aitoolhindi_blog_posts_firebase_sync_v2';
 const CACHE_TIME_KEY = 'aitoolhindi_cache_timestamp';
@@ -20,18 +38,8 @@ export async function fetchBlogPostsFromFirestore(forceRefresh = false): Promise
   }
 
   if (typeof window !== 'undefined' && !forceRefresh && localPosts.length > 0) {
-    try {
-      const cachedTime = localStorage.getItem(CACHE_TIME_KEY);
-      if (cachedTime) {
-        const age = Date.now() - parseInt(cachedTime, 10);
-        if (age < CACHE_TTL) {
-          localPosts.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-          return localPosts;
-        }
-      }
-    } catch (e) {
-      console.warn('Cache read error:', e);
-    }
+    localPosts.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+    return localPosts;
   }
 
   try {
@@ -41,8 +49,8 @@ export async function fetchBlogPostsFromFirestore(forceRefresh = false): Promise
       firestorePosts.push(docSnap.data() as BlogPost);
     });
 
-    // Merge localPosts and firestorePosts so local items are never wiped out
     const postMap = new Map<string, BlogPost>();
+    INITIAL_BLOG_POSTS.forEach(p => postMap.set(p.id, p));
     localPosts.forEach(p => postMap.set(p.id, p));
     firestorePosts.forEach(p => postMap.set(p.id, p));
     const mergedPosts = Array.from(postMap.values());
@@ -54,11 +62,15 @@ export async function fetchBlogPostsFromFirestore(forceRefresh = false): Promise
       localStorage.setItem(CACHE_TIME_KEY, Date.now().toString());
     }
 
-    return mergedPosts.length > 0 ? mergedPosts : localPosts;
+    return mergedPosts;
   } catch (err) {
-    console.error('Error fetching from Firestore, falling back to local posts:', err);
-    localPosts.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-    return localPosts;
+    console.error('Error fetching from Firestore, falling back to local/initial posts:', err);
+    const postMap = new Map<string, BlogPost>();
+    INITIAL_BLOG_POSTS.forEach(p => postMap.set(p.id, p));
+    localPosts.forEach(p => postMap.set(p.id, p));
+    const fallbackPosts = Array.from(postMap.values());
+    fallbackPosts.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+    return fallbackPosts;
   }
 }
 
@@ -75,7 +87,6 @@ export async function saveBlogPostToFirestore(post: BlogPost): Promise<void> {
     createdAt: post.createdAt || Date.now()
   };
 
-  // Always save to localStorage first so saving never fails due to network/Firestore issues
   if (typeof window !== 'undefined') {
     try {
       const posts = getStoredBlogPostsSync();
@@ -141,14 +152,15 @@ export async function deleteBlogPostFromFirestore(id: string): Promise<void> {
 }
 
 export function getStoredBlogPostsSync(): BlogPost[] {
-  if (typeof window === 'undefined') return [];
+  if (typeof window === 'undefined') return INITIAL_BLOG_POSTS;
   try {
     const data = localStorage.getItem(BLOG_KEY);
-    if (!data) return [];
+    if (!data) return INITIAL_BLOG_POSTS;
     const posts: BlogPost[] = JSON.parse(data);
+    if (posts.length === 0) return INITIAL_BLOG_POSTS;
     posts.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
     return posts;
   } catch {
-    return [];
+    return INITIAL_BLOG_POSTS;
   }
 }
