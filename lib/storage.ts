@@ -24,24 +24,8 @@ export const INITIAL_BLOG_POSTS: BlogPost[] = [
 
 const BLOG_KEY = 'aitoolhindi_blog_posts_firebase_sync_v2';
 const CACHE_TIME_KEY = 'aitoolhindi_cache_timestamp';
-const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
 
-export async function fetchBlogPostsFromFirestore(forceRefresh = false): Promise<BlogPost[]> {
-  let localPosts: BlogPost[] = [];
-  if (typeof window !== 'undefined') {
-    try {
-      const local = localStorage.getItem(BLOG_KEY);
-      if (local) localPosts = JSON.parse(local);
-    } catch (e) {
-      console.warn('Local read error:', e);
-    }
-  }
-
-  if (typeof window !== 'undefined' && !forceRefresh && localPosts.length > 0) {
-    localPosts.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-    return localPosts;
-  }
-
+export async function fetchBlogPostsFromFirestore(forceRefresh = true): Promise<BlogPost[]> {
   try {
     const querySnapshot = await getDocs(collection(db, 'blogPosts'));
     const firestorePosts: BlogPost[] = [];
@@ -49,31 +33,39 @@ export async function fetchBlogPostsFromFirestore(forceRefresh = false): Promise
       firestorePosts.push(docSnap.data() as BlogPost);
     });
 
-    const postMap = new Map<string, BlogPost>();
-    INITIAL_BLOG_POSTS.forEach(p => postMap.set(p.id, p));
-    localPosts.forEach(p => postMap.set(p.id, p));
-    firestorePosts.forEach(p => postMap.set(p.id, p));
-    const mergedPosts = Array.from(postMap.values());
-
-    mergedPosts.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-
-    // CRITICAL: Never wipe local posts if firestore returned empty posts!
-    const finalPosts = firestorePosts.length > 0 ? mergedPosts : (localPosts.length > 0 ? localPosts : mergedPosts);
-
-    if (typeof window !== 'undefined' && finalPosts.length > 0) {
-      localStorage.setItem(BLOG_KEY, JSON.stringify(finalPosts));
-      localStorage.setItem(CACHE_TIME_KEY, Date.now().toString());
+    if (firestorePosts.length > 0) {
+      firestorePosts.sort((a: BlogPost, b: BlogPost) => (b.createdAt || 0) - (a.createdAt || 0));
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(BLOG_KEY, JSON.stringify(firestorePosts));
+        localStorage.setItem(CACHE_TIME_KEY, Date.now().toString());
+      }
+      return firestorePosts;
     }
 
-    return finalPosts;
-  } catch (err) {
-    console.error('Error fetching from Firestore, falling back to local/initial posts:', err);
+    // Fallback to local cache if Firestore is empty
+    let localPosts: BlogPost[] = [];
+    if (typeof window !== 'undefined') {
+      const local = localStorage.getItem(BLOG_KEY);
+      if (local) localPosts = JSON.parse(local);
+    }
+
     const postMap = new Map<string, BlogPost>();
     INITIAL_BLOG_POSTS.forEach(p => postMap.set(p.id, p));
     localPosts.forEach(p => postMap.set(p.id, p));
-    const fallbackPosts = Array.from(postMap.values());
-    fallbackPosts.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-    return fallbackPosts;
+    const merged = Array.from(postMap.values());
+    merged.sort((a: BlogPost, b: BlogPost) => (b.createdAt || 0) - (a.createdAt || 0));
+    return merged;
+  } catch (err) {
+    console.error('Error fetching from Firestore database:', err);
+    if (typeof window !== 'undefined') {
+      const local = localStorage.getItem(BLOG_KEY);
+      if (local) {
+        const posts: BlogPost[] = JSON.parse(local);
+        posts.sort((a: BlogPost, b: BlogPost) => (b.createdAt || 0) - (a.createdAt || 0));
+        return posts;
+      }
+    }
+    return INITIAL_BLOG_POSTS;
   }
 }
 
@@ -90,23 +82,21 @@ export async function saveBlogPostToFirestore(post: BlogPost): Promise<void> {
     createdAt: post.createdAt || Date.now()
   };
 
-  if (typeof window !== 'undefined') {
-    try {
+  // Primary: Save directly to Firestore database so everyone can access globally
+  try {
+    await setDoc(doc(db, 'blogPosts', postWithTime.id), postWithTime);
+    clearClientCache();
+    if (typeof window !== 'undefined') {
       const posts = getStoredBlogPostsSync();
       const exists = posts.some(p => p.id === postWithTime.id);
       const updated = exists ? posts.map(p => p.id === postWithTime.id ? postWithTime : p) : [postWithTime, ...posts];
-      updated.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+      updated.sort((a: BlogPost, b: BlogPost) => (b.createdAt || 0) - (a.createdAt || 0));
       localStorage.setItem(BLOG_KEY, JSON.stringify(updated));
       localStorage.setItem(CACHE_TIME_KEY, Date.now().toString());
-    } catch (e) {
-      console.warn('Local storage save error:', e);
     }
-  }
-
-  try {
-    await setDoc(doc(db, 'blogPosts', postWithTime.id), postWithTime);
   } catch (err) {
-    console.warn('Firestore sync warning (article successfully saved locally):', err);
+    console.error('Error saving article to Firestore database:', err);
+    throw new Error('Database save failed: ' + (err as Error).message);
   }
 }
 
@@ -121,11 +111,6 @@ export async function restoreBackupPosts(importedPosts: BlogPost[]): Promise<voi
     createdAt: p.createdAt || Date.now()
   }));
 
-  if (typeof window !== 'undefined') {
-    localStorage.setItem(BLOG_KEY, JSON.stringify(validPosts));
-    localStorage.setItem(CACHE_TIME_KEY, Date.now().toString());
-  }
-
   for (const post of validPosts) {
     try {
       await setDoc(doc(db, 'blogPosts', post.id), post);
@@ -133,15 +118,21 @@ export async function restoreBackupPosts(importedPosts: BlogPost[]): Promise<voi
       console.warn('Firestore restore warning for post:', post.id, e);
     }
   }
+  clearClientCache();
+  if (typeof window !== 'undefined') {
+    localStorage.setItem(BLOG_KEY, JSON.stringify(validPosts));
+    localStorage.setItem(CACHE_TIME_KEY, Date.now().toString());
+  }
 }
 
 export async function deleteBlogPostFromFirestore(id: string): Promise<void> {
   try {
     await deleteDoc(doc(db, 'blogPosts', id));
+    clearClientCache();
     if (typeof window !== 'undefined') {
       const posts = getStoredBlogPostsSync();
       const updated = posts.filter(p => p.id !== id);
-      updated.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+      updated.sort((a: BlogPost, b: BlogPost) => (b.createdAt || 0) - (a.createdAt || 0));
       localStorage.setItem(BLOG_KEY, JSON.stringify(updated));
       localStorage.setItem(CACHE_TIME_KEY, Date.now().toString());
     }
@@ -158,7 +149,7 @@ export function getStoredBlogPostsSync(): BlogPost[] {
     if (!data) return INITIAL_BLOG_POSTS;
     const posts: BlogPost[] = JSON.parse(data);
     if (posts.length === 0) return INITIAL_BLOG_POSTS;
-    posts.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+    posts.sort((a: BlogPost, b: BlogPost) => (b.createdAt || 0) - (a.createdAt || 0));
     return posts;
   } catch {
     return INITIAL_BLOG_POSTS;
