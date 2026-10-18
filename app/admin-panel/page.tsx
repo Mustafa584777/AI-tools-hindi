@@ -44,6 +44,7 @@ export default function AdminPanelPage() {
   const [tutorialSubTab, setTutorialSubTab] = useState<'published' | 'draft'>('published');
   const [isMigratingImages, setIsMigratingImages] = useState(false);
   const [migrationProgress, setMigrationProgress] = useState<{ current: number; total: number; text: string }>({ current: 0, total: 0, text: '' });
+  const [failedMigrationImages, setFailedMigrationImages] = useState<{ articleTitle: string; articleSlug: string; imageUrl: string }[]>([]);
 
   // Categories list state
   const [customCategories, setCustomCategories] = useState<string[]>(['AI Guides', 'Image Tutorials', 'Video Tutorials', 'ChatGPT Guides']);
@@ -855,12 +856,14 @@ export default function AdminPanelPage() {
   };
 
   const handleMigrateAllImages = async () => {
-    if (!confirm('Are you sure you want to scan all published/draft articles and convert external WordPress image URLs into local Base64 images? Exact slugs and SEO URLs will remain 100% untouched.')) {
+    if (!confirm('Are you sure you want to scan all articles and convert remaining external WordPress image URLs into local Base64 images? Already secured Base64 images will remain 100% untouched.')) {
       return;
     }
 
     setIsMigratingImages(true);
     setMigrationProgress({ current: 0, total: 100, text: 'Fetching articles...' });
+    const failedList: { articleTitle: string; articleSlug: string; imageUrl: string }[] = [];
+
     try {
       const currentPosts = getStoredBlogPostsSync();
       const total = currentPosts.length;
@@ -882,9 +885,12 @@ export default function AdminPanelPage() {
             if (data.dataUrl && data.dataUrl.startsWith('data:')) {
               newFeaturedImage = data.dataUrl;
               contentChanged = true;
+            } else {
+              failedList.push({ articleTitle: post.title, articleSlug: post.slug, imageUrl: newFeaturedImage });
             }
           } catch (e) {
             console.warn('Featured image fetch error:', e);
+            failedList.push({ articleTitle: post.title, articleSlug: post.slug, imageUrl: newFeaturedImage });
           }
         }
 
@@ -903,9 +909,12 @@ export default function AdminPanelPage() {
                 if (data.dataUrl && data.dataUrl.startsWith('data:')) {
                   img.setAttribute('src', data.dataUrl);
                   imgUpdated = true;
+                } else {
+                  failedList.push({ articleTitle: post.title, articleSlug: post.slug, imageUrl: src });
                 }
               } catch (e) {
                 console.warn('Content image fetch error:', e);
+                failedList.push({ articleTitle: post.title, articleSlug: post.slug, imageUrl: src });
               }
             }
           }));
@@ -927,14 +936,19 @@ export default function AdminPanelPage() {
         }
       }
 
-      setMigrationProgress({ current: 100, total, text: 'Migration completed successfully!' });
+      setFailedMigrationImages(failedList);
+      setMigrationProgress({ current: 100, total, text: 'Migration completed!' });
       await loadData(true);
-      showNotify(`Successfully migrated images for ${updatedCount} articles! Slugs untouched.`);
+      if (failedList.length > 0) {
+        showNotify(`Migration finished with ${failedList.length} unmigrated images. See audit report below.`);
+      } else {
+        showNotify(`All remaining images successfully migrated! 100% Secured.`);
+      }
     } catch (err) {
       alert('Error migrating images: ' + (err as Error).message);
     } finally {
       setIsMigratingImages(false);
-      setTimeout(() => setMigrationProgress({ current: 0, total: 0, text: '' }), 4000);
+      setTimeout(() => setMigrationProgress({ current: 0, total: 0, text: '' }), 5000);
     }
   };
 

@@ -8,23 +8,15 @@ function getProcessedContentWithTOC(html: string) {
   const parser = new DOMParser();
   const doc = parser.parseFromString(html, 'text/html');
 
-  // Convert any H1 headings inside article body to H2 to guarantee only one H1 per page (SEO best practice)
-  const h1s = Array.from(doc.querySelectorAll('h1'));
-  h1s.forEach(h1 => {
-    const h2 = doc.createElement('h2');
-    h2.innerHTML = h1.innerHTML;
-    h2.className = 'text-xl md:text-2xl font-bold text-black mt-6 mb-3';
-    h1.replaceWith(h2);
-  });
+  // Find h2 and h3 headings for Table of Contents without modifying the author's tags
+  const headings = Array.from(doc.querySelectorAll('h2, h3'));
+  if (headings.length === 0) return doc.body.innerHTML;
 
-  const h2s = Array.from(doc.querySelectorAll('h2'));
-  if (h2s.length === 0) return doc.body.innerHTML;
-
-  const headings: { id: string; text: string }[] = [];
-  h2s.forEach((h2, idx) => {
-    const id = `toc-heading-${idx}-${h2.textContent?.toLowerCase().replace(/[^a-z0-9]+/g, '-') || idx}`;
-    h2.id = id;
-    headings.push({ id, text: h2.textContent || '' });
+  const tocHeadings: { id: string; text: string; tag: string }[] = [];
+  headings.forEach((h, idx) => {
+    const id = `toc-heading-${idx}-${h.textContent?.toLowerCase().replace(/[^a-z0-9]+/g, '-') || idx}`;
+    h.id = id;
+    tocHeadings.push({ id, text: h.textContent || '', tag: h.tagName.toLowerCase() });
   });
 
   if (doc.querySelector('.auto-toc-box')) return doc.body.innerHTML;
@@ -37,7 +29,7 @@ function getProcessedContentWithTOC(html: string) {
         <span>Table of Contents (विषय सूची)</span>
       </div>
       <ul class="space-y-1.5 pl-5 list-disc text-sm font-bold text-orange-600">
-        ${headings.map(h => `<li><a href="#${h.id}" class="no-underline hover:text-orange-800 text-orange-600">${h.text}</a></li>`).join('')}
+        ${tocHeadings.map(h => `<li class="${h.tag === 'h3' ? 'ml-4' : ''}"><a href="#${h.id}" class="no-underline hover:text-orange-800 text-orange-600">${h.text}</a></li>`).join('')}
       </ul>
     </div>
   `;
