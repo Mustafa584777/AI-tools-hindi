@@ -19,7 +19,9 @@ import {
   clearClientCache,
   restoreBackupPosts,
   saveMediaVideoToFirestore,
-  fetchMediaVideoFromFirestore
+  fetchMediaVideoFromFirestore,
+  saveMediaImageToFirestore,
+  fetchMediaImageFromFirestore
 } from '@/lib/storage';
 import { BlogPost } from '@/lib/types';
 
@@ -350,12 +352,33 @@ export default function AdminPanelPage() {
     }
   };
 
+  const hydrateEditorImages = async (container: HTMLElement) => {
+    if (!container) return;
+    const images = Array.from(container.querySelectorAll('img[data-media-image-id]'));
+    for (const imgEl of images) {
+      const mediaId = imgEl.getAttribute('data-media-image-id');
+      if (!mediaId) continue;
+      const currentSrc = imgEl.getAttribute('src');
+      if (!currentSrc || !currentSrc.startsWith('data:image/')) {
+        try {
+          const base64 = await fetchMediaImageFromFirestore(mediaId);
+          if (base64) {
+            imgEl.setAttribute('src', base64);
+          }
+        } catch (e) {
+          console.warn('Hydration error for image:', mediaId, e);
+        }
+      }
+    }
+  };
+
   useEffect(() => {
     if (editorMode === 'visual' && visualContentRef.current) {
       if (visualContentRef.current.innerHTML !== blogContent) {
         visualContentRef.current.innerHTML = blogContent;
       }
       hydrateEditorVideos(visualContentRef.current);
+      hydrateEditorImages(visualContentRef.current);
     }
   }, [blogContent, editorMode, isEditingBlog]);
 
@@ -1379,6 +1402,8 @@ export default function AdminPanelPage() {
       if (item.mediaType === 'featured') {
         updatedPost.image = data.dataUrl;
       } else if (item.mediaType === 'image') {
+        const mediaId = 'img-single-' + Date.now() + '-' + Math.random().toString(36).substring(7);
+        await saveMediaImageToFirestore(mediaId, data.dataUrl);
         const parser = new DOMParser();
         const doc = parser.parseFromString(updatedPost.content, 'text/html');
         const imgs = Array.from(doc.querySelectorAll('img'));
@@ -1387,7 +1412,8 @@ export default function AdminPanelPage() {
           let src = img.getAttribute('src') || '';
           if (src.startsWith('//')) src = 'https:' + src;
           if (src === item.wpUrl || src.includes(item.wpUrl) || item.wpUrl.includes(src)) {
-            img.setAttribute('src', data.dataUrl);
+            img.setAttribute('src', '');
+            img.setAttribute('data-media-image-id', mediaId);
             img.removeAttribute('srcset');
             img.removeAttribute('data-src');
             img.removeAttribute('data-orig-file');
@@ -1506,7 +1532,10 @@ export default function AdminPanelPage() {
                 const res = await fetch(`/api/fetch-image?url=${encodeURIComponent(src)}`);
                 const data = await res.json();
                 if (data.dataUrl && data.dataUrl.startsWith('data:')) {
-                  img.setAttribute('src', data.dataUrl);
+                  const mediaId = 'img-mig-' + Date.now() + '-' + imgIdx + '-' + Math.random().toString(36).substring(7);
+                  await saveMediaImageToFirestore(mediaId, data.dataUrl);
+                  img.setAttribute('src', '');
+                  img.setAttribute('data-media-image-id', mediaId);
                   img.removeAttribute('srcset');
                   img.removeAttribute('data-src');
                   img.removeAttribute('data-orig-file');

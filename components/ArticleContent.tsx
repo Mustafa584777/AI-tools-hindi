@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useRef, useEffect } from 'react';
-import { fetchMediaVideoFromFirestore } from '@/lib/storage';
+import { fetchMediaVideoFromFirestore, fetchMediaImageFromFirestore } from '@/lib/storage';
 
 function getProcessedContentWithTOC(html: string) {
   if (typeof window === 'undefined') return html;
@@ -110,6 +110,24 @@ export default function ArticleContent({ content }: { content: string }) {
         }
       }
     });
+
+    const mediaImages = container.querySelectorAll('img[data-media-image-id]');
+    mediaImages.forEach(async (imgEl) => {
+      const mediaId = imgEl.getAttribute('data-media-image-id');
+      if (!mediaId) return;
+      const currentSrc = imgEl.getAttribute('src');
+      if (!currentSrc || !currentSrc.startsWith('data:image/')) {
+        try {
+          const base64 = await fetchMediaImageFromFirestore(mediaId);
+          if (base64) {
+            imgEl.setAttribute('src', base64);
+          }
+        } catch (e) {
+          console.warn('Failed to load image chunk from Firestore:', mediaId, e);
+        }
+      }
+    });
+
 
     return () => {
       handlers.forEach(({ el, handler }) => {

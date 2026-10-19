@@ -219,3 +219,53 @@ export async function fetchMediaVideoFromFirestore(mediaId: string): Promise<str
   }
 }
 
+const imageCache = new Map<string, string>();
+
+export async function saveMediaImageToFirestore(mediaId: string, base64Data: string): Promise<void> {
+  imageCache.set(mediaId, base64Data);
+  const CHUNK_SIZE = 700 * 1024; // 700KB chunks to stay safely under Firestore 1MB limit
+  const totalChunks = Math.ceil(base64Data.length / CHUNK_SIZE);
+  
+  await setDoc(doc(db, 'mediaImages', mediaId), {
+    id: mediaId,
+    totalChunks,
+    createdAt: Date.now()
+  });
+
+  for (let i = 0; i < totalChunks; i++) {
+    const chunkData = base64Data.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE);
+    await setDoc(doc(db, 'mediaImages', `${mediaId}_chunk_${i}`), {
+      mediaId,
+      chunkIndex: i,
+      data: chunkData
+    });
+  }
+}
+
+export async function fetchMediaImageFromFirestore(mediaId: string): Promise<string | null> {
+  if (imageCache.has(mediaId)) {
+    return imageCache.get(mediaId)!;
+  }
+  try {
+    const metaDoc = await getDoc(doc(db, 'mediaImages', mediaId));
+    if (!metaDoc.exists()) return null;
+    const { totalChunks } = metaDoc.data() as { totalChunks: number };
+    
+    let fullData = '';
+    for (let i = 0; i < totalChunks; i++) {
+      const chunkDoc = await getDoc(doc(db, 'mediaImages', `${mediaId}_chunk_${i}`));
+      if (chunkDoc.exists()) {
+        fullData += (chunkDoc.data() as { data: string }).data;
+      }
+    }
+    if (fullData) {
+      imageCache.set(mediaId, fullData);
+    }
+    return fullData;
+  } catch (e) {
+    console.error('Error fetching media image from Firestore:', e);
+    return null;
+  }
+}
+
+
