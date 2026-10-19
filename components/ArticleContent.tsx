@@ -86,13 +86,27 @@ export default function ArticleContent({ content }: { content: string }) {
     const mediaVideoContainers = container.querySelectorAll('[data-media-video-id]');
     mediaVideoContainers.forEach(async (el) => {
       const mediaId = el.getAttribute('data-media-video-id');
+      if (!mediaId) return;
+
+      const videoEl = el.tagName === 'VIDEO' ? (el as HTMLVideoElement) : el.querySelector('video');
       const sourceEl = el.querySelector('source');
-      if (mediaId && sourceEl && (!sourceEl.getAttribute('src') || !sourceEl.getAttribute('src')?.startsWith('data:'))) {
-        const base64 = await fetchMediaVideoFromFirestore(mediaId);
-        if (base64) {
-          sourceEl.setAttribute('src', base64);
-          const videoEl = el.querySelector('video');
-          if (videoEl) videoEl.load();
+      const currentSrc = sourceEl?.getAttribute('src') || videoEl?.getAttribute('src');
+
+      if (!currentSrc || !currentSrc.startsWith('data:video/')) {
+        try {
+          const base64 = await fetchMediaVideoFromFirestore(mediaId);
+          if (base64) {
+            if (sourceEl) {
+              sourceEl.setAttribute('src', base64);
+            } else if (videoEl) {
+              videoEl.setAttribute('src', base64);
+            }
+            if (videoEl) {
+              videoEl.load();
+            }
+          }
+        } catch (e) {
+          console.warn('Failed to load video chunk from Firestore:', mediaId, e);
         }
       }
     });

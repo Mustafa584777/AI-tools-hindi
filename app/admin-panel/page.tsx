@@ -4,7 +4,13 @@
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { Plus, Edit, Trash2, Database, CheckCircle, ExternalLink, Sparkles, FileText, ArrowLeft, Image as ImageIcon, Link as LinkIcon, Bold, Italic, Heading1, Heading2, Heading3, Code, Wand2, Upload, X, RefreshCw, Eye, Code2, HelpCircle, Bot, AlertTriangle, TrendingUp, Award, Folder, List, Table, Undo, Redo, Settings, Loader2 } from 'lucide-react';
+import { 
+  Plus, Edit, Trash2, Database, CheckCircle, ExternalLink, Sparkles, FileText, ArrowLeft, 
+  Image as ImageIcon, Link as LinkIcon, Bold, Italic, Heading1, Heading2, Heading3, Code, 
+  Wand2, Upload, X, RefreshCw, Eye, Code2, HelpCircle, Bot, AlertTriangle, TrendingUp, 
+  Award, Folder, List, Table, Undo, Redo, Settings, Loader2, Download, Copy, Check, 
+  Video, Search, AlertCircle 
+} from 'lucide-react';
 import { 
   fetchBlogPostsFromFirestore, 
   saveBlogPostToFirestore, 
@@ -16,6 +22,17 @@ import {
   fetchMediaVideoFromFirestore
 } from '@/lib/storage';
 import { BlogPost } from '@/lib/types';
+
+export interface UnmigratedMediaItem {
+  id: string;
+  articleId: string;
+  articleTitle: string;
+  articleSlug: string;
+  mediaType: 'featured' | 'image' | 'video';
+  wpUrl: string;
+  reason?: string;
+  failed?: boolean;
+}
 
 interface ArticleImage {
   id: string;
@@ -42,11 +59,19 @@ const CATEGORIES_KEY = 'aitoolhindi_categories_v1';
 export default function AdminPanelPage() {
   const [posts, setPosts] = useState<BlogPost[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'tutorials' | 'categories'>('tutorials');
+  const [activeTab, setActiveTab] = useState<'tutorials' | 'categories' | 'unmigrated'>('tutorials');
   const [tutorialSubTab, setTutorialSubTab] = useState<'published' | 'draft'>('published');
   const [isMigratingImages, setIsMigratingImages] = useState(false);
   const [migrationProgress, setMigrationProgress] = useState<{ current: number; total: number; text: string }>({ current: 0, total: 0, text: '' });
   const [failedMigrationImages, setFailedMigrationImages] = useState<{ articleTitle: string; articleSlug: string; imageUrl: string }[]>([]);
+  
+  // Unmigrated / Pending WordPress Media State
+  const [unmigratedMedia, setUnmigratedMedia] = useState<UnmigratedMediaItem[]>([]);
+  const [mediaSearchQuery, setMediaSearchQuery] = useState('');
+  const [mediaTypeFilter, setMediaTypeFilter] = useState<'all' | 'image' | 'video' | 'featured'>('all');
+  const [copiedUrlId, setCopiedUrlId] = useState<string | null>(null);
+  const [migratingSingleId, setMigratingSingleId] = useState<string | null>(null);
+  const [isScanningMedia, setIsScanningMedia] = useState(false);
 
   // Categories list state
   const [customCategories, setCustomCategories] = useState<string[]>(['AI Guides', 'Image Tutorials', 'Video Tutorials', 'ChatGPT Guides']);
@@ -128,11 +153,83 @@ export default function AdminPanelPage() {
 
   const [notification, setNotification] = useState<string | null>(null);
 
+  const scanAllArticlesForExternalMedia = (currentPosts: BlogPost[]): UnmigratedMediaItem[] => {
+    const items: UnmigratedMediaItem[] = [];
+
+    currentPosts.forEach(post => {
+      // 1. Featured image check
+      if (post.image && post.image.startsWith('http') && !post.image.startsWith('data:') && !post.image.includes('picsum.photos')) {
+        items.push({
+          id: `unmig-feat-${post.id}`,
+          articleId: post.id,
+          articleTitle: post.title,
+          articleSlug: post.slug,
+          mediaType: 'featured',
+          wpUrl: post.image,
+          reason: 'Featured banner image still points to external WordPress URL'
+        });
+      }
+
+      // 2. In-content check
+      if (post.content && (post.content.includes('<img') || post.content.includes('<video') || post.content.includes('<source'))) {
+        try {
+          const parser = new DOMParser();
+          const doc = parser.parseFromString(post.content, 'text/html');
+
+          // Check Images
+          const imgs = Array.from(doc.querySelectorAll('img'));
+          imgs.forEach((img, idx) => {
+            let src = img.getAttribute('src') || '';
+            if (src.startsWith('//')) src = 'https:' + src;
+            if (src && src.startsWith('http') && !src.startsWith('data:') && !src.includes('picsum.photos')) {
+              items.push({
+                id: `unmig-img-${post.id}-${idx}`,
+                articleId: post.id,
+                articleTitle: post.title,
+                articleSlug: post.slug,
+                mediaType: 'image',
+                wpUrl: src,
+                reason: img.getAttribute('alt') ? `Alt: "${img.getAttribute('alt')}"` : 'In-content image on external WordPress URL'
+              });
+            }
+          });
+
+          // Check Videos & Sources
+          const sources = Array.from(doc.querySelectorAll('video, source'));
+          sources.forEach((el, idx) => {
+            let src = el.getAttribute('src') || '';
+            if (src.startsWith('//')) src = 'https:' + src;
+            const wrapper = el.closest('div.my-6') || el.parentElement;
+            const mediaId = wrapper?.getAttribute('data-media-video-id') || el.getAttribute('data-media-video-id');
+
+            if (src && src.startsWith('http') && !src.startsWith('data:') && !mediaId) {
+              items.push({
+                id: `unmig-vid-${post.id}-${idx}`,
+                articleId: post.id,
+                articleTitle: post.title,
+                articleSlug: post.slug,
+                mediaType: 'video',
+                wpUrl: src,
+                reason: 'MP4 Video on external WordPress URL'
+              });
+            }
+          });
+        } catch (e) {
+          console.warn('DOMParser error scanning post:', post.slug, e);
+        }
+      }
+    });
+
+    return items;
+  };
+
   const loadData = async (force = false) => {
     setLoading(true);
     try {
       const data = await fetchBlogPostsFromFirestore(force);
       setPosts(data);
+      const scanned = scanAllArticlesForExternalMedia(data);
+      setUnmigratedMedia(scanned);
 
       if (typeof window !== 'undefined') {
         const storedCats = localStorage.getItem(CATEGORIES_KEY);
@@ -145,7 +242,9 @@ export default function AdminPanelPage() {
         }
       }
     } catch {
-      setPosts(getStoredBlogPostsSync());
+      const fallback = getStoredBlogPostsSync();
+      setPosts(fallback);
+      setUnmigratedMedia(scanAllArticlesForExternalMedia(fallback));
     } finally {
       setLoading(false);
     }
@@ -883,17 +982,125 @@ export default function AdminPanelPage() {
     reader.readAsText(file);
   };
 
+  const handleManualScan = () => {
+    setIsScanningMedia(true);
+    const scanned = scanAllArticlesForExternalMedia(posts);
+    setUnmigratedMedia(scanned);
+    setTimeout(() => {
+      setIsScanningMedia(false);
+      showNotify(`Scan completed! Found ${scanned.length} external WordPress media items.`);
+    }, 300);
+  };
+
+  const handleDownloadMedia = (wpUrl: string, mediaType: string) => {
+    const downloadUrl = `/api/fetch-image?url=${encodeURIComponent(wpUrl)}&download=1`;
+    const link = document.createElement('a');
+    link.href = downloadUrl;
+    link.setAttribute('download', '');
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    showNotify(`Downloading ${mediaType} from WordPress...`);
+  };
+
+  const handleCopyWpUrl = (id: string, url: string) => {
+    navigator.clipboard.writeText(url);
+    setCopiedUrlId(id);
+    setTimeout(() => setCopiedUrlId(null), 2500);
+    showNotify('WordPress URL copied to clipboard!');
+  };
+
+  const handleEditArticleFromMedia = (articleSlug: string, articleId: string) => {
+    const targetPost = posts.find(p => p.id === articleId || p.slug === articleSlug);
+    if (targetPost) {
+      handleOpenEditBlog(targetPost);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } else {
+      alert('Article not found.');
+    }
+  };
+
+  const handleMigrateSingleItem = async (item: UnmigratedMediaItem) => {
+    setMigratingSingleId(item.id);
+    try {
+      const res = await fetch(`/api/fetch-image?url=${encodeURIComponent(item.wpUrl)}`);
+      const data = await res.json();
+
+      if (!data.dataUrl || !data.dataUrl.startsWith('data:')) {
+        throw new Error(data.error || 'Failed to fetch media from WordPress');
+      }
+
+      const targetPost = posts.find(p => p.id === item.articleId || p.slug === item.articleSlug);
+      if (!targetPost) throw new Error('Post not found in database');
+
+      let updatedPost = { ...targetPost };
+
+      if (item.mediaType === 'featured') {
+        updatedPost.image = data.dataUrl;
+      } else if (item.mediaType === 'image') {
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(updatedPost.content, 'text/html');
+        const imgs = Array.from(doc.querySelectorAll('img'));
+        let matched = false;
+        imgs.forEach(img => {
+          let src = img.getAttribute('src') || '';
+          if (src.startsWith('//')) src = 'https:' + src;
+          if (src === item.wpUrl || src.includes(item.wpUrl) || item.wpUrl.includes(src)) {
+            img.setAttribute('src', data.dataUrl);
+            img.removeAttribute('srcset');
+            img.removeAttribute('data-src');
+            img.removeAttribute('data-orig-file');
+            matched = true;
+          }
+        });
+        if (matched) {
+          updatedPost.content = doc.body.innerHTML;
+        }
+      } else if (item.mediaType === 'video') {
+        const mediaId = 'vid-single-' + Date.now() + '-' + Math.random().toString(36).substring(7);
+        await saveMediaVideoToFirestore(mediaId, data.dataUrl);
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(updatedPost.content, 'text/html');
+        const vids = Array.from(doc.querySelectorAll('video, source'));
+        let matched = false;
+        vids.forEach(v => {
+          let src = v.getAttribute('src') || '';
+          if (src.startsWith('//')) src = 'https:' + src;
+          if (src === item.wpUrl || src.includes(item.wpUrl) || item.wpUrl.includes(src)) {
+            v.setAttribute('src', '');
+            v.setAttribute('data-media-id', mediaId);
+            const wrapper = v.closest('div.my-6') || v.parentElement;
+            if (wrapper) wrapper.setAttribute('data-media-video-id', mediaId);
+            matched = true;
+          }
+        });
+        if (matched) {
+          updatedPost.content = doc.body.innerHTML;
+        }
+      }
+
+      await saveBlogPostToFirestore(updatedPost);
+      await loadData(true);
+      showNotify(`Successfully migrated ${item.mediaType} to local database!`);
+      setUnmigratedMedia(prev => prev.filter(m => m.id !== item.id));
+    } catch (err) {
+      alert(`Could not migrate this item: ${(err as Error).message}\nPlease click "Download Media" to download manually and replace it in the article editor.`);
+    } finally {
+      setMigratingSingleId(null);
+    }
+  };
+
   const handleMigrateAllImages = async () => {
-    if (!confirm('Are you sure you want to scan all articles and convert remaining external WordPress image URLs into local Base64 images? Already secured Base64 images will remain 100% untouched.')) {
+    if (!confirm('Are you sure you want to scan all articles and convert remaining external WordPress image & MP4 video URLs into local database storage? Already secured Base64 images and videos will remain 100% untouched.')) {
       return;
     }
 
     setIsMigratingImages(true);
-    setMigrationProgress({ current: 0, total: 100, text: 'Fetching articles...' });
-    const failedList: { articleTitle: string; articleSlug: string; imageUrl: string }[] = [];
+    setMigrationProgress({ current: 0, total: 100, text: 'Fetching articles from database...' });
+    const failedList: UnmigratedMediaItem[] = [];
 
     try {
-      const currentPosts = getStoredBlogPostsSync();
+      const currentPosts = await fetchBlogPostsFromFirestore(true);
       const total = currentPosts.length;
       let updatedCount = 0;
 
@@ -903,9 +1110,10 @@ export default function AdminPanelPage() {
         setMigrationProgress({ current: percent, total, text: `Migrating article ${i + 1} of ${total}: "${post.title.substring(0, 25)}..."` });
 
         let contentChanged = false;
-        let newContent = post.content;
+        let newContent = post.content || '';
         let newFeaturedImage = post.image;
 
+        // 1. Featured image migration
         if (newFeaturedImage && newFeaturedImage.startsWith('http') && !newFeaturedImage.includes('picsum.photos') && !newFeaturedImage.startsWith('data:')) {
           try {
             const res = await fetch(`/api/fetch-image?url=${encodeURIComponent(newFeaturedImage)}`);
@@ -914,64 +1122,153 @@ export default function AdminPanelPage() {
               newFeaturedImage = data.dataUrl;
               contentChanged = true;
             } else {
-              failedList.push({ articleTitle: post.title, articleSlug: post.slug, imageUrl: newFeaturedImage });
+              failedList.push({
+                id: `unmig-feat-${post.id}`,
+                articleId: post.id,
+                articleTitle: post.title,
+                articleSlug: post.slug,
+                mediaType: 'featured',
+                wpUrl: newFeaturedImage,
+                reason: data.error || 'Failed to fetch featured image',
+                failed: true
+              });
             }
           } catch (e) {
             console.warn('Featured image fetch error:', e);
-            failedList.push({ articleTitle: post.title, articleSlug: post.slug, imageUrl: newFeaturedImage });
+            failedList.push({
+              id: `unmig-feat-${post.id}`,
+              articleId: post.id,
+              articleTitle: post.title,
+              articleSlug: post.slug,
+              mediaType: 'featured',
+              wpUrl: newFeaturedImage,
+              reason: (e as Error).message,
+              failed: true
+            });
           }
         }
 
+        // 2. In-content images and MP4 videos migration
         if (newContent && (newContent.includes('<img') || newContent.includes('<video') || newContent.includes('<source'))) {
           const parser = new DOMParser();
           const doc = parser.parseFromString(newContent, 'text/html');
           const imgs = Array.from(doc.querySelectorAll('img'));
-          const sources = Array.from(doc.querySelectorAll('source, video[src]'));
+          const sources = Array.from(doc.querySelectorAll('source, video'));
           let mediaUpdated = false;
 
-          await Promise.all(imgs.map(async (img) => {
-            const src = img.getAttribute('src') || '';
+          // Process content images
+          await Promise.all(imgs.map(async (img, imgIdx) => {
+            let src = img.getAttribute('src') || '';
+            if (src.startsWith('//')) src = 'https:' + src;
             if (src && src.startsWith('http') && !src.startsWith('data:') && !src.includes('picsum.photos')) {
               try {
                 const res = await fetch(`/api/fetch-image?url=${encodeURIComponent(src)}`);
                 const data = await res.json();
                 if (data.dataUrl && data.dataUrl.startsWith('data:')) {
                   img.setAttribute('src', data.dataUrl);
+                  img.removeAttribute('srcset');
+                  img.removeAttribute('data-src');
+                  img.removeAttribute('data-orig-file');
                   mediaUpdated = true;
                 } else {
-                  failedList.push({ articleTitle: post.title, articleSlug: post.slug, imageUrl: src });
+                  failedList.push({
+                    id: `unmig-img-${post.id}-${imgIdx}`,
+                    articleId: post.id,
+                    articleTitle: post.title,
+                    articleSlug: post.slug,
+                    mediaType: 'image',
+                    wpUrl: src,
+                    reason: data.error || 'WordPress server rejected image fetch',
+                    failed: true
+                  });
                 }
               } catch (e) {
                 console.warn('Content image fetch error:', e);
-                failedList.push({ articleTitle: post.title, articleSlug: post.slug, imageUrl: src });
+                failedList.push({
+                  id: `unmig-img-${post.id}-${imgIdx}`,
+                  articleId: post.id,
+                  articleTitle: post.title,
+                  articleSlug: post.slug,
+                  mediaType: 'image',
+                  wpUrl: src,
+                  reason: (e as Error).message,
+                  failed: true
+                });
               }
             }
           }));
 
-          await Promise.all(sources.map(async (srcEl, sIdx) => {
-            const src = srcEl.getAttribute('src') || '';
-            if (src && src.startsWith('http') && !src.startsWith('data:')) {
+          // Process content MP4 videos
+          for (let sIdx = 0; sIdx < sources.length; sIdx++) {
+            const srcEl = sources[sIdx];
+            let src = srcEl.getAttribute('src') || '';
+            if (src.startsWith('//')) src = 'https:' + src;
+            const wrapper = srcEl.closest('div.my-6') || srcEl.parentElement;
+            const existingMediaId = wrapper?.getAttribute('data-media-video-id') || srcEl.getAttribute('data-media-video-id');
+
+            // External video URL that hasn't been migrated into mediaVideos
+            if (src && src.startsWith('http') && !src.startsWith('data:') && !existingMediaId) {
               try {
                 const res = await fetch(`/api/fetch-image?url=${encodeURIComponent(src)}`);
                 const data = await res.json();
                 if (data.dataUrl && data.dataUrl.startsWith('data:')) {
                   const mediaId = 'vid-mig-' + Date.now() + '-' + sIdx + '-' + Math.random().toString(36).substring(7);
                   await saveMediaVideoToFirestore(mediaId, data.dataUrl);
-                  srcEl.setAttribute('src', data.dataUrl);
-                  const wrapper = srcEl.closest('div.my-6') || srcEl.parentElement;
+                  // Set src to empty to keep blog post document size lightweight (<1MB)
+                  srcEl.setAttribute('src', '');
+                  srcEl.setAttribute('data-media-id', mediaId);
                   if (wrapper) {
                     wrapper.setAttribute('data-media-video-id', mediaId);
+                  } else {
+                    srcEl.setAttribute('data-media-video-id', mediaId);
                   }
                   mediaUpdated = true;
                 } else {
-                  failedList.push({ articleTitle: post.title, articleSlug: post.slug, imageUrl: src });
+                  failedList.push({
+                    id: `unmig-vid-${post.id}-${sIdx}`,
+                    articleId: post.id,
+                    articleTitle: post.title,
+                    articleSlug: post.slug,
+                    mediaType: 'video',
+                    wpUrl: src,
+                    reason: data.error || 'Video could not be downloaded from remote host',
+                    failed: true
+                  });
                 }
               } catch (e) {
                 console.warn('Content video fetch error:', e);
-                failedList.push({ articleTitle: post.title, articleSlug: post.slug, imageUrl: src });
+                failedList.push({
+                  id: `unmig-vid-${post.id}-${sIdx}`,
+                  articleId: post.id,
+                  articleTitle: post.title,
+                  articleSlug: post.slug,
+                  mediaType: 'video',
+                  wpUrl: src,
+                  reason: (e as Error).message,
+                  failed: true
+                });
+              }
+            } else if (src && src.startsWith('data:video/')) {
+              // Repair legacy bloated videos: chunk them into mediaVideos and strip from post HTML
+              try {
+                let mediaId = existingMediaId;
+                if (!mediaId) {
+                  mediaId = 'vid-mig-repair-' + Date.now() + '-' + sIdx + '-' + Math.random().toString(36).substring(7);
+                  await saveMediaVideoToFirestore(mediaId, src);
+                }
+                srcEl.setAttribute('src', '');
+                srcEl.setAttribute('data-media-id', mediaId);
+                if (wrapper) {
+                  wrapper.setAttribute('data-media-video-id', mediaId);
+                } else {
+                  srcEl.setAttribute('data-media-video-id', mediaId);
+                }
+                mediaUpdated = true;
+              } catch (err) {
+                console.warn('Repair error for video:', err);
               }
             }
-          }));
+          }
 
           if (mediaUpdated) {
             newContent = doc.body.innerHTML;
@@ -990,13 +1287,22 @@ export default function AdminPanelPage() {
         }
       }
 
-      setFailedMigrationImages(failedList);
-      setMigrationProgress({ current: 100, total, text: 'Migration completed!' });
-      await loadData(true);
-      if (failedList.length > 0) {
-        showNotify(`Migration finished with ${failedList.length} unmigrated images. See audit report below.`);
+      setFailedMigrationImages(failedList.map(f => ({ articleTitle: f.articleTitle, articleSlug: f.articleSlug, imageUrl: f.wpUrl })));
+      setMigrationProgress({ current: 100, total, text: 'Migration completed! Rescanning articles...' });
+      const freshData = await fetchBlogPostsFromFirestore(true);
+      setPosts(freshData);
+      const remainingUnmigrated = scanAllArticlesForExternalMedia(freshData);
+      
+      const combined = remainingUnmigrated.map(item => {
+        const foundFailed = failedList.find(f => f.wpUrl === item.wpUrl || f.id === item.id);
+        return foundFailed ? { ...item, reason: foundFailed.reason, failed: true } : item;
+      });
+      setUnmigratedMedia(combined);
+
+      if (combined.length > 0) {
+        showNotify(`Migration completed! ${updatedCount} articles updated. ${combined.length} media items remain pending (view list below).`);
       } else {
-        showNotify(`All remaining images successfully migrated! 100% Secured.`);
+        showNotify(`All remaining images & MP4 videos successfully migrated! 100% Secured.`);
       }
     } catch (err) {
       alert('Error migrating images: ' + (err as Error).message);
@@ -1127,6 +1433,13 @@ export default function AdminPanelPage() {
               wrapper.setAttribute('data-media-video-id', mediaId);
             } else {
               vid.setAttribute('data-media-video-id', mediaId);
+            }
+            if (source) {
+              source.setAttribute('src', '');
+              source.setAttribute('data-media-id', mediaId);
+            } else {
+              vid.setAttribute('src', '');
+              vid.setAttribute('data-media-id', mediaId);
             }
           } catch (e) {
             console.warn('Failed to chunk/save video to Firestore mediaVideos:', e);
@@ -2316,8 +2629,37 @@ export default function AdminPanelPage() {
           );
         })()}
 
+        {/* Unmigrated Media Alert Banner */}
+        {unmigratedMedia.length > 0 && activeTab !== 'unmigrated' && (
+          <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-300 rounded-3xl p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-sm">
+            <div className="flex items-start gap-3">
+              <div className="p-3 bg-amber-100 text-amber-800 rounded-2xl shrink-0 mt-0.5">
+                <AlertTriangle className="w-5 h-5 text-amber-600" />
+              </div>
+              <div>
+                <h3 className="text-sm font-extrabold text-black flex items-center gap-2">
+                  <span>{unmigratedMedia.length} WordPress Media Files Pending Local Migration</span>
+                  <span className="px-2 py-0.5 text-[10px] bg-amber-500 text-white rounded-full font-bold">Action Required</span>
+                </h3>
+                <p className="text-xs text-slate-600 mt-1 font-medium">
+                  Ye images ya MP4 videos abhi bhi external WordPress URLs se link hain. Aap inhe dekh kar download kar sakte hain aur article me manually upload kar sakte hain.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2.5 shrink-0">
+              <button
+                onClick={() => setActiveTab('unmigrated')}
+                className="px-4 py-2.5 bg-orange-600 hover:bg-orange-700 text-white text-xs font-bold rounded-xl shadow-md transition-all flex items-center gap-1.5"
+              >
+                <Eye className="w-4 h-4" />
+                <span>View Pending Media ({unmigratedMedia.length})</span>
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Navigation Tabs */}
-        <div className="flex items-center gap-3 border-b border-slate-200 pb-3">
+        <div className="flex flex-wrap items-center gap-3 border-b border-slate-200 pb-3">
           <button
             onClick={() => setActiveTab('tutorials')}
             className={`px-5 py-2.5 rounded-2xl text-xs font-bold transition-all flex items-center gap-2 ${
@@ -2326,6 +2668,24 @@ export default function AdminPanelPage() {
           >
             <FileText className="w-4 h-4" />
             <span>Tutorials Manager ({posts.length})</span>
+          </button>
+          <button
+            onClick={() => setActiveTab('unmigrated')}
+            className={`px-5 py-2.5 rounded-2xl text-xs font-bold transition-all flex items-center gap-2 ${
+              activeTab === 'unmigrated' ? 'bg-orange-600 text-white shadow-md' : 'bg-white text-black hover:bg-slate-100 border border-slate-200'
+            }`}
+          >
+            <AlertTriangle className={`w-4 h-4 ${unmigratedMedia.length > 0 ? 'text-amber-500' : 'text-slate-400'}`} />
+            <span>Pending WP Media</span>
+            {unmigratedMedia.length > 0 ? (
+              <span className="px-2 py-0.5 text-[10px] bg-amber-500 text-white rounded-full font-black animate-pulse">
+                {unmigratedMedia.length}
+              </span>
+            ) : (
+              <span className="px-2 py-0.5 text-[10px] bg-emerald-100 text-emerald-800 rounded-full font-bold">
+                0
+              </span>
+            )}
           </button>
           <button
             onClick={() => setActiveTab('categories')}
@@ -2510,6 +2870,290 @@ export default function AdminPanelPage() {
                   </div>
                 );
               })}
+            </div>
+          </div>
+        )}
+
+        {/* Tab 3: Unmigrated / Pending WordPress Media Fallback Hub */}
+        {activeTab === 'unmigrated' && (
+          <div className="space-y-6">
+            {/* Top Overview & Action Header Card */}
+            <div className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 shadow-sm space-y-6">
+              <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 border-b border-slate-100 pb-5">
+                <div className="space-y-1">
+                  <div className="inline-flex items-center gap-2 px-3.5 py-1.5 bg-amber-50 text-amber-800 rounded-full text-xs font-bold border border-amber-200">
+                    <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
+                    <span>WP Media Fallback & Manual Download Hub</span>
+                  </div>
+                  <h2 className="text-xl font-extrabold text-black flex items-center gap-2 pt-1">
+                    <span>Unmigrated WordPress Media Items ({unmigratedMedia.length})</span>
+                  </h2>
+                  <p className="text-xs text-slate-500 font-medium">
+                    यहाँ वो सभी WordPress Images और MP4 Videos सूचीबद्ध हैं जो अभी तक locally save नहीं हो पाई हैं। आप &quot;Download Media&quot; पर क्लिक करके सीधे इमेज/वीडियो डाउनलोड कर सकते हैं और &quot;Edit Article&quot; में जाकर अपलोड कर सकते हैं।
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2.5">
+                  <button
+                    onClick={handleManualScan}
+                    disabled={isScanningMedia}
+                    className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-black font-bold rounded-xl text-xs inline-flex items-center gap-2 transition-colors disabled:opacity-50"
+                  >
+                    <RefreshCw className={`w-4 h-4 ${isScanningMedia ? 'animate-spin' : ''}`} />
+                    <span>{isScanningMedia ? 'Scanning Articles...' : 'Scan All Articles Now'}</span>
+                  </button>
+
+                  <button
+                    onClick={handleMigrateAllImages}
+                    disabled={isMigratingImages}
+                    className="px-4 py-2.5 bg-orange-600 hover:bg-orange-700 text-white font-bold rounded-xl text-xs inline-flex items-center gap-2 shadow-sm transition-all disabled:opacity-50"
+                  >
+                    {isMigratingImages ? <Loader2 className="w-4 h-4 animate-spin" /> : <ImageIcon className="w-4 h-4" />}
+                    <span>{isMigratingImages ? `Migrating (${migrationProgress.current}%)...` : 'Run WP Migration Again'}</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Stats Counters */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4">
+                  <div className="text-xs font-bold text-slate-500">Total Pending Media</div>
+                  <div className="text-2xl font-extrabold text-black mt-1">{unmigratedMedia.length}</div>
+                </div>
+                <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4">
+                  <div className="text-xs font-bold text-blue-800">Article Content Images</div>
+                  <div className="text-2xl font-extrabold text-blue-600 mt-1">
+                    {unmigratedMedia.filter(m => m.mediaType === 'image').length}
+                  </div>
+                </div>
+                <div className="bg-purple-50 border border-purple-200 rounded-2xl p-4">
+                  <div className="text-xs font-bold text-purple-800">MP4 Videos</div>
+                  <div className="text-2xl font-extrabold text-purple-600 mt-1">
+                    {unmigratedMedia.filter(m => m.mediaType === 'video').length}
+                  </div>
+                </div>
+                <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4">
+                  <div className="text-xs font-bold text-amber-800">Featured Banner Images</div>
+                  <div className="text-2xl font-extrabold text-amber-600 mt-1">
+                    {unmigratedMedia.filter(m => m.mediaType === 'featured').length}
+                  </div>
+                </div>
+              </div>
+
+              {/* Search and Filter Controls */}
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-2">
+                <div className="relative flex-1 max-w-md">
+                  <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    value={mediaSearchQuery}
+                    onChange={(e) => setMediaSearchQuery(e.target.value)}
+                    placeholder="Search by article title, slug, or image URL..."
+                    className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-black focus:ring-2 focus:ring-orange-600/20"
+                  />
+                  {mediaSearchQuery && (
+                    <button
+                      onClick={() => setMediaSearchQuery('')}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl shrink-0 overflow-x-auto text-xs font-bold">
+                  {(['all', 'image', 'video', 'featured'] as const).map(type => (
+                    <button
+                      key={type}
+                      onClick={() => setMediaTypeFilter(type)}
+                      className={`px-3 py-1.5 rounded-lg transition-all capitalize ${
+                        mediaTypeFilter === type ? 'bg-white text-orange-600 shadow-sm' : 'text-slate-600 hover:text-black'
+                      }`}
+                    >
+                      {type === 'all' ? `All (${unmigratedMedia.length})` : 
+                       type === 'image' ? `Images (${unmigratedMedia.filter(m => m.mediaType === 'image').length})` :
+                       type === 'video' ? `Videos (${unmigratedMedia.filter(m => m.mediaType === 'video').length})` :
+                       `Featured (${unmigratedMedia.filter(m => m.mediaType === 'featured').length})`}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Media Items Table / Grid */}
+            <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
+              {(() => {
+                const filtered = unmigratedMedia.filter(item => {
+                  const q = mediaSearchQuery.toLowerCase().trim();
+                  const matchesSearch = !q || 
+                    item.articleTitle.toLowerCase().includes(q) ||
+                    item.articleSlug.toLowerCase().includes(q) ||
+                    item.wpUrl.toLowerCase().includes(q);
+                  const matchesType = mediaTypeFilter === 'all' || item.mediaType === mediaTypeFilter;
+                  return matchesSearch && matchesType;
+                });
+
+                if (unmigratedMedia.length === 0) {
+                  return (
+                    <div className="p-12 text-center space-y-3">
+                      <div className="w-14 h-14 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto">
+                        <CheckCircle className="w-8 h-8" />
+                      </div>
+                      <h3 className="font-extrabold text-black text-lg">100% Secured! No External WordPress Media Pending</h3>
+                      <p className="text-xs text-slate-500 max-w-md mx-auto">
+                        All images and MP4 videos across all your articles are stored locally in the database.
+                      </p>
+                    </div>
+                  );
+                }
+
+                if (filtered.length === 0) {
+                  return (
+                    <div className="p-12 text-center text-slate-500 text-xs font-medium">
+                      No media items match your search &quot;{mediaSearchQuery}&quot;.
+                    </div>
+                  );
+                }
+
+                return (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="bg-slate-50 border-b border-slate-200 text-xs font-extrabold text-black">
+                          <th className="p-4 w-28">Preview</th>
+                          <th className="p-4 w-64">Article Title & Live Link</th>
+                          <th className="p-4 min-w-[280px]">WordPress URL</th>
+                          <th className="p-4 w-52 text-right">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 text-xs">
+                        {filtered.map(item => (
+                          <tr key={item.id} className="hover:bg-slate-50/80 transition-colors">
+                            {/* Preview Cell */}
+                            <td className="p-4 align-top">
+                              <div className="space-y-1.5">
+                                {item.mediaType === 'video' ? (
+                                  <div className="w-20 h-14 bg-slate-900 rounded-xl flex flex-col items-center justify-center text-amber-300 shadow-sm border border-slate-700">
+                                    <Video className="w-6 h-6" />
+                                    <span className="text-[9px] font-bold mt-0.5 text-white">MP4 Video</span>
+                                  </div>
+                                ) : (
+                                  <div className="relative w-20 h-14 rounded-xl overflow-hidden border border-slate-200 bg-slate-100 shadow-sm">
+                                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                                    <img
+                                      src={item.wpUrl}
+                                      alt={item.articleTitle}
+                                      className="w-full h-full object-cover"
+                                      loading="lazy"
+                                      onError={(e) => {
+                                        (e.target as HTMLElement).style.display = 'none';
+                                        const parent = (e.target as HTMLElement).parentElement;
+                                        if (parent) {
+                                          parent.innerHTML = '<div class="w-full h-full flex flex-col items-center justify-center text-slate-400 text-[9px] font-bold p-1 text-center bg-slate-100">Image Preview</div>';
+                                        }
+                                      }}
+                                    />
+                                  </div>
+                                )}
+                                <div>
+                                  <span className={`inline-block px-2 py-0.5 rounded-md text-[10px] font-extrabold uppercase ${
+                                    item.mediaType === 'featured' ? 'bg-amber-100 text-amber-800' :
+                                    item.mediaType === 'video' ? 'bg-purple-100 text-purple-800' :
+                                    'bg-blue-100 text-blue-800'
+                                  }`}>
+                                    {item.mediaType}
+                                  </span>
+                                </div>
+                              </div>
+                            </td>
+
+                            {/* Article Details Cell */}
+                            <td className="p-4 align-top space-y-1.5">
+                              <div className="font-bold text-black text-sm leading-snug">
+                                {item.articleTitle}
+                              </div>
+                              <div className="flex items-center gap-1.5">
+                                <Link
+                                  href={`/${item.articleSlug}`}
+                                  target="_blank"
+                                  className="text-orange-600 hover:text-orange-700 font-mono text-[11px] inline-flex items-center gap-1 font-semibold"
+                                >
+                                  <span>/{item.articleSlug}</span>
+                                  <ExternalLink className="w-3 h-3" />
+                                </Link>
+                              </div>
+                              {item.reason && (
+                                <div className="text-[11px] text-amber-800 bg-amber-50/80 px-2 py-1 rounded-lg border border-amber-200/60 inline-flex items-center gap-1">
+                                  <AlertCircle className="w-3 h-3 shrink-0 text-amber-600" />
+                                  <span className="truncate max-w-[260px]">{item.reason}</span>
+                                </div>
+                              )}
+                            </td>
+
+                            {/* WordPress URL Cell */}
+                            <td className="p-4 align-top space-y-2">
+                              <div className="bg-slate-50 border border-slate-200 rounded-xl p-2.5 font-mono text-[11px] text-slate-700 break-all select-all flex items-start justify-between gap-2">
+                                <span className="line-clamp-2">{item.wpUrl}</span>
+                                <button
+                                  onClick={() => handleCopyWpUrl(item.id, item.wpUrl)}
+                                  className="shrink-0 p-1.5 bg-white hover:bg-slate-100 rounded-lg border border-slate-200 text-slate-600 hover:text-black transition-colors"
+                                  title="Copy URL"
+                                >
+                                  {copiedUrlId === item.id ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                                </button>
+                              </div>
+                              <div className="flex items-center gap-2 text-[11px]">
+                                <a
+                                  href={item.wpUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="text-slate-500 hover:text-black inline-flex items-center gap-1 font-medium"
+                                >
+                                  <ExternalLink className="w-3 h-3" />
+                                  <span>Open WordPress Link in new tab</span>
+                                </a>
+                              </div>
+                            </td>
+
+                            {/* Action Buttons Cell */}
+                            <td className="p-4 align-top text-right space-y-2">
+                              <div className="flex flex-col items-end gap-1.5">
+                                <button
+                                  onClick={() => handleDownloadMedia(item.wpUrl, item.mediaType)}
+                                  className="w-full sm:w-auto px-3 py-1.5 bg-orange-600 hover:bg-orange-700 text-white font-bold rounded-xl text-xs inline-flex items-center justify-center gap-1.5 shadow-sm transition-colors"
+                                  title="Download media file directly to your computer"
+                                >
+                                  <Download className="w-3.5 h-3.5" />
+                                  <span>Download Media</span>
+                                </button>
+
+                                <button
+                                  onClick={() => handleEditArticleFromMedia(item.articleSlug, item.articleId)}
+                                  className="w-full sm:w-auto px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white font-bold rounded-xl text-xs inline-flex items-center justify-center gap-1.5 shadow-sm transition-colors"
+                                  title="Open article in admin editor to upload new image"
+                                >
+                                  <Edit className="w-3.5 h-3.5" />
+                                  <span>Edit Article</span>
+                                </button>
+
+                                <button
+                                  onClick={() => handleMigrateSingleItem(item)}
+                                  disabled={migratingSingleId === item.id}
+                                  className="w-full sm:w-auto px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-bold rounded-xl text-xs inline-flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50"
+                                  title="Retry converting this item into local database"
+                                >
+                                  {migratingSingleId === item.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                                  <span>{migratingSingleId === item.id ? 'Migrating...' : 'Retry Single'}</span>
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                );
+              })()}
             </div>
           </div>
         )}
