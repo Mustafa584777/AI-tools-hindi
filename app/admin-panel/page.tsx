@@ -1786,12 +1786,35 @@ export default function AdminPanelPage() {
     }
 
     let processedHtmlContent = visualContentRef.current ? visualContentRef.current.innerHTML : blogContent;
-    if (processedHtmlContent && (processedHtmlContent.includes('<video') || processedHtmlContent.includes('<source') || processedHtmlContent.includes('video-overlay-helper') || processedHtmlContent.includes('data-media-video-id'))) {
+    if (processedHtmlContent && (processedHtmlContent.includes('<video') || processedHtmlContent.includes('<source') || processedHtmlContent.includes('video-overlay-helper') || processedHtmlContent.includes('data-media-video-id') || processedHtmlContent.includes('<img') || processedHtmlContent.includes('data:image/'))) {
       const parser = new DOMParser();
       const doc = parser.parseFromString(processedHtmlContent, 'text/html');
 
       // Clean up any temporary editor overlay badges
       doc.querySelectorAll('.video-overlay-helper').forEach(h => h.remove());
+
+      // Process content images to save base64 images into mediaImages and keep blogPost document lightweight (<1MB)
+      const imgEls = Array.from(doc.querySelectorAll('img'));
+      for (let idx = 0; idx < imgEls.length; idx++) {
+        const img = imgEls[idx];
+        const src = img.getAttribute('src') || '';
+        if (src && src.startsWith('data:image/')) {
+          let mediaId = img.getAttribute('data-media-image-id');
+          if (!mediaId) {
+            mediaId = 'img-save-' + Date.now() + '-' + idx + '-' + Math.random().toString(36).substring(7);
+          }
+          try {
+            await saveMediaImageToFirestore(mediaId, src);
+            img.setAttribute('src', '');
+            img.setAttribute('data-media-image-id', mediaId);
+            img.removeAttribute('srcset');
+            img.removeAttribute('data-src');
+            img.removeAttribute('data-orig-file');
+          } catch (e) {
+            console.warn('Failed to chunk/save image to Firestore mediaImages:', e);
+          }
+        }
+      }
 
       const videoEls = Array.from(doc.querySelectorAll('video'));
 
