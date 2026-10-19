@@ -1,6 +1,6 @@
 import { BlogPost } from './types';
 import { db } from './firebase';
-import { collection, getDocs, doc, setDoc, deleteDoc } from 'firebase/firestore';
+import { collection, getDocs, getDoc, doc, setDoc, deleteDoc } from 'firebase/firestore';
 
 export const INITIAL_BLOG_POSTS: BlogPost[] = [
   {
@@ -169,3 +169,44 @@ export function getStoredBlogPostsSync(): BlogPost[] {
     return INITIAL_BLOG_POSTS;
   }
 }
+
+export async function saveMediaVideoToFirestore(mediaId: string, base64Data: string): Promise<void> {
+  const CHUNK_SIZE = 700 * 1024; // 700KB chunks to stay safely under Firestore 1MB document limit
+  const totalChunks = Math.ceil(base64Data.length / CHUNK_SIZE);
+  
+  await setDoc(doc(db, 'mediaVideos', mediaId), {
+    id: mediaId,
+    totalChunks,
+    createdAt: Date.now()
+  });
+
+  for (let i = 0; i < totalChunks; i++) {
+    const chunkData = base64Data.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE);
+    await setDoc(doc(db, 'mediaVideos', `${mediaId}_chunk_${i}`), {
+      mediaId,
+      chunkIndex: i,
+      data: chunkData
+    });
+  }
+}
+
+export async function fetchMediaVideoFromFirestore(mediaId: string): Promise<string | null> {
+  try {
+    const metaDoc = await getDoc(doc(db, 'mediaVideos', mediaId));
+    if (!metaDoc.exists()) return null;
+    const { totalChunks } = metaDoc.data() as { totalChunks: number };
+    
+    let fullData = '';
+    for (let i = 0; i < totalChunks; i++) {
+      const chunkDoc = await getDoc(doc(db, 'mediaVideos', `${mediaId}_chunk_${i}`));
+      if (chunkDoc.exists()) {
+        fullData += (chunkDoc.data() as { data: string }).data;
+      }
+    }
+    return fullData;
+  } catch (e) {
+    console.error('Error fetching media video from Firestore:', e);
+    return null;
+  }
+}
+

@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useRef, useEffect } from 'react';
+import { fetchMediaVideoFromFirestore } from '@/lib/storage';
 
 function getProcessedContentWithTOC(html: string) {
   if (typeof window === 'undefined') return html;
@@ -80,6 +81,20 @@ export default function ArticleContent({ content }: { content: string }) {
 
       embed.addEventListener('click', handler);
       handlers.push({ el: embed, handler });
+    });
+
+    const mediaVideoContainers = container.querySelectorAll('[data-media-video-id]');
+    mediaVideoContainers.forEach(async (el) => {
+      const mediaId = el.getAttribute('data-media-video-id');
+      const sourceEl = el.querySelector('source');
+      if (mediaId && sourceEl && (!sourceEl.getAttribute('src') || !sourceEl.getAttribute('src')?.startsWith('data:'))) {
+        const base64 = await fetchMediaVideoFromFirestore(mediaId);
+        if (base64) {
+          sourceEl.setAttribute('src', base64);
+          const videoEl = el.querySelector('video');
+          if (videoEl) videoEl.load();
+        }
+      }
     });
 
     return () => {
