@@ -21,7 +21,8 @@ import {
   saveMediaVideoToFirestore,
   fetchMediaVideoFromFirestore,
   saveMediaImageToFirestore,
-  fetchMediaImageFromFirestore
+  fetchMediaImageFromFirestore,
+  compressImageBase64
 } from '@/lib/storage';
 import { BlogPost } from '@/lib/types';
 
@@ -1403,7 +1404,14 @@ export default function AdminPanelPage() {
         updatedPost.image = data.dataUrl;
       } else if (item.mediaType === 'image') {
         const mediaId = 'img-single-' + Date.now() + '-' + Math.random().toString(36).substring(7);
-        await saveMediaImageToFirestore(mediaId, data.dataUrl);
+        const compressed = await compressImageBase64(data.dataUrl, 800, 0.7);
+        let useRemote = true;
+        try {
+          await saveMediaImageToFirestore(mediaId, compressed);
+        } catch {
+          useRemote = false;
+        }
+
         const parser = new DOMParser();
         const doc = parser.parseFromString(updatedPost.content, 'text/html');
         const imgs = Array.from(doc.querySelectorAll('img'));
@@ -1412,8 +1420,12 @@ export default function AdminPanelPage() {
           let src = img.getAttribute('src') || '';
           if (src.startsWith('//')) src = 'https:' + src;
           if (src === item.wpUrl || src.includes(item.wpUrl) || item.wpUrl.includes(src)) {
-            img.setAttribute('src', '');
-            img.setAttribute('data-media-image-id', mediaId);
+            if (useRemote) {
+              img.setAttribute('src', '');
+              img.setAttribute('data-media-image-id', mediaId);
+            } else {
+              img.setAttribute('src', compressed);
+            }
             img.removeAttribute('srcset');
             img.removeAttribute('data-src');
             img.removeAttribute('data-orig-file');
@@ -1533,9 +1545,14 @@ export default function AdminPanelPage() {
                 const data = await res.json();
                 if (data.dataUrl && data.dataUrl.startsWith('data:')) {
                   const mediaId = 'img-mig-' + Date.now() + '-' + imgIdx + '-' + Math.random().toString(36).substring(7);
-                  await saveMediaImageToFirestore(mediaId, data.dataUrl);
-                  img.setAttribute('src', '');
-                  img.setAttribute('data-media-image-id', mediaId);
+                  const compressed = await compressImageBase64(data.dataUrl, 800, 0.7);
+                  try {
+                    await saveMediaImageToFirestore(mediaId, compressed);
+                    img.setAttribute('src', '');
+                    img.setAttribute('data-media-image-id', mediaId);
+                  } catch {
+                    img.setAttribute('src', compressed);
+                  }
                   img.removeAttribute('srcset');
                   img.removeAttribute('data-src');
                   img.removeAttribute('data-orig-file');
@@ -1804,14 +1821,19 @@ export default function AdminPanelPage() {
             mediaId = 'img-save-' + Date.now() + '-' + idx + '-' + Math.random().toString(36).substring(7);
           }
           try {
-            await saveMediaImageToFirestore(mediaId, src);
-            img.setAttribute('src', '');
-            img.setAttribute('data-media-image-id', mediaId);
+            const compressed = await compressImageBase64(src, 800, 0.7);
+            try {
+              await saveMediaImageToFirestore(mediaId, compressed);
+              img.setAttribute('src', '');
+              img.setAttribute('data-media-image-id', mediaId);
+            } catch {
+              img.setAttribute('src', compressed);
+            }
             img.removeAttribute('srcset');
             img.removeAttribute('data-src');
             img.removeAttribute('data-orig-file');
           } catch (e) {
-            console.warn('Failed to chunk/save image to Firestore mediaImages:', e);
+            console.warn('Failed to compress/save image:', e);
           }
         }
       }
