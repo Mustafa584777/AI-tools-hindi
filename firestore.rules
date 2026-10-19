@@ -12,9 +12,15 @@ service cloud.firestore {
       allow read, write: if true;
     }
 
-    match /mediaVideos/{videoId} {
+    match /mediaVideos/{document=**} {
       // Allow storing chunked video media files
+      allow read, write: if true;
+    }
+
+    match /mediaImages/{document=**} {
+      // Allow storing chunked image media files
       allow read, write: if true;
     }
   }
 }
+
