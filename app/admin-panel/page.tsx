@@ -139,6 +139,13 @@ export default function AdminPanelPage() {
   const [selectedImageEl, setSelectedImageEl] = useState<HTMLImageElement | null>(null);
   const [showVideoModal, setShowVideoModal] = useState(false);
   const [selectedVideoEl, setSelectedVideoEl] = useState<HTMLElement | null>(null);
+  const [editVideoSlug, setEditVideoSlug] = useState('');
+  const [editVideoTitle, setEditVideoTitle] = useState('');
+  const [editVideoMediaId, setEditVideoMediaId] = useState('');
+  const [editVideoSrc, setEditVideoSrc] = useState('');
+  const [isUploadingReplacementVideo, setIsUploadingReplacementVideo] = useState(false);
+  const [replaceVideoUrlInput, setReplaceVideoUrlInput] = useState('');
+  const replaceVideoInputRef = useRef<HTMLInputElement>(null);
   const [editImageAlt, setEditImageAlt] = useState('');
   const [editImageSlug, setEditImageSlug] = useState('');
   const [showEditLinkModal, setShowEditLinkModal] = useState(false);
@@ -255,11 +262,100 @@ export default function AdminPanelPage() {
     loadData();
   }, []);
 
+  const hydrateEditorVideos = async (container: HTMLElement) => {
+    if (!container) return;
+    const videoContainers = Array.from(container.querySelectorAll('video, [data-media-video-id], .wp-block-video'));
+    for (const rawEl of videoContainers) {
+      const el = (rawEl.tagName === 'VIDEO' ? (rawEl.closest('div.my-6') || rawEl.parentElement || rawEl) : rawEl) as HTMLElement;
+      if (el === container) continue;
+
+      const mediaId = el.getAttribute('data-media-video-id') || 
+                      el.querySelector('video')?.getAttribute('data-media-video-id') || 
+                      el.querySelector('source')?.getAttribute('data-media-id');
+
+      el.classList.add('relative', 'group');
+
+      if (!el.querySelector('.video-overlay-helper')) {
+        const helper = document.createElement('div');
+        helper.className = 'video-overlay-helper absolute top-3 right-3 z-10 pointer-events-auto bg-black/85 hover:bg-orange-600 text-white text-xs font-bold px-3 py-1.5 rounded-xl cursor-pointer shadow-lg flex items-center gap-1.5 transition-all';
+        helper.innerHTML = `
+          <svg class="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24"><path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z"/></svg>
+          <span>Edit MP4 (Replace / Slug / Delete)</span>
+        `;
+        el.prepend(helper);
+      }
+
+      if (mediaId) {
+        const videoEl = el.tagName === 'VIDEO' ? (el as HTMLVideoElement) : el.querySelector('video');
+        const sourceEl = el.querySelector('source');
+        const currentSrc = sourceEl?.getAttribute('src') || videoEl?.getAttribute('src');
+
+        if (!currentSrc || !currentSrc.startsWith('data:video/')) {
+          try {
+            const base64 = await fetchMediaVideoFromFirestore(mediaId);
+            if (base64) {
+              if (sourceEl) sourceEl.setAttribute('src', base64);
+              else if (videoEl) videoEl.setAttribute('src', base64);
+              if (videoEl) videoEl.load();
+            }
+          } catch (e) {
+            console.warn('Hydration error for video:', mediaId, e);
+          }
+        }
+      }
+    }
+  };
+
+  const openVideoModal = async (container: HTMLElement) => {
+    setSelectedVideoEl(container);
+
+    const videoEl = container.tagName === 'VIDEO' ? (container as HTMLVideoElement) : container.querySelector('video');
+    const sourceEl = container.querySelector('source');
+
+    const mediaId = container.getAttribute('data-media-video-id') || 
+                    videoEl?.getAttribute('data-media-video-id') || 
+                    sourceEl?.getAttribute('data-media-id') || '';
+
+    const existingSlug = container.getAttribute('data-video-slug') || 
+                         videoEl?.getAttribute('data-video-slug') || 
+                         videoEl?.getAttribute('title') || 
+                         container.getAttribute('title') || '';
+
+    const existingTitle = videoEl?.getAttribute('title') || 
+                          container.getAttribute('data-video-title') || '';
+
+    const currentSrc = sourceEl?.getAttribute('src') || videoEl?.getAttribute('src') || '';
+
+    setEditVideoMediaId(mediaId);
+    setEditVideoSlug(existingSlug || 'tutorial-video-clip');
+    setEditVideoTitle(existingTitle);
+    setReplaceVideoUrlInput('');
+    setShowVideoModal(true);
+
+    if ((!currentSrc || !currentSrc.startsWith('data:video/')) && mediaId) {
+      setEditVideoSrc('');
+      try {
+        const base64 = await fetchMediaVideoFromFirestore(mediaId);
+        if (base64) {
+          setEditVideoSrc(base64);
+        } else if (currentSrc) {
+          setEditVideoSrc(currentSrc);
+        }
+      } catch (err) {
+        console.warn('Error fetching video preview:', err);
+        if (currentSrc) setEditVideoSrc(currentSrc);
+      }
+    } else {
+      setEditVideoSrc(currentSrc);
+    }
+  };
+
   useEffect(() => {
     if (editorMode === 'visual' && visualContentRef.current) {
       if (visualContentRef.current.innerHTML !== blogContent) {
         visualContentRef.current.innerHTML = blogContent;
       }
+      hydrateEditorVideos(visualContentRef.current);
     }
   }, [blogContent, editorMode, isEditingBlog]);
 
@@ -496,6 +592,8 @@ export default function AdminPanelPage() {
       alert('Video file size is quite large (>25MB). Please use compressed MP4 clips for web performance.');
     }
 
+    const cleanSlug = file.name.replace(/\.[^/.]+$/, "").toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'tutorial-video';
+
     showNotify('Uploading and encoding MP4 video into Firestore storage...');
     const reader = new FileReader();
     reader.onload = async (uploadEvent) => {
@@ -509,9 +607,13 @@ export default function AdminPanelPage() {
       }
 
       const mp4EmbedHtml = `
-        <div class="my-6 rounded-2xl overflow-hidden shadow-md bg-black" data-media-video-id="${mediaId}">
-          <video controls class="w-full h-auto max-h-[500px]" preload="metadata">
-            <source src="${base64VideoUrl}" type="video/mp4" />
+        <div class="my-6 rounded-2xl overflow-hidden shadow-md bg-black relative group" data-media-video-id="${mediaId}" data-video-slug="${cleanSlug}" data-video-title="${cleanSlug}">
+          <div class="video-overlay-helper absolute top-3 right-3 z-10 pointer-events-auto bg-black/85 hover:bg-orange-600 text-white text-xs font-bold px-3 py-1.5 rounded-xl cursor-pointer shadow-lg flex items-center gap-1.5 transition-all">
+            <svg class="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24"><path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z"/></svg>
+            <span>Edit MP4 (Replace / Slug / Delete)</span>
+          </div>
+          <video controls class="w-full h-auto max-h-[500px]" preload="metadata" data-video-slug="${cleanSlug}" title="${cleanSlug}">
+            <source src="${base64VideoUrl}" type="video/mp4" data-media-id="${mediaId}" />
             Your browser does not support the video tag.
           </video>
         </div>
@@ -519,11 +621,18 @@ export default function AdminPanelPage() {
 
       if (selectedBlockElementRef.current && visualContentRef.current?.contains(selectedBlockElementRef.current)) {
         const tempDiv = document.createElement('div');
-        tempDiv.innerHTML = mp4EmbedHtml;
+        tempDiv.innerHTML = mp4EmbedHtml.trim();
         const videoNode = tempDiv.firstChild;
-        selectedBlockElementRef.current.after(videoNode!);
-        setBlogContent(visualContentRef.current.innerHTML);
-        showNotify('MP4 video safely saved & inserted right after selected block!');
+        if (videoNode) {
+          selectedBlockElementRef.current.after(videoNode);
+          setBlogContent(visualContentRef.current.innerHTML);
+          showNotify('MP4 video safely saved to Firebase & inserted after selected block!');
+          return;
+        }
+      }
+
+      if (savedRangeRef.current && visualContentRef.current) {
+        insertHtmlAtSavedRange(mp4EmbedHtml);
       } else {
         insertHtmlAtSelection(mp4EmbedHtml);
       }
@@ -602,9 +711,212 @@ export default function AdminPanelPage() {
     handleOpenLinkModal();
   };
 
+  const handleReplaceVideoFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !selectedVideoEl) return;
+
+    if (file.size > 25 * 1024 * 1024) {
+      alert('Video file size is quite large (>25MB). Please use compressed MP4 clips for web performance.');
+    }
+
+    setIsUploadingReplacementVideo(true);
+    showNotify('Encoding and saving replacement video locally in Firebase...');
+
+    const reader = new FileReader();
+    reader.onload = async (uploadEvent) => {
+      try {
+        const base64VideoUrl = uploadEvent.target?.result as string;
+        const newMediaId = 'vid-replace-' + Date.now() + '-' + Math.random().toString(36).substring(7);
+
+        await saveMediaVideoToFirestore(newMediaId, base64VideoUrl);
+
+        const fileSlug = file.name.replace(/\.[^/.]+$/, "").toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+        const updatedSlug = editVideoSlug || fileSlug || 'tutorial-video';
+        setEditVideoSlug(updatedSlug);
+        setEditVideoMediaId(newMediaId);
+        setEditVideoSrc(base64VideoUrl);
+
+        selectedVideoEl.setAttribute('data-media-video-id', newMediaId);
+        selectedVideoEl.setAttribute('data-video-slug', updatedSlug);
+
+        let videoEl = selectedVideoEl.tagName === 'VIDEO' ? (selectedVideoEl as HTMLVideoElement) : selectedVideoEl.querySelector('video');
+        if (!videoEl) {
+          videoEl = document.createElement('video');
+          videoEl.setAttribute('controls', 'true');
+          videoEl.className = 'w-full h-auto max-h-[500px]';
+          selectedVideoEl.appendChild(videoEl);
+        }
+
+        videoEl.setAttribute('data-video-slug', updatedSlug);
+        videoEl.setAttribute('title', updatedSlug);
+
+        let sourceEl = videoEl.querySelector('source');
+        if (!sourceEl) {
+          sourceEl = document.createElement('source');
+          sourceEl.setAttribute('type', 'video/mp4');
+          videoEl.appendChild(sourceEl);
+        }
+
+        sourceEl.setAttribute('src', base64VideoUrl);
+        sourceEl.setAttribute('data-media-id', newMediaId);
+        videoEl.load();
+
+        if (visualContentRef.current) {
+          setBlogContent(visualContentRef.current.innerHTML);
+        }
+
+        showNotify('New MP4 video successfully uploaded and saved locally in Firebase!');
+      } catch (err) {
+        alert('Failed to replace video: ' + (err as Error).message);
+      } finally {
+        setIsUploadingReplacementVideo(false);
+      }
+    };
+
+    reader.onerror = () => {
+      alert('Error reading video file.');
+      setIsUploadingReplacementVideo(false);
+    };
+
+    reader.readAsDataURL(file);
+    if (replaceVideoInputRef.current) replaceVideoInputRef.current.value = '';
+  };
+
+  const handleReplaceWithVideoUrl = async () => {
+    if (!replaceVideoUrlInput.trim() || !selectedVideoEl) return;
+    const url = replaceVideoUrlInput.trim();
+    setIsUploadingReplacementVideo(true);
+    showNotify('Downloading remote video & saving locally to Firebase...');
+    try {
+      const res = await fetch(`/api/fetch-image?url=${encodeURIComponent(url)}`);
+      const data = await res.json();
+      if (!data.dataUrl || !data.dataUrl.startsWith('data:video/')) {
+        throw new Error(data.error || 'Failed to download valid MP4 video from remote URL');
+      }
+
+      const newMediaId = 'vid-url-' + Date.now() + '-' + Math.random().toString(36).substring(7);
+      await saveMediaVideoToFirestore(newMediaId, data.dataUrl);
+
+      setEditVideoMediaId(newMediaId);
+      setEditVideoSrc(data.dataUrl);
+
+      selectedVideoEl.setAttribute('data-media-video-id', newMediaId);
+      let videoEl = selectedVideoEl.tagName === 'VIDEO' ? (selectedVideoEl as HTMLVideoElement) : selectedVideoEl.querySelector('video');
+      if (videoEl) {
+        let sourceEl = videoEl.querySelector('source');
+        if (!sourceEl) {
+          sourceEl = document.createElement('source');
+          sourceEl.setAttribute('type', 'video/mp4');
+          videoEl.appendChild(sourceEl);
+        }
+        sourceEl.setAttribute('src', data.dataUrl);
+        sourceEl.setAttribute('data-media-id', newMediaId);
+        videoEl.load();
+      }
+
+      if (visualContentRef.current) {
+        setBlogContent(visualContentRef.current.innerHTML);
+      }
+
+      setReplaceVideoUrlInput('');
+      showNotify('Remote video fetched and saved locally in Firebase!');
+    } catch (err) {
+      alert('Failed: ' + (err as Error).message);
+    } finally {
+      setIsUploadingReplacementVideo(false);
+    }
+  };
+
+  const handleSaveExternalVideoToFirebase = async () => {
+    if (!selectedVideoEl) return;
+    const videoEl = selectedVideoEl.tagName === 'VIDEO' ? (selectedVideoEl as HTMLVideoElement) : selectedVideoEl.querySelector('video');
+    const sourceEl = selectedVideoEl.querySelector('source');
+    const extUrl = sourceEl?.getAttribute('src') || videoEl?.getAttribute('src') || editVideoSrc;
+
+    if (!extUrl || !extUrl.startsWith('http')) {
+      alert('This video does not have an external URL to convert.');
+      return;
+    }
+
+    setIsUploadingReplacementVideo(true);
+    showNotify('Downloading external video and saving to Firebase...');
+    try {
+      const res = await fetch(`/api/fetch-image?url=${encodeURIComponent(extUrl)}`);
+      const data = await res.json();
+      if (!data.dataUrl || !data.dataUrl.startsWith('data:video/')) {
+        throw new Error(data.error || 'Could not fetch video from remote server');
+      }
+
+      const newMediaId = 'vid-mig-' + Date.now() + '-' + Math.random().toString(36).substring(7);
+      await saveMediaVideoToFirestore(newMediaId, data.dataUrl);
+
+      setEditVideoMediaId(newMediaId);
+      setEditVideoSrc(data.dataUrl);
+
+      selectedVideoEl.setAttribute('data-media-video-id', newMediaId);
+      if (sourceEl) {
+        sourceEl.setAttribute('src', data.dataUrl);
+        sourceEl.setAttribute('data-media-id', newMediaId);
+      } else if (videoEl) {
+        videoEl.setAttribute('src', data.dataUrl);
+        videoEl.setAttribute('data-media-id', newMediaId);
+      }
+
+      if (visualContentRef.current) {
+        setBlogContent(visualContentRef.current.innerHTML);
+      }
+
+      showNotify('Video successfully saved locally to Firebase!');
+    } catch (e) {
+      alert('Conversion failed: ' + (e as Error).message);
+    } finally {
+      setIsUploadingReplacementVideo(false);
+    }
+  };
+
+  const handleSaveVideoModalChanges = () => {
+    if (!selectedVideoEl) return;
+
+    const cleanSlug = editVideoSlug.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'tutorial-video';
+
+    selectedVideoEl.setAttribute('data-video-slug', cleanSlug);
+    if (editVideoTitle.trim()) {
+      selectedVideoEl.setAttribute('data-video-title', editVideoTitle.trim());
+      selectedVideoEl.setAttribute('title', editVideoTitle.trim());
+    }
+
+    const videoEl = selectedVideoEl.tagName === 'VIDEO' ? (selectedVideoEl as HTMLVideoElement) : selectedVideoEl.querySelector('video');
+    if (videoEl) {
+      videoEl.setAttribute('data-video-slug', cleanSlug);
+      if (editVideoTitle.trim()) {
+        videoEl.setAttribute('title', editVideoTitle.trim());
+      }
+    }
+
+    if (visualContentRef.current) {
+      setBlogContent(visualContentRef.current.innerHTML);
+    }
+    setShowVideoModal(false);
+    showNotify('Video slug & settings updated successfully!');
+  };
+
+  const handleDeleteVideo = () => {
+    if (!selectedVideoEl) return;
+    if (confirm('Are you sure you want to delete this MP4 video from the article?')) {
+      selectedVideoEl.remove();
+      if (visualContentRef.current) {
+        setBlogContent(visualContentRef.current.innerHTML);
+      }
+      setShowVideoModal(false);
+      setSelectedVideoEl(null);
+      showNotify('Video deleted from article.');
+    }
+  };
+
   const handleVisualClick = (e: React.MouseEvent<HTMLDivElement>) => {
     const target = e.target as HTMLElement;
 
+    // 1. Check for Link click
     const linkTarget = target.tagName === 'A' ? (target as HTMLAnchorElement) : target.closest('a');
     if (linkTarget && visualContentRef.current?.contains(linkTarget)) {
       e.preventDefault();
@@ -615,6 +927,7 @@ export default function AdminPanelPage() {
       return;
     }
 
+    // 2. Check for Image click
     const imgTarget = target.tagName === 'IMG' ? (target as HTMLImageElement) : target.closest('img');
     if (imgTarget && visualContentRef.current?.contains(imgTarget)) {
       setSelectedImageEl(imgTarget);
@@ -624,14 +937,42 @@ export default function AdminPanelPage() {
       return;
     }
 
-    const videoTarget = target.tagName === 'VIDEO' ? (target as HTMLVideoElement) : (target.closest('video') || target.closest('div.my-6.rounded-2xl') || target.closest('.lite-youtube-embed'));
-    if (videoTarget && visualContentRef.current?.contains(videoTarget)) {
-      const wrapper = videoTarget.tagName === 'VIDEO' ? videoTarget.closest('div') : (videoTarget.classList.contains('my-6') ? videoTarget : videoTarget.closest('div.my-6') || videoTarget);
-      setSelectedVideoEl(wrapper as HTMLElement || videoTarget as HTMLElement);
-      setShowVideoModal(true);
-      return;
+    // 3. Check for MP4 Video or Video Overlay Helper click
+    const isVideoRelated = target.tagName === 'VIDEO' || 
+                           target.tagName === 'SOURCE' || 
+                           !!target.closest('video') || 
+                           !!target.closest('[data-media-video-id]') || 
+                           !!target.closest('.video-overlay-helper') ||
+                           !!target.closest('.wp-block-video') || 
+                           !!target.closest('.video-container');
+
+    if (isVideoRelated && visualContentRef.current?.contains(target)) {
+      e.preventDefault();
+      e.stopPropagation();
+
+      let videoContainer: HTMLElement | null = target.closest('[data-media-video-id]');
+      if (!videoContainer) {
+        videoContainer = target.closest('.video-container') || target.closest('.wp-block-video');
+      }
+      if (!videoContainer) {
+        const vid = target.tagName === 'VIDEO' ? (target as HTMLVideoElement) : target.closest('video');
+        if (vid) {
+          const parent = vid.parentElement;
+          if (parent && parent !== visualContentRef.current && (parent.tagName === 'FIGURE' || parent.tagName === 'DIV' || parent.classList.contains('my-6'))) {
+            videoContainer = parent;
+          } else {
+            videoContainer = vid;
+          }
+        }
+      }
+
+      if (videoContainer && videoContainer !== visualContentRef.current) {
+        openVideoModal(videoContainer);
+        return;
+      }
     }
 
+    // 4. Block selection for formatting
     const blockEl = target.closest('p, h1, h2, h3, blockquote, ul, table, li, tr') as HTMLElement;
     if (blockEl && visualContentRef.current?.contains(blockEl) && blockEl !== visualContentRef.current) {
       visualContentRef.current.querySelectorAll('.editor-selected-block').forEach(el => {
@@ -1346,7 +1687,12 @@ export default function AdminPanelPage() {
     setBlogExcerpt(b.excerpt || '');
     setBlogMetaDescription(b.metaDescription || b.excerpt || '');
     setBlogContent(b.content);
-    if (visualContentRef.current) visualContentRef.current.innerHTML = b.content;
+    if (visualContentRef.current) {
+      visualContentRef.current.innerHTML = b.content;
+      setTimeout(() => {
+        if (visualContentRef.current) hydrateEditorVideos(visualContentRef.current);
+      }, 50);
+    }
     const cat = b.category || 'AI Guides';
     if (!customCategories.includes(cat)) {
       setCustomCategories(prev => [...prev, cat]);
@@ -1411,16 +1757,20 @@ export default function AdminPanelPage() {
     }
 
     let processedHtmlContent = visualContentRef.current ? visualContentRef.current.innerHTML : blogContent;
-    if (processedHtmlContent && (processedHtmlContent.includes('<video') || processedHtmlContent.includes('<source'))) {
+    if (processedHtmlContent && (processedHtmlContent.includes('<video') || processedHtmlContent.includes('<source') || processedHtmlContent.includes('video-overlay-helper') || processedHtmlContent.includes('data-media-video-id'))) {
       const parser = new DOMParser();
       const doc = parser.parseFromString(processedHtmlContent, 'text/html');
+
+      // Clean up any temporary editor overlay badges
+      doc.querySelectorAll('.video-overlay-helper').forEach(h => h.remove());
+
       const videoEls = Array.from(doc.querySelectorAll('video'));
 
       for (let idx = 0; idx < videoEls.length; idx++) {
         const vid = videoEls[idx];
         const source = vid.querySelector('source');
         const src = source ? source.getAttribute('src') || '' : vid.getAttribute('src') || '';
-        const wrapper = vid.closest('div.my-6') || vid.parentElement;
+        const wrapper = vid.closest('div.my-6') || vid.closest('[data-media-video-id]') || vid.parentElement;
 
         if (src && src.startsWith('data:video/')) {
           let mediaId = wrapper?.getAttribute('data-media-video-id') || vid.getAttribute('data-media-video-id');
@@ -1429,7 +1779,7 @@ export default function AdminPanelPage() {
           }
           try {
             await saveMediaVideoToFirestore(mediaId, src);
-            if (wrapper) {
+            if (wrapper && wrapper !== doc.body) {
               wrapper.setAttribute('data-media-video-id', mediaId);
             } else {
               vid.setAttribute('data-media-video-id', mediaId);
@@ -2010,15 +2360,23 @@ export default function AdminPanelPage() {
                     ref={contentImageInputRef}
                     onChange={handleContentImageUpload}
                     className="hidden"
-                    id="visualImgUpload"
                   />
-                  <label
-                    htmlFor="visualImgUpload"
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (visualContentRef.current) {
+                        const sel = window.getSelection();
+                        if (sel && sel.rangeCount > 0 && visualContentRef.current.contains(sel.getRangeAt(0).commonAncestorContainer)) {
+                          savedRangeRef.current = sel.getRangeAt(0).cloneRange();
+                        }
+                      }
+                      contentImageInputRef.current?.click();
+                    }}
                     className="px-3.5 py-1.5 bg-orange-600 hover:bg-orange-700 text-white rounded-lg text-xs font-bold shadow-md inline-flex items-center gap-1.5 cursor-pointer transition-colors"
                   >
                     <Upload className="w-3.5 h-3.5" />
                     <span>+ Insert Image</span>
-                  </label>
+                  </button>
                   <button
                     type="button"
                     onClick={insertYouTubeEmbed}
@@ -2033,15 +2391,23 @@ export default function AdminPanelPage() {
                     ref={contentVideoInputRef}
                     onChange={handleContentVideoUpload}
                     className="hidden"
-                    id="visualVideoUpload"
                   />
-                  <label
-                    htmlFor="visualVideoUpload"
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (visualContentRef.current) {
+                        const sel = window.getSelection();
+                        if (sel && sel.rangeCount > 0 && visualContentRef.current.contains(sel.getRangeAt(0).commonAncestorContainer)) {
+                          savedRangeRef.current = sel.getRangeAt(0).cloneRange();
+                        }
+                      }
+                      contentVideoInputRef.current?.click();
+                    }}
                     className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold shadow-md inline-flex items-center gap-1.5 cursor-pointer transition-colors"
                   >
                     <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24"><path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z"/></svg>
                     <span>+ MP4 Video</span>
-                  </label>
+                  </button>
                 </div>
 
                 {/* Continuous Visual Editor or HTML Code Mode */}
@@ -2245,14 +2611,19 @@ export default function AdminPanelPage() {
           </div>
         )}
 
-        {/* Video Management & Deletion Modal */}
+        {/* Video Management, Slug Editing, Replacement & Deletion Modal */}
         {showVideoModal && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-3xl max-w-md w-full p-6 space-y-6 shadow-2xl border border-slate-200">
+            <div className="bg-white rounded-3xl max-w-lg w-full p-6 space-y-5 shadow-2xl border border-slate-200 max-h-[90vh] overflow-y-auto">
               <div className="flex items-center justify-between border-b border-slate-100 pb-4">
-                <div className="flex items-center gap-2 font-bold text-black text-lg">
-                  <svg className="w-5 h-5 text-indigo-600 fill-current" viewBox="0 0 24 24"><path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z"/></svg>
-                  <span>Manage Video Element</span>
+                <div className="flex items-center gap-2.5 font-bold text-black text-lg">
+                  <div className="p-2 bg-indigo-50 text-indigo-600 rounded-xl">
+                    <Video className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="leading-tight">Manage MP4 Video</h3>
+                    <p className="text-xs text-slate-500 font-medium">Replace, change slug, or delete video in Firebase</p>
+                  </div>
                 </div>
                 <button
                   onClick={() => setShowVideoModal(false)}
@@ -2262,39 +2633,161 @@ export default function AdminPanelPage() {
                 </button>
               </div>
 
-              <div className="space-y-4">
-                <div className="bg-black rounded-xl overflow-hidden aspect-video relative flex items-center justify-center">
-                  {selectedVideoEl && selectedVideoEl.innerHTML ? (
-                    <div dangerouslySetInnerHTML={{ __html: selectedVideoEl.outerHTML }} className="w-full h-full flex items-center justify-center" />
+              {/* Video Player Preview */}
+              <div className="space-y-2">
+                <label className="block text-xs font-bold text-black">Video Player Preview</label>
+                <div className="bg-black rounded-2xl overflow-hidden aspect-video relative flex items-center justify-center border border-slate-800 shadow-inner">
+                  {isUploadingReplacementVideo ? (
+                    <div className="flex flex-col items-center justify-center gap-2 text-white">
+                      <Loader2 className="w-8 h-8 animate-spin text-orange-500" />
+                      <span className="text-xs font-bold">Uploading & Saving to Firebase...</span>
+                    </div>
+                  ) : editVideoSrc ? (
+                    <video controls src={editVideoSrc} className="w-full h-full object-contain" preload="metadata" />
                   ) : (
-                    <p className="text-white text-xs">Video Element Selected</p>
+                    <div className="text-center text-slate-400 text-xs p-4 font-medium flex flex-col items-center gap-2">
+                      <Video className="w-8 h-8 text-slate-600" />
+                      <span>Video loaded from Firebase storage</span>
+                    </div>
                   )}
                 </div>
-                <p className="text-xs text-slate-600">You can delete this video from the article if no longer needed.</p>
               </div>
 
+              {/* Storage Status Banner */}
+              {editVideoMediaId ? (
+                <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-3 flex items-center justify-between text-xs">
+                  <div className="flex items-center gap-2 font-bold text-emerald-800">
+                    <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span>Saved Locally in Firebase Database</span>
+                  </div>
+                  <span className="font-mono text-[10px] bg-emerald-100 px-2.5 py-1 rounded-lg text-emerald-800 font-bold truncate max-w-[150px]">
+                    {editVideoMediaId}
+                  </span>
+                </div>
+              ) : editVideoSrc && editVideoSrc.startsWith('http') ? (
+                <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-xs">
+                  <div className="flex items-center gap-2 font-bold text-amber-800">
+                    <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                    <span>External WordPress Video URL</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleSaveExternalVideoToFirebase}
+                    disabled={isUploadingReplacementVideo}
+                    className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl font-bold text-[11px] transition-colors shadow-sm disabled:opacity-50"
+                  >
+                    {isUploadingReplacementVideo ? 'Saving...' : 'Save to Firebase Now'}
+                  </button>
+                </div>
+              ) : null}
+
+              {/* Slug & Identifier Input */}
+              <div className="space-y-1.5">
+                <label className="block text-xs font-bold text-black">
+                  Video Slug / Identifier (SEO URL Slug) *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={editVideoSlug}
+                  onChange={(e) => setEditVideoSlug(e.target.value)}
+                  placeholder="tutorial-demo-video"
+                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono text-black font-medium focus:ring-2 focus:ring-orange-600/20"
+                />
+                <p className="text-[11px] text-slate-500 font-medium">
+                  Ye slug video element ko identify karta hai and SEO/schema attributes me save hota hai.
+                </p>
+              </div>
+
+              {/* Video Title / Caption Input */}
+              <div className="space-y-1.5">
+                <label className="block text-xs font-bold text-black">
+                  Video Title / Caption (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={editVideoTitle}
+                  onChange={(e) => setEditVideoTitle(e.target.value)}
+                  placeholder="Demo Tutorial Video Clip"
+                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-black font-medium focus:ring-2 focus:ring-orange-600/20"
+                />
+              </div>
+
+              {/* Replace Video Section */}
+              <div className="space-y-3 pt-3 border-t border-slate-100">
+                <div className="flex items-center justify-between">
+                  <div className="text-xs font-extrabold text-black flex items-center gap-1.5">
+                    <RefreshCw className="w-3.5 h-3.5 text-orange-600" />
+                    <span>Replace Video (नया MP4 बदलें)</span>
+                  </div>
+                  <span className="text-[10px] text-slate-400 font-medium">Auto-saves to Firebase</span>
+                </div>
+
+                <input
+                  type="file"
+                  accept="video/mp4,video/*"
+                  ref={replaceVideoInputRef}
+                  onChange={handleReplaceVideoFile}
+                  className="hidden"
+                  id="replaceVideoFileField"
+                />
+                
+                <button
+                  type="button"
+                  onClick={() => replaceVideoInputRef.current?.click()}
+                  disabled={isUploadingReplacementVideo}
+                  className="w-full px-4 py-2.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold rounded-xl text-xs border border-indigo-200 inline-flex items-center justify-center gap-2 transition-colors disabled:opacity-50 shadow-sm"
+                >
+                  <Upload className="w-4 h-4" />
+                  <span>Choose New MP4 File from Computer</span>
+                </button>
+
+                <div className="flex gap-2">
+                  <input
+                    type="url"
+                    value={replaceVideoUrlInput}
+                    onChange={(e) => setReplaceVideoUrlInput(e.target.value)}
+                    placeholder="Or paste direct MP4 URL to download..."
+                    className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono text-black focus:ring-2 focus:ring-orange-600/20"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleReplaceWithVideoUrl}
+                    disabled={isUploadingReplacementVideo || !replaceVideoUrlInput.trim()}
+                    className="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-bold disabled:opacity-50 transition-colors shrink-0"
+                  >
+                    Fetch & Store
+                  </button>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
               <div className="flex items-center justify-between gap-3 pt-4 border-t border-slate-100">
                 <button
                   type="button"
-                  onClick={() => {
-                    if (selectedVideoEl && confirm('Are you sure you want to delete this video?')) {
-                      selectedVideoEl.remove();
-                      if (visualContentRef.current) setBlogContent(visualContentRef.current.innerHTML);
-                      setShowVideoModal(false);
-                      showNotify('Video deleted successfully.');
-                    }
-                  }}
-                  className="px-4 py-2.5 bg-red-50 hover:bg-red-100 text-red-600 font-bold rounded-xl text-xs transition-colors"
+                  onClick={handleDeleteVideo}
+                  className="px-4 py-2.5 bg-red-50 hover:bg-red-100 text-red-600 font-bold rounded-xl text-xs inline-flex items-center gap-1.5 transition-colors"
                 >
-                  Delete Video
+                  <Trash2 className="w-4 h-4" />
+                  <span>Delete Video</span>
                 </button>
-                <button
-                  type="button"
-                  onClick={() => setShowVideoModal(false)}
-                  className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-black font-bold rounded-xl text-xs transition-colors"
-                >
-                  Close
-                </button>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowVideoModal(false)}
+                    className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-black font-bold rounded-xl text-xs transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSaveVideoModalChanges}
+                    className="px-5 py-2.5 bg-orange-600 hover:bg-orange-700 text-white font-bold rounded-xl text-xs shadow-sm transition-colors"
+                  >
+                    Save Changes
+                  </button>
+                </div>
               </div>
             </div>
           </div>

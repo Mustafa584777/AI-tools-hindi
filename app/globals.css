@@ -57,3 +57,16 @@ tr:hover {
 .prose a:hover, .editor-content a:hover, article a:hover {
   color: #c2410c !important; /* orange-700 */
 }
+
+/* Video editor badge & click interaction */
+.video-overlay-helper {
+  display: none;
+}
+
+[contenteditable="true"] .video-overlay-helper {
+  display: flex !important;
+}
+
+[contenteditable="true"] video {
+  cursor: pointer;
+}

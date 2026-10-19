@@ -170,7 +170,10 @@ export function getStoredBlogPostsSync(): BlogPost[] {
   }
 }
 
+const videoCache = new Map<string, string>();
+
 export async function saveMediaVideoToFirestore(mediaId: string, base64Data: string): Promise<void> {
+  videoCache.set(mediaId, base64Data);
   const CHUNK_SIZE = 700 * 1024; // 700KB chunks to stay safely under Firestore 1MB document limit
   const totalChunks = Math.ceil(base64Data.length / CHUNK_SIZE);
   
@@ -191,6 +194,9 @@ export async function saveMediaVideoToFirestore(mediaId: string, base64Data: str
 }
 
 export async function fetchMediaVideoFromFirestore(mediaId: string): Promise<string | null> {
+  if (videoCache.has(mediaId)) {
+    return videoCache.get(mediaId)!;
+  }
   try {
     const metaDoc = await getDoc(doc(db, 'mediaVideos', mediaId));
     if (!metaDoc.exists()) return null;
@@ -202,6 +208,9 @@ export async function fetchMediaVideoFromFirestore(mediaId: string): Promise<str
       if (chunkDoc.exists()) {
         fullData += (chunkDoc.data() as { data: string }).data;
       }
+    }
+    if (fullData) {
+      videoCache.set(mediaId, fullData);
     }
     return fullData;
   } catch (e) {
