@@ -38,7 +38,7 @@ export async function fetchBlogPostsFromFirestore(forceRefresh = false): Promise
   }
 
   // If not forceRefresh and we have valid local posts within cache TTL, use local cache to save Firestore reads quota
-  if (typeof window !== 'undefined' && !forceRefresh && localPosts.length > 0) {
+  if (typeof window !== 'undefined' && !forceRefresh && localPosts.length > 2) {
     try {
       const cachedTime = localStorage.getItem(CACHE_TIME_KEY);
       if (cachedTime) {
@@ -53,35 +53,35 @@ export async function fetchBlogPostsFromFirestore(forceRefresh = false): Promise
     }
   }
 
+  let firestorePosts: BlogPost[] = [];
   try {
     const querySnapshot = await getDocs(collection(db, 'blogPosts'));
-    const firestorePosts: BlogPost[] = [];
     querySnapshot.forEach((docSnap) => {
       firestorePosts.push(docSnap.data() as BlogPost);
     });
-
-    const postMap = new Map<string, BlogPost>();
-    INITIAL_BLOG_POSTS.forEach(p => postMap.set(p.id, p));
-    localPosts.forEach(p => postMap.set(p.id, p));
-    firestorePosts.forEach(p => postMap.set(p.id, p));
-    const merged = Array.from(postMap.values());
-    merged.sort((a: BlogPost, b: BlogPost) => (b.createdAt || 0) - (a.createdAt || 0));
-
-    if (typeof window !== 'undefined' && merged.length > 0) {
-      localStorage.setItem(BLOG_KEY, JSON.stringify(merged));
-      localStorage.setItem(CACHE_TIME_KEY, Date.now().toString());
-    }
-
-    const finalPosts = firestorePosts.length > 0 ? merged : (localPosts.length > 0 ? localPosts : merged);
-    return finalPosts;
   } catch (err) {
     console.error('Error fetching from Firestore database:', err);
-    if (typeof window !== 'undefined' && localPosts.length > 0) {
-      localPosts.sort((a: BlogPost, b: BlogPost) => (b.createdAt || 0) - (a.createdAt || 0));
-      return localPosts;
-    }
-    return INITIAL_BLOG_POSTS;
   }
+
+  // Union map: combine INITIAL, firestorePosts, and localPosts (with localPosts taking precedence to prevent data loss)
+  const postMap = new Map<string, BlogPost>();
+  INITIAL_BLOG_POSTS.forEach(p => postMap.set(p.id, p));
+  firestorePosts.forEach(p => postMap.set(p.id, p));
+  localPosts.forEach(p => postMap.set(p.id, p));
+
+  const merged = Array.from(postMap.values());
+  merged.sort((a: BlogPost, b: BlogPost) => (b.createdAt || 0) - (a.createdAt || 0));
+
+  if (typeof window !== 'undefined' && merged.length > 0) {
+    try {
+      localStorage.setItem(BLOG_KEY, JSON.stringify(merged));
+      localStorage.setItem(CACHE_TIME_KEY, Date.now().toString());
+    } catch (e) {
+      console.warn('Local storage write error:', e);
+    }
+  }
+
+  return merged.length > 0 ? merged : (localPosts.length > 0 ? localPosts : INITIAL_BLOG_POSTS);
 }
 
 export function clearClientCache(): void {
