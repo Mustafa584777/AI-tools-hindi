@@ -1794,121 +1794,122 @@ export default function AdminPanelPage() {
       return;
     }
 
-    let finalCategory = blogCategory;
-    if (isNewCategoryMode && newCategoryName.trim()) {
-      finalCategory = newCategoryName.trim();
-      if (!customCategories.includes(finalCategory)) {
-        const updatedCats = [...customCategories, finalCategory];
-        setCustomCategories(updatedCats);
-        if (typeof window !== 'undefined') localStorage.setItem(CATEGORIES_KEY, JSON.stringify(updatedCats));
-      }
-    }
-
-    if (visualContentRef.current) {
-      visualContentRef.current.querySelectorAll('.editor-selected-block').forEach(el => {
-        el.classList.remove('ring-2', 'ring-blue-400', 'bg-blue-50/20', 'rounded-xl', 'p-2', 'editor-selected-block');
-      });
-    }
-
-    let processedHtmlContent = visualContentRef.current ? visualContentRef.current.innerHTML : blogContent;
-    if (processedHtmlContent && (processedHtmlContent.includes('<video') || processedHtmlContent.includes('<source') || processedHtmlContent.includes('video-overlay-helper') || processedHtmlContent.includes('data-media-video-id') || processedHtmlContent.includes('<img') || processedHtmlContent.includes('data:image/'))) {
-      const parser = new DOMParser();
-      const doc = parser.parseFromString(processedHtmlContent, 'text/html');
-
-      // Clean up any temporary editor overlay badges
-      doc.querySelectorAll('.video-overlay-helper').forEach(h => h.remove());
-
-      // Process content images to save base64 images into mediaImages and keep blogPost document lightweight (<1MB)
-      const imgEls = Array.from(doc.querySelectorAll('img'));
-      for (let idx = 0; idx < imgEls.length; idx++) {
-        const img = imgEls[idx];
-        const src = img.getAttribute('src') || '';
-        if (src && src.startsWith('data:image/')) {
-          let mediaId = img.getAttribute('data-media-image-id');
-          if (!mediaId) {
-            mediaId = 'img-save-' + Date.now() + '-' + idx + '-' + Math.random().toString(36).substring(7);
-          }
-          try {
-            await saveMediaImageToFirestore(mediaId, src);
-            img.setAttribute('src', '');
-            img.setAttribute('data-media-image-id', mediaId);
-            img.removeAttribute('srcset');
-            img.removeAttribute('data-src');
-            img.removeAttribute('data-orig-file');
-          } catch (e) {
-            console.warn('Failed to save image chunk:', e);
-          }
-        }
-      }
-
-      const videoEls = Array.from(doc.querySelectorAll('video'));
-
-      for (let idx = 0; idx < videoEls.length; idx++) {
-        const vid = videoEls[idx];
-        const source = vid.querySelector('source');
-        const src = source ? source.getAttribute('src') || '' : vid.getAttribute('src') || '';
-        const wrapper = vid.closest('div.my-6') || vid.closest('[data-media-video-id]') || vid.parentElement;
-
-        if (src && src.startsWith('data:video/')) {
-          let mediaId = wrapper?.getAttribute('data-media-video-id') || vid.getAttribute('data-media-video-id');
-          if (!mediaId) {
-            mediaId = 'vid-save-' + Date.now() + '-' + idx + '-' + Math.random().toString(36).substring(7);
-          }
-          try {
-            await saveMediaVideoToFirestore(mediaId, src);
-            if (wrapper && wrapper !== doc.body) {
-              wrapper.setAttribute('data-media-video-id', mediaId);
-            } else {
-              vid.setAttribute('data-media-video-id', mediaId);
-            }
-            if (source) {
-              source.setAttribute('src', '');
-              source.setAttribute('data-media-id', mediaId);
-            } else {
-              vid.setAttribute('src', '');
-              vid.setAttribute('data-media-id', mediaId);
-            }
-          } catch (e) {
-            console.warn('Failed to chunk/save video to Firestore mediaVideos:', e);
-          }
-        }
-      }
-      processedHtmlContent = doc.body.innerHTML;
-    }
-
-    const formattedSlug = blogSlug.toLowerCase().replace(/\s+/g, '-');
-    const postId = editingBlogId || ('blog-' + formattedSlug);
-
-    let finalMetaDesc = blogMetaDescription.trim();
-    if (!finalMetaDesc) {
-      const tempDiv = document.createElement('div');
-      tempDiv.innerHTML = processedHtmlContent;
-      const plainText = tempDiv.textContent || tempDiv.innerText || '';
-      finalMetaDesc = plainText.trim().substring(0, 160);
-    }
-
-    let finalBlogImage = blogImage;
-
-    const postToSave: BlogPost = {
-      id: postId,
-      title: blogTitle,
-      slug: formattedSlug,
-      excerpt: finalMetaDesc,
-      metaDescription: finalMetaDesc,
-      content: processedHtmlContent,
-      category: finalCategory,
-      author: 'Anwar', // default author since author field removed
-      date: new Date().toLocaleDateString('hi-IN', { day: 'numeric', month: 'short', year: 'numeric' }),
-      readTime: '5 min read',
-      image: finalBlogImage,
-      imageAlt: blogImageAlt,
-      imageSlug: blogImageSlug,
-      status: blogStatus,
-      noIndex: blogNoIndex
-    };
-
     setIsSavingPost(true);
+
     try {
+      let finalCategory = blogCategory;
+      if (isNewCategoryMode && newCategoryName.trim()) {
+        finalCategory = newCategoryName.trim();
+        if (!customCategories.includes(finalCategory)) {
+          const updatedCats = [...customCategories, finalCategory];
+          setCustomCategories(updatedCats);
+          if (typeof window !== 'undefined') localStorage.setItem(CATEGORIES_KEY, JSON.stringify(updatedCats));
+        }
+      }
+
+      if (visualContentRef.current) {
+        visualContentRef.current.querySelectorAll('.editor-selected-block').forEach(el => {
+          el.classList.remove('ring-2', 'ring-blue-400', 'bg-blue-50/20', 'rounded-xl', 'p-2', 'editor-selected-block');
+        });
+      }
+
+      let processedHtmlContent = visualContentRef.current ? visualContentRef.current.innerHTML : blogContent;
+      if (processedHtmlContent && (processedHtmlContent.includes('<video') || processedHtmlContent.includes('<source') || processedHtmlContent.includes('video-overlay-helper') || processedHtmlContent.includes('data-media-video-id') || processedHtmlContent.includes('<img') || processedHtmlContent.includes('data:image/'))) {
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(processedHtmlContent, 'text/html');
+
+        // Clean up any temporary editor overlay badges
+        doc.querySelectorAll('.video-overlay-helper').forEach(h => h.remove());
+
+        // Process content images in parallel
+        const imgEls = Array.from(doc.querySelectorAll('img'));
+        const imagePromises = imgEls.map(async (img, idx) => {
+          const src = img.getAttribute('src') || '';
+          if (src && src.startsWith('data:image/')) {
+            let mediaId = img.getAttribute('data-media-image-id');
+            if (!mediaId) {
+              mediaId = 'img-save-' + Date.now() + '-' + idx + '-' + Math.random().toString(36).substring(7);
+            }
+            try {
+              await saveMediaImageToFirestore(mediaId, src);
+              img.setAttribute('src', '');
+              img.setAttribute('data-media-image-id', mediaId);
+              img.removeAttribute('srcset');
+              img.removeAttribute('data-src');
+              img.removeAttribute('data-orig-file');
+            } catch (e) {
+              console.warn('Failed to save image chunk:', e);
+            }
+          }
+        });
+
+        // Process videos in parallel
+        const videoEls = Array.from(doc.querySelectorAll('video'));
+        const videoPromises = videoEls.map(async (vid, idx) => {
+          const source = vid.querySelector('source');
+          const src = source ? source.getAttribute('src') || '' : vid.getAttribute('src') || '';
+          const wrapper = vid.closest('div.my-6') || vid.closest('[data-media-video-id]') || vid.parentElement;
+
+          if (src && src.startsWith('data:video/')) {
+            let mediaId = wrapper?.getAttribute('data-media-video-id') || vid.getAttribute('data-media-video-id');
+            if (!mediaId) {
+              mediaId = 'vid-save-' + Date.now() + '-' + idx + '-' + Math.random().toString(36).substring(7);
+            }
+            try {
+              await saveMediaVideoToFirestore(mediaId, src);
+              if (wrapper && wrapper !== doc.body) {
+                wrapper.setAttribute('data-media-video-id', mediaId);
+              } else {
+                vid.setAttribute('data-media-video-id', mediaId);
+              }
+              if (source) {
+                source.setAttribute('src', '');
+                source.setAttribute('data-media-id', mediaId);
+              } else {
+                vid.setAttribute('src', '');
+                vid.setAttribute('data-media-id', mediaId);
+              }
+            } catch (e) {
+              console.warn('Failed to chunk/save video to Firestore mediaVideos:', e);
+            }
+          }
+        });
+
+        await Promise.all([...imagePromises, ...videoPromises]);
+        processedHtmlContent = doc.body.innerHTML;
+      }
+
+      const formattedSlug = blogSlug.toLowerCase().replace(/\s+/g, '-');
+      const postId = editingBlogId || ('blog-' + formattedSlug);
+
+      let finalMetaDesc = blogMetaDescription.trim();
+      if (!finalMetaDesc) {
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = processedHtmlContent;
+        const plainText = tempDiv.textContent || tempDiv.innerText || '';
+        finalMetaDesc = plainText.trim().substring(0, 160);
+      }
+
+      let finalBlogImage = blogImage;
+
+      const postToSave: BlogPost = {
+        id: postId,
+        title: blogTitle,
+        slug: formattedSlug,
+        excerpt: finalMetaDesc,
+        metaDescription: finalMetaDesc,
+        content: processedHtmlContent,
+        category: finalCategory,
+        author: 'Anwar',
+        date: new Date().toLocaleDateString('hi-IN', { day: 'numeric', month: 'short', year: 'numeric' }),
+        readTime: '5 min read',
+        image: finalBlogImage,
+        imageAlt: blogImageAlt,
+        imageSlug: blogImageSlug,
+        status: blogStatus,
+        noIndex: blogNoIndex
+      };
+
       await saveBlogPostToFirestore(postToSave);
       await loadData(true);
       showNotify(editingBlogId ? 'Tutorial updated & synced with Firebase!' : 'New tutorial published to Firebase!');
