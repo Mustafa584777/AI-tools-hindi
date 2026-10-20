@@ -1827,7 +1827,8 @@ export default function AdminPanelPage() {
               img.setAttribute('src', '');
               img.setAttribute('data-media-image-id', mediaId);
             } catch {
-              img.setAttribute('src', compressed);
+              const tiny = await compressImageBase64(src, 350, 0.4);
+              img.setAttribute('src', tiny);
             }
             img.removeAttribute('srcset');
             img.removeAttribute('data-src');
@@ -1884,6 +1885,15 @@ export default function AdminPanelPage() {
       finalMetaDesc = plainText.trim().substring(0, 160);
     }
 
+    let finalBlogImage = blogImage;
+    if (finalBlogImage && finalBlogImage.startsWith('data:image/')) {
+      try {
+        finalBlogImage = await compressImageBase64(finalBlogImage, 500, 0.5);
+      } catch (e) {
+        console.warn('Failed to compress featured image:', e);
+      }
+    }
+
     const postToSave: BlogPost = {
       id: postId,
       title: blogTitle,
@@ -1895,7 +1905,7 @@ export default function AdminPanelPage() {
       author: 'Anwar', // default author since author field removed
       date: new Date().toLocaleDateString('hi-IN', { day: 'numeric', month: 'short', year: 'numeric' }),
       readTime: '5 min read',
-      image: blogImage,
+      image: finalBlogImage,
       imageAlt: blogImageAlt,
       imageSlug: blogImageSlug,
       status: blogStatus,

@@ -92,10 +92,21 @@ export function clearClientCache(): void {
 }
 
 export async function saveBlogPostToFirestore(post: BlogPost): Promise<void> {
+  let finalImage = post.image;
+  if (finalImage && finalImage.startsWith('data:image/')) {
+    finalImage = await compressImageBase64(finalImage, 500, 0.5);
+  }
+
   const postWithTime: BlogPost = {
     ...post,
+    image: finalImage,
     createdAt: post.createdAt || Date.now()
   };
+
+  const payloadString = JSON.stringify(postWithTime);
+  if (payloadString.length > 950000) {
+    throw new Error('Article size exceeds Firestore 1MB document limit. Please use smaller or fewer inline images.');
+  }
 
   try {
     await setDoc(doc(db, 'blogPosts', postWithTime.id), postWithTime);
