@@ -1023,8 +1023,8 @@ export default function AdminPanelPage() {
     const reader = new FileReader();
     reader.onload = (uploadEvent) => {
       const base64String = uploadEvent.target?.result as string;
-      const alt = prompt('Enter Image Alt Text (SEO):', 'Tutorial illustration image');
-      const cleanAlt = alt || 'Tutorial image';
+      const alt = prompt('Enter Image Alt Text (SEO):', blogTitle);
+      const cleanAlt = (alt && alt.trim() && !['tutorial image', 'tutorial illustration image', 'illustration', 'ai tutorial featured image'].includes(alt.trim().toLowerCase())) ? alt.trim() : blogTitle;
       const imgSlug = cleanAlt.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
 
       const newImg: ArticleImage = {
@@ -1721,8 +1721,8 @@ export default function AdminPanelPage() {
     setIsNewCategoryMode(false);
     setNewCategoryName('');
     setBlogImage('https://picsum.photos/seed/newpost/800/450');
-    setBlogImageAlt('AI tutorial featured image');
-    setBlogImageSlug('ai-tutorial-featured');
+    setBlogImageAlt('');
+    setBlogImageSlug('');
     setBlogStatus('published');
     setBlogNoIndex(false);
     setArticleImages([]);
@@ -1824,6 +1824,10 @@ export default function AdminPanelPage() {
         // Process content images in parallel
         const imgEls = Array.from(doc.querySelectorAll('img'));
         const imagePromises = imgEls.map(async (img, idx) => {
+          const currentAlt = (img.getAttribute('alt') || '').trim();
+          if (!currentAlt || ['tutorial image', 'tutorial illustration image', 'illustration', 'ai tutorial featured image'].includes(currentAlt.toLowerCase())) {
+            img.setAttribute('alt', blogTitle);
+          }
           const src = img.getAttribute('src') || '';
           if (src && src.startsWith('data:image/')) {
             let mediaId = img.getAttribute('data-media-image-id');
@@ -1891,6 +1895,10 @@ export default function AdminPanelPage() {
       }
 
       let finalBlogImage = blogImage;
+      let finalBlogImageAlt = blogImageAlt.trim();
+      if (!finalBlogImageAlt || ['tutorial image', 'tutorial illustration image', 'illustration', 'ai tutorial featured image'].includes(finalBlogImageAlt.toLowerCase())) {
+        finalBlogImageAlt = blogTitle;
+      }
 
       const postToSave: BlogPost = {
         id: postId,
@@ -1904,7 +1912,7 @@ export default function AdminPanelPage() {
         date: new Date().toLocaleDateString('hi-IN', { day: 'numeric', month: 'short', year: 'numeric' }),
         readTime: '5 min read',
         image: finalBlogImage,
-        imageAlt: blogImageAlt,
+        imageAlt: finalBlogImageAlt,
         imageSlug: blogImageSlug,
         status: blogStatus,
         noIndex: blogNoIndex
