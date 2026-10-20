@@ -20,22 +20,6 @@ export async function fetchBlogPostsFromFirestore(forceRefresh = false): Promise
     }
   }
 
-  // If not forceRefresh and we have healthy local posts within cache TTL, use local cache
-  if (typeof window !== 'undefined' && !forceRefresh && localPosts.length >= INITIAL_BLOG_POSTS.length) {
-    try {
-      const cachedTime = localStorage.getItem(CACHE_TIME_KEY);
-      if (cachedTime) {
-        const age = Date.now() - parseInt(cachedTime, 10);
-        if (age < CACHE_TTL) {
-          localPosts.sort((a: BlogPost, b: BlogPost) => (b.createdAt || 0) - (a.createdAt || 0));
-          return localPosts;
-        }
-      }
-    } catch (e) {
-      console.warn('Cache time read error:', e);
-    }
-  }
-
   // 1. Fetch from persistent server backup API
   let serverPosts: BlogPost[] = [];
   try {
@@ -104,9 +88,6 @@ export function clearClientCache(): void {
 
 export async function saveBlogPostToFirestore(post: BlogPost): Promise<void> {
   let finalImage = post.image;
-  if (finalImage && finalImage.startsWith('data:image/')) {
-    finalImage = await compressImageBase64(finalImage, 500, 0.5);
-  }
 
   const postWithTime: BlogPost = {
     ...post,
@@ -116,13 +97,13 @@ export async function saveBlogPostToFirestore(post: BlogPost): Promise<void> {
 
   // 1. Immediately update local storage
   if (typeof window !== 'undefined') {
-    const posts = getStoredBlogPostsSync();
-    const exists = posts.some(p => p.id === postWithTime.id || p.slug === postWithTime.slug);
-    const updated = exists 
-      ? posts.map(p => (p.id === postWithTime.id || p.slug === postWithTime.slug) ? postWithTime : p)
-      : [postWithTime, ...posts];
-    updated.sort((a: BlogPost, b: BlogPost) => (b.createdAt || 0) - (a.createdAt || 0));
     try {
+      const posts = getStoredBlogPostsSync();
+      const exists = posts.some(p => p.id === postWithTime.id || p.slug === postWithTime.slug);
+      const updated = exists 
+        ? posts.map(p => (p.id === postWithTime.id || p.slug === postWithTime.slug) ? postWithTime : p)
+        : [postWithTime, ...posts];
+      updated.sort((a: BlogPost, b: BlogPost) => (b.createdAt || 0) - (a.createdAt || 0));
       localStorage.setItem(BLOG_KEY, JSON.stringify(updated));
       localStorage.setItem(CACHE_TIME_KEY, Date.now().toString());
     } catch (e) {
@@ -141,23 +122,16 @@ export async function saveBlogPostToFirestore(post: BlogPost): Promise<void> {
     console.warn('Server disk backup update error:', apiErr);
   }
 
-  // 3. Sync to Firestore (with size validation & quota tolerance)
-  const payloadString = JSON.stringify(postWithTime);
-  if (payloadString.length > 950000) {
-    console.warn('Article size approaches 1MB Firestore limit. Saved to server and local storage safely.');
-    return;
-  }
-
+  // 3. Sync to Firestore in background (never block save if Firestore fails)
   try {
-    await setDoc(doc(db, 'blogPosts', postWithTime.id), postWithTime);
-  } catch (err) {
-    console.warn('Firestore sync notice (post is permanently saved on server & local storage):', (err as Error).message);
-    // Do not throw if it is a quota limit error, since article is already saved locally and on server
-    if ((err as Error).message.includes('Quota limit') || (err as Error).message.includes('resource-exhausted')) {
-      console.info('Saved locally & on server disk. Will sync to Firestore once quota resets.');
-      return;
+    const payloadString = JSON.stringify(postWithTime);
+    if (payloadString.length <= 950000) {
+      await setDoc(doc(db, 'blogPosts', postWithTime.id), postWithTime);
+    } else {
+      console.warn('Post size exceeds 950KB. Saved to local and server storage successfully.');
     }
-    throw new Error('Database save failed: ' + (err as Error).message);
+  } catch (err) {
+    console.warn('Firestore sync notice (Article successfully saved locally and on server):', (err as Error).message);
   }
 }
 

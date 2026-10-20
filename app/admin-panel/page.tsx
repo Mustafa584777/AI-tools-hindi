@@ -1829,20 +1829,14 @@ export default function AdminPanelPage() {
             mediaId = 'img-save-' + Date.now() + '-' + idx + '-' + Math.random().toString(36).substring(7);
           }
           try {
-            const compressed = await compressImageBase64(src, 800, 0.7);
-            try {
-              await saveMediaImageToFirestore(mediaId, compressed);
-              img.setAttribute('src', '');
-              img.setAttribute('data-media-image-id', mediaId);
-            } catch {
-              const tiny = await compressImageBase64(src, 350, 0.4);
-              img.setAttribute('src', tiny);
-            }
+            await saveMediaImageToFirestore(mediaId, src);
+            img.setAttribute('src', '');
+            img.setAttribute('data-media-image-id', mediaId);
             img.removeAttribute('srcset');
             img.removeAttribute('data-src');
             img.removeAttribute('data-orig-file');
           } catch (e) {
-            console.warn('Failed to compress/save image:', e);
+            console.warn('Failed to save image chunk:', e);
           }
         }
       }
@@ -1894,13 +1888,6 @@ export default function AdminPanelPage() {
     }
 
     let finalBlogImage = blogImage;
-    if (finalBlogImage && finalBlogImage.startsWith('data:image/')) {
-      try {
-        finalBlogImage = await compressImageBase64(finalBlogImage, 500, 0.5);
-      } catch (e) {
-        console.warn('Failed to compress featured image:', e);
-      }
-    }
 
     const postToSave: BlogPost = {
       id: postId,
@@ -2689,10 +2676,9 @@ export default function AdminPanelPage() {
                           reader.onload = async (event) => {
                             const resBase64 = event.target?.result as string;
                             if (resBase64) {
-                              const compressed = await compressImageBase64(resBase64, 800, 0.7);
-                              selectedImageEl.src = compressed;
+                              selectedImageEl.src = resBase64;
                               if (visualContentRef.current) setBlogContent(visualContentRef.current.innerHTML);
-                              showNotify('Image replaced successfully! Alt text & slug preserved.');
+                              showNotify('Image replaced successfully at original high quality! Alt text & slug preserved.');
                             }
                             setIsReplacingImage(false);
                           };
