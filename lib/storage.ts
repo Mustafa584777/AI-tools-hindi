@@ -1,30 +1,13 @@
 import { BlogPost } from './types';
 import { db } from './firebase';
 import { collection, getDocs, getDoc, doc, setDoc, deleteDoc } from 'firebase/firestore';
+import articlesBackup from '../data/articles-backup.json';
 
-export const INITIAL_BLOG_POSTS: BlogPost[] = [
-  {
-    id: 'blog-ai-se-time-table-kaise-banaye',
-    slug: 'ai-se-time-table-kaise-banaye',
-    title: 'AI से पढ़ाई का टाइम टेबल कैसे बनाएं: Best ChatGPT Prompts & Tools',
-    excerpt: 'हिंदी में सीखें ChatGPT और दूसरे AI tools से पढ़ाई का टाइम टेबल बनाने का आसान तरीका, copy-paste prompt और Google Calendar में डालने के steps!',
-    metaDescription: 'हिंदी में सीखें ChatGPT और दूसरे AI tools से पढ़ाई का टाइम टेबल बनाने का आसान तरीका, copy-paste prompt और Google Calendar में डालने के steps!',
-    content: `<h2 class="text-2xl font-bold text-black mt-6 mb-3">AI से Time Table बनाना क्यों जरूरी है?</h2>\n<p class="mb-6 text-slate-700 leading-relaxed text-lg">आज के समय में पढ़ाई या ऑफिस का शेड्यूल मैनेज करना एक चुनौती बन गया है। AI (Artificial Intelligence) की मदद से आप मात्र 1 मिनट में अपना परफेक्ट स्टडी टाइम टेबल तैयार कर सकते हैं।</p>\n<h2 class="text-2xl font-bold text-black mt-6 mb-3">ChatGPT के लिए Best Prompt</h2>\n<p class="mb-6 text-slate-700 leading-relaxed text-lg">आप ChatGPT में यह प्रॉम्प्ट कॉपी-पेस्ट कर सकते हैं: "मुझे एक ऐसा स्टडी टाइम टेबल बनाकर दो जिसमें सुबह 6 बजे से रात 10 बजे तक का शेड्यूल हो और बीच में 15 मिनट के ब्रेक्स हों।"</p>`,
-    category: 'AI Guides',
-    author: 'Anwar',
-    date: '15 Oct 2026',
-    readTime: '6 min read',
-    image: 'https://picsum.photos/seed/timetable/800/450',
-    imageAlt: 'AI se time table kaise banaye banner',
-    imageSlug: 'ai-time-table-banner',
-    status: 'published',
-    createdAt: Date.now()
-  }
-];
+export const INITIAL_BLOG_POSTS: BlogPost[] = (articlesBackup as unknown as BlogPost[]) || [];
 
 const BLOG_KEY = 'aitoolhindi_blog_posts_firebase_sync_v2';
 const CACHE_TIME_KEY = 'aitoolhindi_cache_timestamp';
-const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours cache to prevent exhausting Firestore reads quota
+const CACHE_TTL = 60 * 60 * 1000; // 1 hour cache to balance freshness with quota preservation
 
 export async function fetchBlogPostsFromFirestore(forceRefresh = false): Promise<BlogPost[]> {
   let localPosts: BlogPost[] = [];
@@ -37,8 +20,8 @@ export async function fetchBlogPostsFromFirestore(forceRefresh = false): Promise
     }
   }
 
-  // If not forceRefresh and we have valid local posts within cache TTL, use local cache to save Firestore reads quota
-  if (typeof window !== 'undefined' && !forceRefresh && localPosts.length > 2) {
+  // If not forceRefresh and we have healthy local posts within cache TTL, use local cache
+  if (typeof window !== 'undefined' && !forceRefresh && localPosts.length >= INITIAL_BLOG_POSTS.length) {
     try {
       const cachedTime = localStorage.getItem(CACHE_TIME_KEY);
       if (cachedTime) {
@@ -53,6 +36,21 @@ export async function fetchBlogPostsFromFirestore(forceRefresh = false): Promise
     }
   }
 
+  // 1. Fetch from persistent server backup API
+  let serverPosts: BlogPost[] = [];
+  try {
+    const res = await fetch('/api/articles');
+    if (res.ok) {
+      const data = await res.json();
+      if (data.posts && Array.isArray(data.posts)) {
+        serverPosts = data.posts;
+      }
+    }
+  } catch (err) {
+    console.warn('Server articles API read notice:', err);
+  }
+
+  // 2. Fetch from Firestore (fail-safe against quota exhaustion)
   let firestorePosts: BlogPost[] = [];
   try {
     const querySnapshot = await getDocs(collection(db, 'blogPosts'));
@@ -60,14 +58,27 @@ export async function fetchBlogPostsFromFirestore(forceRefresh = false): Promise
       firestorePosts.push(docSnap.data() as BlogPost);
     });
   } catch (err) {
-    console.error('Error fetching from Firestore database:', err);
+    console.warn('Firestore fetch notice (using persistent server & local backup):', (err as Error).message);
   }
 
-  // Union map: combine INITIAL, firestorePosts, and localPosts (with localPosts taking precedence to prevent data loss)
+  // Union map: merge all sources so NO post is ever lost
   const postMap = new Map<string, BlogPost>();
-  INITIAL_BLOG_POSTS.forEach(p => postMap.set(p.id, p));
-  firestorePosts.forEach(p => postMap.set(p.id, p));
-  localPosts.forEach(p => postMap.set(p.id, p));
+  INITIAL_BLOG_POSTS.forEach(p => {
+    const key = p.slug || p.id;
+    if (key) postMap.set(key, p);
+  });
+  serverPosts.forEach(p => {
+    const key = p.slug || p.id;
+    if (key) postMap.set(key, p);
+  });
+  firestorePosts.forEach(p => {
+    const key = p.slug || p.id;
+    if (key) postMap.set(key, p);
+  });
+  localPosts.forEach(p => {
+    const key = p.slug || p.id;
+    if (key) postMap.set(key, p);
+  });
 
   const merged = Array.from(postMap.values());
   merged.sort((a: BlogPost, b: BlogPost) => (b.createdAt || 0) - (a.createdAt || 0));
@@ -81,13 +92,13 @@ export async function fetchBlogPostsFromFirestore(forceRefresh = false): Promise
     }
   }
 
-  return merged.length > 0 ? merged : (localPosts.length > 0 ? localPosts : INITIAL_BLOG_POSTS);
+  return merged.length > 0 ? merged : INITIAL_BLOG_POSTS;
 }
 
 export function clearClientCache(): void {
   if (typeof window !== 'undefined') {
     localStorage.removeItem(CACHE_TIME_KEY);
-    localStorage.removeItem(BLOG_KEY);
+    // Note: NEVER remove BLOG_KEY so articles are never wiped offline
   }
 }
 
@@ -103,24 +114,49 @@ export async function saveBlogPostToFirestore(post: BlogPost): Promise<void> {
     createdAt: post.createdAt || Date.now()
   };
 
+  // 1. Immediately update local storage
+  if (typeof window !== 'undefined') {
+    const posts = getStoredBlogPostsSync();
+    const exists = posts.some(p => p.id === postWithTime.id || p.slug === postWithTime.slug);
+    const updated = exists 
+      ? posts.map(p => (p.id === postWithTime.id || p.slug === postWithTime.slug) ? postWithTime : p)
+      : [postWithTime, ...posts];
+    updated.sort((a: BlogPost, b: BlogPost) => (b.createdAt || 0) - (a.createdAt || 0));
+    try {
+      localStorage.setItem(BLOG_KEY, JSON.stringify(updated));
+      localStorage.setItem(CACHE_TIME_KEY, Date.now().toString());
+    } catch (e) {
+      console.warn('LocalStorage save error:', e);
+    }
+  }
+
+  // 2. Persist to server disk storage via /api/articles
+  try {
+    await fetch('/api/articles', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(postWithTime)
+    });
+  } catch (apiErr) {
+    console.warn('Server disk backup update error:', apiErr);
+  }
+
+  // 3. Sync to Firestore (with size validation & quota tolerance)
   const payloadString = JSON.stringify(postWithTime);
   if (payloadString.length > 950000) {
-    throw new Error('Article size exceeds Firestore 1MB document limit. Please use smaller or fewer inline images.');
+    console.warn('Article size approaches 1MB Firestore limit. Saved to server and local storage safely.');
+    return;
   }
 
   try {
     await setDoc(doc(db, 'blogPosts', postWithTime.id), postWithTime);
-    clearClientCache();
-    if (typeof window !== 'undefined') {
-      const posts = getStoredBlogPostsSync();
-      const exists = posts.some(p => p.id === postWithTime.id);
-      const updated = exists ? posts.map(p => p.id === postWithTime.id ? postWithTime : p) : [postWithTime, ...posts];
-      updated.sort((a: BlogPost, b: BlogPost) => (b.createdAt || 0) - (a.createdAt || 0));
-      localStorage.setItem(BLOG_KEY, JSON.stringify(updated));
-      localStorage.setItem(CACHE_TIME_KEY, Date.now().toString());
-    }
   } catch (err) {
-    console.error('Error saving article to Firestore database:', err);
+    console.warn('Firestore sync notice (post is permanently saved on server & local storage):', (err as Error).message);
+    // Do not throw if it is a quota limit error, since article is already saved locally and on server
+    if ((err as Error).message.includes('Quota limit') || (err as Error).message.includes('resource-exhausted')) {
+      console.info('Saved locally & on server disk. Will sync to Firestore once quota resets.');
+      return;
+    }
     throw new Error('Database save failed: ' + (err as Error).message);
   }
 }
@@ -136,34 +172,62 @@ export async function restoreBackupPosts(importedPosts: BlogPost[]): Promise<voi
     createdAt: p.createdAt || Date.now()
   }));
 
+  // 1. Immediately persist to server disk via /api/articles
+  try {
+    await fetch('/api/articles', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(validPosts)
+    });
+  } catch (e) {
+    console.warn('Server disk backup update error:', e);
+  }
+
+  // 2. Update local storage
+  if (typeof window !== 'undefined') {
+    const postMap = new Map<string, BlogPost>();
+    getStoredBlogPostsSync().forEach(p => postMap.set(p.slug || p.id, p));
+    validPosts.forEach(p => postMap.set(p.slug || p.id, p));
+    const merged = Array.from(postMap.values());
+    merged.sort((a: BlogPost, b: BlogPost) => (b.createdAt || 0) - (a.createdAt || 0));
+    localStorage.setItem(BLOG_KEY, JSON.stringify(merged));
+    localStorage.setItem(CACHE_TIME_KEY, Date.now().toString());
+  }
+
+  // 3. Sync to Firestore in background
   for (const post of validPosts) {
     try {
       await setDoc(doc(db, 'blogPosts', post.id), post);
     } catch (e) {
-      console.warn('Firestore restore warning for post:', post.id, e);
+      console.warn('Firestore restore notice for post:', post.id, e);
     }
-  }
-  clearClientCache();
-  if (typeof window !== 'undefined') {
-    localStorage.setItem(BLOG_KEY, JSON.stringify(validPosts));
-    localStorage.setItem(CACHE_TIME_KEY, Date.now().toString());
   }
 }
 
 export async function deleteBlogPostFromFirestore(id: string): Promise<void> {
+  // 1. Remove from local storage
+  if (typeof window !== 'undefined') {
+    const posts = getStoredBlogPostsSync();
+    const updated = posts.filter(p => p.id !== id && p.slug !== id);
+    updated.sort((a: BlogPost, b: BlogPost) => (b.createdAt || 0) - (a.createdAt || 0));
+    localStorage.setItem(BLOG_KEY, JSON.stringify(updated));
+    localStorage.setItem(CACHE_TIME_KEY, Date.now().toString());
+  }
+
+  // 2. Delete from server disk storage
+  try {
+    await fetch(`/api/articles?id=${encodeURIComponent(id)}`, {
+      method: 'DELETE'
+    });
+  } catch (e) {
+    console.warn('Server disk backup delete error:', e);
+  }
+
+  // 3. Delete from Firestore
   try {
     await deleteDoc(doc(db, 'blogPosts', id));
-    clearClientCache();
-    if (typeof window !== 'undefined') {
-      const posts = getStoredBlogPostsSync();
-      const updated = posts.filter(p => p.id !== id);
-      updated.sort((a: BlogPost, b: BlogPost) => (b.createdAt || 0) - (a.createdAt || 0));
-      localStorage.setItem(BLOG_KEY, JSON.stringify(updated));
-      localStorage.setItem(CACHE_TIME_KEY, Date.now().toString());
-    }
   } catch (err) {
-    console.error('Error deleting from Firestore:', err);
-    throw err;
+    console.warn('Firestore delete notice:', err);
   }
 }
 

@@ -1950,7 +1950,7 @@ export default function AdminPanelPage() {
   // ==========================================
   if (isEditingBlog) {
     const calculateArticleSize = () => {
-      const contentHtml = visualContentRef.current ? visualContentRef.current.innerHTML : blogContent;
+      const contentHtml = blogContent;
       const samplePost = {
         id: editingBlogId || 'preview',
         title: blogTitle,
