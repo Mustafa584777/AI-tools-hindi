@@ -1036,7 +1036,8 @@ export default function AdminPanelPage() {
 
       setArticleImages(prev => [...prev, newImg]);
 
-      const imgHtml = `<img src="${base64String}" alt="${cleanAlt}" data-img-slug="${imgSlug}" class="w-full rounded-2xl my-6 shadow-md object-cover cursor-pointer hover:ring-2 hover:ring-orange-500 transition-all" />\n`;
+      const cleanUrl = `https://aitoolhindi.online/media/${imgSlug}`;
+      const imgHtml = `<img src="${cleanUrl}" data-base64="${base64String}" alt="${cleanAlt}" data-img-slug="${imgSlug}" class="w-full rounded-2xl my-6 shadow-md object-cover cursor-pointer hover:ring-2 hover:ring-orange-500 transition-all" />\n`;
 
       if (selectedBlockElementRef.current && visualContentRef.current?.contains(selectedBlockElementRef.current)) {
         const tempDiv = document.createElement('div');
@@ -1829,21 +1830,31 @@ export default function AdminPanelPage() {
             img.setAttribute('alt', blogTitle);
           }
           const src = img.getAttribute('src') || '';
-          if (src && src.startsWith('data:image/')) {
+          const base64Data = img.getAttribute('data-base64') || (src.startsWith('data:image/') ? src : '');
+          let imgSlug = img.getAttribute('data-img-slug') || '';
+          if (!imgSlug.trim()) {
+            imgSlug = (img.getAttribute('alt') || blogTitle).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || ('img-' + idx);
+            img.setAttribute('data-img-slug', imgSlug);
+          }
+
+          if (base64Data && base64Data.startsWith('data:image/')) {
             let mediaId = img.getAttribute('data-media-image-id');
             if (!mediaId) {
               mediaId = 'img-save-' + Date.now() + '-' + idx + '-' + Math.random().toString(36).substring(7);
             }
             try {
-              await saveMediaImageToFirestore(mediaId, src);
-              img.setAttribute('src', '');
+              await saveMediaImageToFirestore(mediaId, base64Data, imgSlug);
               img.setAttribute('data-media-image-id', mediaId);
+              img.setAttribute('data-base64', base64Data);
+              img.setAttribute('src', `https://aitoolhindi.online/media/${imgSlug}`);
               img.removeAttribute('srcset');
               img.removeAttribute('data-src');
               img.removeAttribute('data-orig-file');
             } catch (e) {
               console.warn('Failed to save image chunk:', e);
             }
+          } else if (imgSlug) {
+            img.setAttribute('src', `https://aitoolhindi.online/media/${imgSlug}`);
           }
         });
 
@@ -2762,7 +2773,16 @@ export default function AdminPanelPage() {
                     onClick={() => {
                       if (selectedImageEl) {
                         selectedImageEl.setAttribute('alt', editImageAlt);
-                        selectedImageEl.setAttribute('data-img-slug', editImageSlug);
+                        const cleanSlug = editImageSlug.trim().replace(/^\/+/, '');
+                        selectedImageEl.setAttribute('data-img-slug', cleanSlug);
+
+                        const currentSrc = selectedImageEl.src;
+                        if (currentSrc && currentSrc.startsWith('data:image/')) {
+                          selectedImageEl.setAttribute('data-base64', currentSrc);
+                        }
+                        const cleanUrl = cleanSlug.startsWith('http') ? cleanSlug : `https://aitoolhindi.online/media/${cleanSlug}`;
+                        selectedImageEl.setAttribute('src', cleanUrl);
+
                         if (visualContentRef.current) setBlogContent(visualContentRef.current.innerHTML);
                         setShowImageModal(false);
                         showNotify('Image alt text & slug updated successfully!');

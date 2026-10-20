@@ -270,13 +270,17 @@ export async function fetchMediaVideoFromFirestore(mediaId: string): Promise<str
 
 const imageCache = new Map<string, string>();
 
-export async function saveMediaImageToFirestore(mediaId: string, base64Data: string): Promise<void> {
+export async function saveMediaImageToFirestore(mediaId: string, base64Data: string, slug?: string): Promise<void> {
   imageCache.set(mediaId, base64Data);
+  if (slug) {
+    imageCache.set(slug, base64Data);
+  }
   const CHUNK_SIZE = 700 * 1024; // 700KB chunks to stay safely under Firestore 1MB limit
   const totalChunks = Math.ceil(base64Data.length / CHUNK_SIZE);
   
   await setDoc(doc(db, 'mediaImages', mediaId), {
     id: mediaId,
+    slug: slug || mediaId,
     totalChunks,
     createdAt: Date.now()
   });
@@ -288,6 +292,33 @@ export async function saveMediaImageToFirestore(mediaId: string, base64Data: str
       chunkIndex: i,
       data: chunkData
     });
+  }
+
+  if (slug) {
+    try {
+      await setDoc(doc(db, 'mediaImageSlugs', slug), {
+        mediaId,
+        slug,
+        updatedAt: Date.now()
+      });
+    } catch (e) {
+      console.warn('Failed to save media slug mapping:', e);
+    }
+  }
+}
+
+export async function fetchMediaImageBySlug(slug: string): Promise<string | null> {
+  if (imageCache.has(slug)) return imageCache.get(slug)!;
+  try {
+    const slugDoc = await getDoc(doc(db, 'mediaImageSlugs', slug));
+    if (slugDoc.exists()) {
+      const { mediaId } = slugDoc.data() as { mediaId: string };
+      return await fetchMediaImageFromFirestore(mediaId);
+    }
+    return await fetchMediaImageFromFirestore(slug);
+  } catch (e) {
+    console.error('Error fetching media by slug:', e);
+    return null;
   }
 }
 
