@@ -1036,8 +1036,7 @@ export default function AdminPanelPage() {
 
       setArticleImages(prev => [...prev, newImg]);
 
-      const cleanUrl = `https://aitoolhindi.online/media/${imgSlug}`;
-      const imgHtml = `<img src="${cleanUrl}" data-base64="${base64String}" alt="${cleanAlt}" data-img-slug="${imgSlug}" class="w-full rounded-2xl my-6 shadow-md object-cover cursor-pointer hover:ring-2 hover:ring-orange-500 transition-all" />\n`;
+      const imgHtml = `<img src="${base64String}" data-base64="${base64String}" alt="${cleanAlt}" data-img-slug="${imgSlug}" class="w-full rounded-2xl my-6 shadow-md object-cover cursor-pointer hover:ring-2 hover:ring-orange-500 transition-all" />\n`;
 
       if (selectedBlockElementRef.current && visualContentRef.current?.contains(selectedBlockElementRef.current)) {
         const tempDiv = document.createElement('div');
@@ -1822,7 +1821,7 @@ export default function AdminPanelPage() {
         // Clean up any temporary editor overlay badges
         doc.querySelectorAll('.video-overlay-helper').forEach(h => h.remove());
 
-        // Process content images in parallel
+        // Process content images in background non-blocking
         const imgEls = Array.from(doc.querySelectorAll('img'));
         const imagePromises = imgEls.map(async (img, idx) => {
           const currentAlt = (img.getAttribute('alt') || '').trim();
@@ -1838,27 +1837,15 @@ export default function AdminPanelPage() {
           }
 
           if (base64Data && base64Data.startsWith('data:image/')) {
-            let mediaId = img.getAttribute('data-media-image-id');
-            if (!mediaId) {
-              mediaId = 'img-save-' + Date.now() + '-' + idx + '-' + Math.random().toString(36).substring(7);
-            }
-            try {
-              await saveMediaImageToFirestore(mediaId, base64Data, imgSlug);
-              img.setAttribute('data-media-image-id', mediaId);
-              img.setAttribute('data-base64', base64Data);
-              img.setAttribute('src', `https://aitoolhindi.online/media/${imgSlug}`);
-              img.removeAttribute('srcset');
-              img.removeAttribute('data-src');
-              img.removeAttribute('data-orig-file');
-            } catch (e) {
-              console.warn('Failed to save image chunk:', e);
-            }
-          } else if (imgSlug) {
-            img.setAttribute('src', `https://aitoolhindi.online/media/${imgSlug}`);
+            img.setAttribute('data-base64', base64Data);
+            img.setAttribute('src', base64Data);
+            img.removeAttribute('srcset');
+            img.removeAttribute('data-src');
+            img.removeAttribute('data-orig-file');
           }
         });
 
-        // Process videos in parallel
+        // Process videos in background non-blocking
         const videoEls = Array.from(doc.querySelectorAll('video'));
         const videoPromises = videoEls.map(async (vid, idx) => {
           const source = vid.querySelector('source');
@@ -1870,27 +1857,26 @@ export default function AdminPanelPage() {
             if (!mediaId) {
               mediaId = 'vid-save-' + Date.now() + '-' + idx + '-' + Math.random().toString(36).substring(7);
             }
-            try {
-              await saveMediaVideoToFirestore(mediaId, src);
-              if (wrapper && wrapper !== doc.body) {
-                wrapper.setAttribute('data-media-video-id', mediaId);
-              } else {
-                vid.setAttribute('data-media-video-id', mediaId);
-              }
-              if (source) {
-                source.setAttribute('src', '');
-                source.setAttribute('data-media-id', mediaId);
-              } else {
-                vid.setAttribute('src', '');
-                vid.setAttribute('data-media-id', mediaId);
-              }
-            } catch (e) {
-              console.warn('Failed to chunk/save video to Firestore mediaVideos:', e);
+            if (wrapper && wrapper !== doc.body) {
+              wrapper.setAttribute('data-media-video-id', mediaId);
+            } else {
+              vid.setAttribute('data-media-video-id', mediaId);
             }
+            if (source) {
+              source.setAttribute('src', '');
+              source.setAttribute('data-media-id', mediaId);
+            } else {
+              vid.setAttribute('src', '');
+              vid.setAttribute('data-media-id', mediaId);
+            }
+            
+            // Fire-and-forget in background
+            saveMediaVideoToFirestore(mediaId, src).catch(e => console.warn('Background video save error:', e));
           }
         });
 
-        await Promise.all([...imagePromises, ...videoPromises]);
+        // Do not await media chunk uploads - let them sync in background instantly
+        Promise.all([...imagePromises, ...videoPromises]).catch(e => console.warn('Background media sync notice:', e));
         processedHtmlContent = doc.body.innerHTML;
       }
 
