@@ -1335,24 +1335,52 @@ export default function AdminPanelPage() {
       try {
         const content = uploadEvent.target?.result as string;
         const importedPosts: BlogPost[] = JSON.parse(content);
-        if (!Array.isArray(importedPosts)) {
+        if (!Array.isArray(importedPosts) || importedPosts.length === 0) {
           alert('Invalid backup format. Must be an array of articles.');
           return;
         }
 
-        if (confirm(`Are you sure you want to restore ${importedPosts.length} articles? This will sync them to Firestore and update existing items.`)) {
-          await restoreBackupPosts(importedPosts);
+        if (confirm(`Are you sure you want to restore ${importedPosts.length} articles? This will sync them to Firestore and local database.`)) {
+          showNotify(`Starting restore of ${importedPosts.length} articles...`);
+          const count = await restoreBackupPosts(importedPosts, (curr, tot) => {
+            showNotify(`Restoring article ${curr} of ${tot} to database...`);
+          });
+          setPosts(importedPosts);
           await loadData(true);
-          showNotify(`Successfully restored ${importedPosts.length} articles!`);
+          showNotify(`Successfully restored ${count} articles!`);
         }
       } catch (err) {
         console.error(err);
-        alert('Failed to parse backup JSON file.');
+        alert('Failed to parse backup JSON file: ' + (err as Error).message);
       } finally {
         if (restoreFileInputRef.current) restoreFileInputRef.current.value = '';
       }
     };
     reader.readAsText(file);
+  };
+
+  const handleRestoreFromCloudBackup = async () => {
+    if (!confirm('Kya aap built-in cloud backup se sabhi 48 articles ko restore & sync karna chahte hain?')) {
+      return;
+    }
+    try {
+      showNotify('Fetching built-in 48 articles backup...');
+      const res = await fetch('/initial-articles-backup.json');
+      if (!res.ok) throw new Error('Could not load built-in backup');
+      const backupPosts: BlogPost[] = await res.json();
+      if (!Array.isArray(backupPosts) || backupPosts.length === 0) {
+        throw new Error('Backup file is empty');
+      }
+      showNotify(`Restoring ${backupPosts.length} articles to Firestore...`);
+      const count = await restoreBackupPosts(backupPosts, (curr, tot) => {
+        showNotify(`Restoring article ${curr} of ${tot}...`);
+      });
+      setPosts(backupPosts);
+      await loadData(true);
+      showNotify(`All ${count} articles successfully restored!`);
+    } catch (err) {
+      alert('Error restoring from built-in backup: ' + (err as Error).message);
+    }
   };
 
   const handleManualScan = () => {
@@ -3183,6 +3211,14 @@ export default function AdminPanelPage() {
               <Upload className="w-4 h-4" />
               <span>Restore Backup</span>
             </label>
+
+            <button
+              onClick={handleRestoreFromCloudBackup}
+              className="px-4 py-2.5 bg-amber-500/90 hover:bg-amber-500 border border-amber-300/40 text-black font-extrabold rounded-xl text-xs inline-flex items-center gap-2 cursor-pointer shadow-md transition-all"
+            >
+              <RefreshCw className="w-4 h-4 text-black" />
+              <span>Sync All 48 Articles</span>
+            </button>
 
             <button
               onClick={handleMigrateAllImages}

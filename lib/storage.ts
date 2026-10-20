@@ -135,7 +135,10 @@ export async function saveBlogPostToFirestore(post: BlogPost): Promise<void> {
   }
 }
 
-export async function restoreBackupPosts(importedPosts: BlogPost[]): Promise<void> {
+export async function restoreBackupPosts(
+  importedPosts: BlogPost[],
+  onProgress?: (current: number, total: number) => void
+): Promise<number> {
   const validPosts = importedPosts.map(p => ({
     ...p,
     id: p.id || ('blog-' + (p.slug || Math.random().toString(36).substring(7))),
@@ -164,18 +167,32 @@ export async function restoreBackupPosts(importedPosts: BlogPost[]): Promise<voi
     validPosts.forEach(p => postMap.set(p.slug || p.id, p));
     const merged = Array.from(postMap.values());
     merged.sort((a: BlogPost, b: BlogPost) => (b.createdAt || 0) - (a.createdAt || 0));
-    localStorage.setItem(BLOG_KEY, JSON.stringify(merged));
-    localStorage.setItem(CACHE_TIME_KEY, Date.now().toString());
+    try {
+      localStorage.setItem(BLOG_KEY, JSON.stringify(merged));
+      localStorage.setItem(CACHE_TIME_KEY, Date.now().toString());
+    } catch (e) {
+      console.warn('Local storage write warning during restore:', e);
+    }
   }
 
-  // 3. Sync to Firestore in background
-  for (const post of validPosts) {
+  // 3. Sync to Firestore with progress reporting
+  let count = 0;
+  for (let i = 0; i < validPosts.length; i++) {
+    const post = validPosts[i];
     try {
-      await setDoc(doc(db, 'blogPosts', post.id), post);
+      const payloadString = JSON.stringify(post);
+      if (payloadString.length <= 950000) {
+        await setDoc(doc(db, 'blogPosts', post.id), post);
+      }
+      count++;
     } catch (e) {
       console.warn('Firestore restore notice for post:', post.id, e);
     }
+    if (onProgress) {
+      onProgress(i + 1, validPosts.length);
+    }
   }
+  return count;
 }
 
 export async function deleteBlogPostFromFirestore(id: string): Promise<void> {
