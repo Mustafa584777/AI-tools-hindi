@@ -149,6 +149,8 @@ export default function AdminPanelPage() {
   const [isUploadingReplacementVideo, setIsUploadingReplacementVideo] = useState(false);
   const [replaceVideoUrlInput, setReplaceVideoUrlInput] = useState('');
   const replaceVideoInputRef = useRef<HTMLInputElement>(null);
+  const replaceImageInputRef = useRef<HTMLInputElement>(null);
+  const [isReplacingImage, setIsReplacingImage] = useState(false);
   const [editImageAlt, setEditImageAlt] = useState('');
   const [editImageSlug, setEditImageSlug] = useState('');
   const [showEditLinkModal, setShowEditLinkModal] = useState(false);
@@ -955,7 +957,13 @@ export default function AdminPanelPage() {
     const imgTarget = target.tagName === 'IMG' ? (target as HTMLImageElement) : target.closest('img');
     if (imgTarget && visualContentRef.current?.contains(imgTarget)) {
       setSelectedImageEl(imgTarget);
-      setEditImageAlt(imgTarget.getAttribute('alt') || '');
+      let currentAlt = imgTarget.getAttribute('alt') || '';
+      const imgTitle = imgTarget.getAttribute('title') || imgTarget.getAttribute('data-img-slug') || '';
+      if (!currentAlt.trim() && imgTitle.trim()) {
+        currentAlt = imgTitle.trim();
+        imgTarget.setAttribute('alt', currentAlt);
+      }
+      setEditImageAlt(currentAlt);
       setEditImageSlug(imgTarget.getAttribute('data-img-slug') || '');
       setShowImageModal(true);
       return;
@@ -1941,8 +1949,44 @@ export default function AdminPanelPage() {
   // RENDER CONTINUOUS VISUAL EDITOR
   // ==========================================
   if (isEditingBlog) {
+    const calculateArticleSize = () => {
+      const contentHtml = visualContentRef.current ? visualContentRef.current.innerHTML : blogContent;
+      const samplePost = {
+        id: editingBlogId || 'preview',
+        title: blogTitle,
+        slug: blogSlug,
+        content: contentHtml,
+        category: blogCategory,
+        image: blogImage,
+        imageAlt: blogImageAlt,
+        imageSlug: blogImageSlug,
+        status: blogStatus
+      };
+      const jsonStr = JSON.stringify(samplePost);
+      const bytes = new Blob([jsonStr]).size;
+      const kb = (bytes / 1024).toFixed(1);
+      const isSafe = bytes < 950000;
+      return { kb, bytes, isSafe };
+    };
+
+    const articleSizeInfo = calculateArticleSize();
+
     return (
       <div className="min-h-screen bg-slate-100 flex flex-col">
+        {/* Fixed Position Article Size Popup at Top Right */}
+        <div className="fixed top-20 right-6 z-40 bg-slate-900/95 backdrop-blur-md text-white px-4 py-2.5 rounded-2xl shadow-2xl border border-slate-700 text-xs font-medium flex items-center gap-3">
+          <Database className="w-4 h-4 text-orange-400 shrink-0" />
+          <div>
+            <div className="font-bold flex items-center gap-2">
+              <span>Size: {articleSizeInfo.kb} KB</span>
+              <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${articleSizeInfo.isSafe ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-red-500/20 text-red-400 border border-red-500/30'}`}>
+                {articleSizeInfo.isSafe ? 'Safe (< 1 MB)' : 'Limit Exceeded!'}
+              </span>
+            </div>
+            <div className="text-[10px] text-slate-400">Firestore 1MB Max Document Limit</div>
+          </div>
+        </div>
+
         {/* Minimal Admin Header Bar */}
         <header className="bg-slate-900 text-white px-4 py-3 flex items-center justify-between border-b border-slate-800">
           <div className="flex items-center gap-3">
@@ -2619,14 +2663,58 @@ export default function AdminPanelPage() {
               </div>
 
               <div className="space-y-4">
-                <div className="h-40 relative rounded-xl overflow-hidden bg-slate-100 border border-slate-200">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={selectedImageEl?.src || ''}
-                    alt="Preview"
-                    className="w-full h-full object-cover"
-                    referrerPolicy="no-referrer"
-                  />
+                <div className="space-y-2">
+                  <div className="h-40 relative rounded-xl overflow-hidden bg-slate-100 border border-slate-200">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={selectedImageEl?.src || ''}
+                      alt="Preview"
+                      className="w-full h-full object-cover"
+                      referrerPolicy="no-referrer"
+                    />
+                  </div>
+                  <div className="flex items-center justify-between pt-1">
+                    <span className="text-xs font-bold text-slate-700">Replace Image File:</span>
+                    <input
+                      type="file"
+                      ref={replaceImageInputRef}
+                      className="hidden"
+                      accept="image/*"
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (!file || !selectedImageEl) return;
+                        setIsReplacingImage(true);
+                        try {
+                          const reader = new FileReader();
+                          reader.onload = async (event) => {
+                            const resBase64 = event.target?.result as string;
+                            if (resBase64) {
+                              const compressed = await compressImageBase64(resBase64, 800, 0.7);
+                              selectedImageEl.src = compressed;
+                              if (visualContentRef.current) setBlogContent(visualContentRef.current.innerHTML);
+                              showNotify('Image replaced successfully! Alt text & slug preserved.');
+                            }
+                            setIsReplacingImage(false);
+                          };
+                          reader.readAsDataURL(file);
+                        } catch (err) {
+                          console.error(err);
+                          setIsReplacingImage(false);
+                          alert('Failed to replace image.');
+                        }
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => replaceImageInputRef.current?.click()}
+                      disabled={isReplacingImage}
+                      className="px-3.5 py-1.5 bg-slate-900 hover:bg-black text-white font-bold rounded-xl text-xs inline-flex items-center gap-1.5 transition-colors disabled:opacity-50 shadow-sm"
+                    >
+                      {isReplacingImage ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+                      <span>Choose New Image File</span>
+                    </button>
+                  </div>
+                  <p className="text-[10px] text-slate-500">Replacing image updates the visual graphic while keeping your Alt Text and Slug 100% unchanged.</p>
                 </div>
 
                 <div>
