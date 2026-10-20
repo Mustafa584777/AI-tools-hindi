@@ -3744,7 +3744,7 @@ export default function AdminPanelPage() {
                             {/* WordPress URL Cell */}
                             <td className="p-4 align-top space-y-2">
                               <div className="bg-slate-50 border border-slate-200 rounded-xl p-2.5 font-mono text-[11px] text-slate-700 break-all select-all flex items-start justify-between gap-2">
-                                <span className="line-clamp-2">{item.wpUrl}</span>
+                                <span className="line-clamp-2">{item.wpUrl.replace(/^https?:\/\/(www\.)?aitoolhindi\.online\/?/i, '/')}</span>
                                 <button
                                   onClick={() => handleCopyWpUrl(item.id, item.wpUrl)}
                                   className="shrink-0 p-1.5 bg-white hover:bg-slate-100 rounded-lg border border-slate-200 text-slate-600 hover:text-black transition-colors"
