@@ -7,10 +7,29 @@ export const INITIAL_BLOG_POSTS: BlogPost[] = (articlesBackup as unknown as Blog
 
 const BLOG_KEY = 'aitoolhindi_blog_posts_firebase_sync_v2';
 const CACHE_TIME_KEY = 'aitoolhindi_cache_timestamp';
-const CACHE_TTL = 60 * 60 * 1000; // 1 hour cache to balance freshness with quota preservation
+const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours cache for instant loading without network requests
 
 export async function fetchBlogPostsFromFirestore(forceRefresh = false): Promise<BlogPost[]> {
-  // 1. Fetch exclusively from server flat-file JSON API (/api/articles) for lightning-fast loading and 0 database reads
+  // 1. Check client-side 24-hour cache if not forcing refresh
+  if (!forceRefresh && typeof window !== 'undefined') {
+    try {
+      const cachedTime = localStorage.getItem(CACHE_TIME_KEY);
+      const local = localStorage.getItem(BLOG_KEY);
+      if (cachedTime && local) {
+        const age = Date.now() - parseInt(cachedTime, 10);
+        if (age < CACHE_TTL) {
+          const parsed = JSON.parse(local);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            return parsed;
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('Cache read error:', e);
+    }
+  }
+
+  // 2. Fetch from server flat-file JSON API (/api/articles)
   let serverPosts: BlogPost[] = [];
   try {
     const res = await fetch('/api/articles');
