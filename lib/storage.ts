@@ -10,6 +10,20 @@ const CACHE_TIME_KEY = 'aitoolhindi_cache_timestamp';
 const CACHE_TTL = 60 * 60 * 1000; // 1 hour cache to balance freshness with quota preservation
 
 export async function fetchBlogPostsFromFirestore(forceRefresh = false): Promise<BlogPost[]> {
+  // 1. Fetch exclusively from server flat-file JSON API (/api/articles) for lightning-fast loading and 0 database reads
+  let serverPosts: BlogPost[] = [];
+  try {
+    const res = await fetch('/api/articles');
+    if (res.ok) {
+      const data = await res.json();
+      if (data.posts && Array.isArray(data.posts) && data.posts.length > 0) {
+        serverPosts = data.posts;
+      }
+    }
+  } catch (err) {
+    console.warn('Server articles API read notice:', err);
+  }
+
   let localPosts: BlogPost[] = [];
   if (typeof window !== 'undefined') {
     try {
@@ -20,46 +34,17 @@ export async function fetchBlogPostsFromFirestore(forceRefresh = false): Promise
     }
   }
 
-  // 1. Fetch from persistent server backup API
-  let serverPosts: BlogPost[] = [];
-  try {
-    const res = await fetch('/api/articles');
-    if (res.ok) {
-      const data = await res.json();
-      if (data.posts && Array.isArray(data.posts)) {
-        serverPosts = data.posts;
-      }
-    }
-  } catch (err) {
-    console.warn('Server articles API read notice:', err);
-  }
-
-  // 2. Fetch from Firestore (fail-safe against quota exhaustion)
-  let firestorePosts: BlogPost[] = [];
-  try {
-    const querySnapshot = await getDocs(collection(db, 'blogPosts'));
-    querySnapshot.forEach((docSnap) => {
-      firestorePosts.push(docSnap.data() as BlogPost);
-    });
-  } catch (err) {
-    console.warn('Firestore fetch notice (using persistent server & local backup):', (err as Error).message);
-  }
-
-  // Union map: merge all sources so NO post is ever lost
+  // Union map: merge server JSON posts and local storage posts
   const postMap = new Map<string, BlogPost>();
   INITIAL_BLOG_POSTS.forEach(p => {
     const key = p.slug || p.id;
     if (key) postMap.set(key, p);
   });
-  serverPosts.forEach(p => {
-    const key = p.slug || p.id;
-    if (key) postMap.set(key, p);
-  });
-  firestorePosts.forEach(p => {
-    const key = p.slug || p.id;
-    if (key) postMap.set(key, p);
-  });
   localPosts.forEach(p => {
+    const key = p.slug || p.id;
+    if (key) postMap.set(key, p);
+  });
+  serverPosts.forEach(p => {
     const key = p.slug || p.id;
     if (key) postMap.set(key, p);
   });
