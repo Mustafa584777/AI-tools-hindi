@@ -4,31 +4,11 @@ import { parseCsvToBlogPosts, normalizeGoogleSheetUrl } from './google-sheets';
 
 export const INITIAL_BLOG_POSTS: BlogPost[] = (articlesBackup as unknown as BlogPost[]) || [];
 
-export const BLOG_KEY = 'aitoolhindi_blog_posts_sheets_sync_v4';
-export const CACHE_TIME_KEY = 'aitoolhindi_cache_timestamp';
 export const GOOGLE_SHEET_CSV_KEY = 'aitoolhindi_google_sheet_csv_url';
 export const APPS_SCRIPT_URL_KEY = 'aitoolhindi_google_apps_script_url';
-export const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours cache
 
-export async function fetchBlogPostsFromFirestore(forceRefresh = false): Promise<BlogPost[]> {
-  // 1. Check client-side 24-hour cache if not forcing refresh
-  if (!forceRefresh && typeof window !== 'undefined') {
-    try {
-      const cachedTime = localStorage.getItem(CACHE_TIME_KEY);
-      const local = localStorage.getItem(BLOG_KEY);
-      if (cachedTime && local) {
-        const parsed = JSON.parse(local);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed;
-        }
-      }
-    } catch (e) {
-      console.warn('Cache read error:', e);
-    }
-  }
-
-  // 2. Try fetching from Google Sheets live CSV URL (0 database cost)
-  let sheetPosts: BlogPost[] = [];
+export async function fetchBlogPostsFromFirestore(_forceRefresh = false): Promise<BlogPost[]> {
+  // Fetch STRICTLY from Google Sheets Published CSV URL
   let googleSheetUrl = '';
   if (typeof window !== 'undefined') {
     googleSheetUrl = localStorage.getItem(GOOGLE_SHEET_CSV_KEY) || process.env.NEXT_PUBLIC_GOOGLE_SHEET_CSV_URL || '';
@@ -43,7 +23,8 @@ export async function fetchBlogPostsFromFirestore(forceRefresh = false): Promise
         if (csvText && !csvText.includes('<!DOCTYPE html>') && !csvText.includes('accounts.google.com')) {
           const parsed = parseCsvToBlogPosts(csvText);
           if (parsed.length > 0) {
-            sheetPosts = parsed;
+            parsed.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+            return parsed;
           }
         }
       }
@@ -52,96 +33,34 @@ export async function fetchBlogPostsFromFirestore(forceRefresh = false): Promise
     }
   }
 
-  // 3. Fetch from server flat-file JSON API (/api/articles)
-  let serverPosts: BlogPost[] = [];
+  // Fallback to server flat-file JSON API (/api/articles) if sheet not configured or failed
   try {
-    const res = await fetch('/api/articles');
+    const res = await fetch('/api/articles', { cache: 'no-store' });
     if (res.ok) {
       const data = await res.json();
       if (data.posts && Array.isArray(data.posts) && data.posts.length > 0) {
-        serverPosts = data.posts;
+        data.posts.sort((a: BlogPost, b: BlogPost) => (b.createdAt || 0) - (a.createdAt || 0));
+        return data.posts;
       }
     }
   } catch (err) {
     console.warn('Server articles API read notice:', err);
   }
 
-  let localPosts: BlogPost[] = [];
-  if (typeof window !== 'undefined') {
-    try {
-      const local = localStorage.getItem(BLOG_KEY);
-      if (local) localPosts = JSON.parse(local);
-    } catch (e) {
-      console.warn('Local read error:', e);
-    }
-  }
-
-  // Union map: merge order: INITIAL -> Sheet -> Server -> Local (Local/Server wins so newly added articles NEVER disappear)
-  const postMap = new Map<string, BlogPost>();
-  INITIAL_BLOG_POSTS.forEach(p => {
-    const key = p.slug || p.id;
-    if (key) postMap.set(key, p);
-  });
-  sheetPosts.forEach(p => {
-    const key = p.slug || p.id;
-    if (key) postMap.set(key, p);
-  });
-  serverPosts.forEach(p => {
-    const key = p.slug || p.id;
-    if (key) postMap.set(key, p);
-  });
-  localPosts.forEach(p => {
-    const key = p.slug || p.id;
-    if (key) postMap.set(key, p);
-  });
-
-  const merged = Array.from(postMap.values());
-  merged.sort((a: BlogPost, b: BlogPost) => (b.createdAt || 0) - (a.createdAt || 0));
-
-  if (typeof window !== 'undefined' && merged.length > 0) {
-    try {
-      localStorage.setItem(BLOG_KEY, JSON.stringify(merged));
-      localStorage.setItem(CACHE_TIME_KEY, Date.now().toString());
-    } catch (e) {
-      console.warn('Local storage write error:', e);
-    }
-  }
-
-  return merged.length > 0 ? merged : INITIAL_BLOG_POSTS;
+  return INITIAL_BLOG_POSTS;
 }
 
 export function clearClientCache(): void {
-  if (typeof window !== 'undefined') {
-    localStorage.removeItem(CACHE_TIME_KEY);
-  }
+  // No-op since local cache is removed
 }
 
 export async function saveBlogPostToFirestore(post: BlogPost): Promise<void> {
-  let finalImage = post.image;
-
   const postWithTime: BlogPost = {
     ...post,
-    image: finalImage,
     createdAt: post.createdAt || Date.now()
   };
 
-  // 1. Immediately update local storage and make sure it's at the top
-  if (typeof window !== 'undefined') {
-    try {
-      const posts = getStoredBlogPostsSync();
-      const exists = posts.some(p => p.id === postWithTime.id || p.slug === postWithTime.slug);
-      const updated = exists 
-        ? posts.map(p => (p.id === postWithTime.id || p.slug === postWithTime.slug) ? postWithTime : p)
-        : [postWithTime, ...posts];
-      updated.sort((a: BlogPost, b: BlogPost) => (b.createdAt || 0) - (a.createdAt || 0));
-      localStorage.setItem(BLOG_KEY, JSON.stringify(updated));
-      localStorage.setItem(CACHE_TIME_KEY, Date.now().toString());
-    } catch (e) {
-      console.warn('LocalStorage save error:', e);
-    }
-  }
-
-  // 2. Persist to server disk storage via /api/articles (Flat-file database)
+  // 1. Persist to server disk storage via /api/articles
   try {
     await fetch('/api/articles', {
       method: 'POST',
@@ -152,15 +71,19 @@ export async function saveBlogPostToFirestore(post: BlogPost): Promise<void> {
     console.warn('Server disk backup update error:', apiErr);
   }
 
-  // 3. Sync to Google Sheets Webhook in background (2-way sync)
+  // 2. Sync to Google Sheets Webhook (Apps Script) - Saves directly to Google Sheet!
   try {
-    fetch('/api/sheets', {
+    const res = await fetch('/api/sheets', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'webhook_save', post: postWithTime })
-    }).catch(sheetErr => console.warn('Background Google Sheet sync notice:', sheetErr));
-  } catch (sheetDispatchErr) {
-    console.warn('Sheet webhook dispatch error:', sheetDispatchErr);
+    });
+    const data = await res.json();
+    if (!data.success && data.error) {
+      console.warn('Google Sheet webhook save warning:', data.error);
+    }
+  } catch (sheetErr) {
+    console.warn('Google Sheet webhook dispatch error:', sheetErr);
   }
 }
 
@@ -188,20 +111,6 @@ export async function restoreBackupPosts(
     console.warn('Server disk backup update error:', e);
   }
 
-  if (typeof window !== 'undefined') {
-    const postMap = new Map<string, BlogPost>();
-    getStoredBlogPostsSync().forEach(p => postMap.set(p.slug || p.id, p));
-    validPosts.forEach(p => postMap.set(p.slug || p.id, p));
-    const merged = Array.from(postMap.values());
-    merged.sort((a: BlogPost, b: BlogPost) => (b.createdAt || 0) - (a.createdAt || 0));
-    try {
-      localStorage.setItem(BLOG_KEY, JSON.stringify(merged));
-      localStorage.setItem(CACHE_TIME_KEY, Date.now().toString());
-    } catch (e) {
-      console.warn('Local storage write warning during restore:', e);
-    }
-  }
-
   if (onProgress) {
     onProgress(validPosts.length, validPosts.length);
   }
@@ -209,14 +118,7 @@ export async function restoreBackupPosts(
 }
 
 export async function deleteBlogPostFromFirestore(id: string): Promise<void> {
-  if (typeof window !== 'undefined') {
-    const posts = getStoredBlogPostsSync();
-    const updated = posts.filter(p => p.id !== id && p.slug !== id);
-    updated.sort((a: BlogPost, b: BlogPost) => (b.createdAt || 0) - (a.createdAt || 0));
-    localStorage.setItem(BLOG_KEY, JSON.stringify(updated));
-    localStorage.setItem(CACHE_TIME_KEY, Date.now().toString());
-  }
-
+  // 1. Delete from server disk storage
   try {
     await fetch(`/api/articles?id=${encodeURIComponent(id)}`, {
       method: 'DELETE'
@@ -225,29 +127,20 @@ export async function deleteBlogPostFromFirestore(id: string): Promise<void> {
     console.warn('Server disk backup delete error:', e);
   }
 
+  // 2. Delete from Google Sheets Webhook
   try {
-    fetch('/api/sheets', {
+    await fetch('/api/sheets', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'webhook_delete', id })
-    }).catch(sheetErr => console.warn('Background Google Sheet delete notice:', sheetErr));
-  } catch (sheetDispatchErr) {
-    console.warn('Sheet webhook dispatch error:', sheetDispatchErr);
+    });
+  } catch (sheetErr) {
+    console.warn('Google Sheet webhook delete error:', sheetErr);
   }
 }
 
 export function getStoredBlogPostsSync(): BlogPost[] {
-  if (typeof window === 'undefined') return INITIAL_BLOG_POSTS;
-  try {
-    const data = localStorage.getItem(BLOG_KEY);
-    if (!data) return INITIAL_BLOG_POSTS;
-    const posts: BlogPost[] = JSON.parse(data);
-    if (posts.length === 0) return INITIAL_BLOG_POSTS;
-    posts.sort((a: BlogPost, b: BlogPost) => (b.createdAt || 0) - (a.createdAt || 0));
-    return posts;
-  } catch {
-    return INITIAL_BLOG_POSTS;
-  }
+  return INITIAL_BLOG_POSTS;
 }
 
 const mediaCache = new Map<string, string>();
