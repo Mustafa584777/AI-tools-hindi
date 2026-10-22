@@ -9,7 +9,7 @@ import {
   Image as ImageIcon, Link as LinkIcon, Bold, Italic, Heading1, Heading2, Heading3, Code, 
   Wand2, Upload, X, RefreshCw, Eye, Code2, HelpCircle, Bot, AlertTriangle, TrendingUp, 
   Award, Folder, List, Table, Undo, Redo, Settings, Loader2, Download, Copy, Check, 
-  Video, Search, AlertCircle, FileSpreadsheet
+  Video, Search, AlertCircle 
 } from 'lucide-react';
 import { 
   fetchBlogPostsFromFirestore, 
@@ -22,15 +22,9 @@ import {
   fetchMediaVideoFromFirestore,
   saveMediaImageToFirestore,
   fetchMediaImageFromFirestore,
-  compressImageBase64,
-  GOOGLE_SHEET_CSV_KEY,
-  APPS_SCRIPT_URL_KEY,
-  CLOUDINARY_CLOUD_NAME_KEY,
-  CLOUDINARY_UPLOAD_PRESET_KEY,
-  uploadImageToCloudinary
+  compressImageBase64
 } from '@/lib/storage';
 import { BlogPost } from '@/lib/types';
-import { GOOGLE_APPS_SCRIPT_TEMPLATE, normalizeGoogleSheetUrl } from '@/lib/google-sheets';
 
 export interface UnmigratedMediaItem {
   id: string;
@@ -68,33 +62,11 @@ const CATEGORIES_KEY = 'aitoolhindi_categories_v1';
 export default function AdminPanelPage() {
   const [posts, setPosts] = useState<BlogPost[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'tutorials' | 'categories' | 'unmigrated' | 'sheets'>('tutorials');
+  const [activeTab, setActiveTab] = useState<'tutorials' | 'categories' | 'unmigrated'>('tutorials');
   const [tutorialSubTab, setTutorialSubTab] = useState<'published' | 'draft'>('published');
   const [isMigratingImages, setIsMigratingImages] = useState(false);
   const [migrationProgress, setMigrationProgress] = useState<{ current: number; total: number; text: string }>({ current: 0, total: 0, text: '' });
   const [failedMigrationImages, setFailedMigrationImages] = useState<{ articleTitle: string; articleSlug: string; imageUrl: string }[]>([]);
-
-  // Google Sheets Database & Sync State
-  const [sheetPublishedUrl, setSheetPublishedUrl] = useState('');
-  const [sheetAppsScriptUrl, setSheetAppsScriptUrl] = useState('');
-  const [isTestingSheet, setIsTestingSheet] = useState(false);
-  const [sheetSyncStatus, setSheetSyncStatus] = useState<{
-    success?: boolean;
-    message?: string;
-    count?: number;
-    sampleTitles?: string[];
-  } | null>(null);
-  const [isSavingSheetConfig, setIsSavingSheetConfig] = useState(false);
-  const [copiedAppsScript, setCopiedAppsScript] = useState(false);
-  const [sheetLastSyncedAt, setSheetLastSyncedAt] = useState<number>(0);
-  const [sheetArticleCount, setSheetArticleCount] = useState<number>(0);
-
-  // Cloudinary Media Storage State
-  const [cloudinaryCloudName, setCloudinaryCloudName] = useState('');
-  const [cloudinaryUploadPreset, setCloudinaryUploadPreset] = useState('');
-  const [isSavingCloudinaryConfig, setIsSavingCloudinaryConfig] = useState(false);
-  const [isUploadingCloudinary, setIsUploadingCloudinary] = useState(false);
-
   
   // Unmigrated / Pending WordPress Media State
   const [unmigratedMedia, setUnmigratedMedia] = useState<UnmigratedMediaItem[]>([]);
@@ -280,29 +252,7 @@ export default function AdminPanelPage() {
         } else {
           setCustomCategories(Array.from(new Set(['AI Guides', 'Image Tutorials', 'Video Tutorials', ...derivedCats])));
         }
-
-        const localCsvUrl = localStorage.getItem(GOOGLE_SHEET_CSV_KEY) || '';
-        const localAppsScriptUrl = localStorage.getItem(APPS_SCRIPT_URL_KEY) || '';
-        const localCloudName = localStorage.getItem(CLOUDINARY_CLOUD_NAME_KEY) || '';
-        const localUploadPreset = localStorage.getItem(CLOUDINARY_UPLOAD_PRESET_KEY) || '';
-        if (localCsvUrl) setSheetPublishedUrl(localCsvUrl);
-        if (localAppsScriptUrl) setSheetAppsScriptUrl(localAppsScriptUrl);
-        if (localCloudName) setCloudinaryCloudName(localCloudName);
-        if (localUploadPreset) setCloudinaryUploadPreset(localUploadPreset);
       }
-
-      // Load persistent sheets config from server
-      fetch('/api/sheets?action=config')
-        .then(r => r.json())
-        .then(res => {
-          if (res.success && res.config) {
-            if (res.config.publishedCsvUrl) setSheetPublishedUrl(res.config.publishedCsvUrl);
-            if (res.config.appsScriptUrl) setSheetAppsScriptUrl(res.config.appsScriptUrl);
-            if (res.config.lastSyncedAt) setSheetLastSyncedAt(res.config.lastSyncedAt);
-            if (res.config.articleCount) setSheetArticleCount(res.config.articleCount);
-          }
-        })
-        .catch(err => console.warn('Config fetch notice:', err));
     } catch {
       const fallback = getStoredBlogPostsSync();
       setPosts(fallback);
@@ -1433,115 +1383,6 @@ export default function AdminPanelPage() {
     }
   };
 
-  const handleDownloadSheetsCsv = () => {
-    window.location.href = '/api/sheets?action=export';
-    showNotify('Google Sheets-ready CSV download shuru ho gaya!');
-  };
-
-  const handleTestAndSyncSheets = async () => {
-    if (!sheetPublishedUrl.trim()) {
-      alert('Kripya Google Sheet CSV URL dalein!');
-      return;
-    }
-
-    setIsTestingSheet(true);
-    setSheetSyncStatus(null);
-
-    try {
-      const normalized = normalizeGoogleSheetUrl(sheetPublishedUrl);
-      const res = await fetch(`/api/sheets?action=sync&url=${encodeURIComponent(normalized)}&apply=true`);
-      const data = await res.json();
-
-      if (data.success) {
-        setSheetSyncStatus({
-          success: true,
-          message: data.message,
-          count: data.count,
-          sampleTitles: data.sampleTitles
-        });
-        setSheetPublishedUrl(data.normalizedUrl || normalized);
-        setSheetLastSyncedAt(Date.now());
-        setSheetArticleCount(data.count);
-
-        if (typeof window !== 'undefined') {
-          localStorage.setItem(GOOGLE_SHEET_CSV_KEY, data.normalizedUrl || normalized);
-        }
-
-        await loadData(true);
-        showNotify(`Kamyabi! Google Sheet se ${data.count} articles sync ho gaye!`);
-      } else {
-        setSheetSyncStatus({
-          success: false,
-          message: data.error || 'Sync fail ho gaya'
-        });
-        alert(`Google Sheet Sync Error: ${data.error}`);
-      }
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      setSheetSyncStatus({
-        success: false,
-        message: `Network error: ${msg}`
-      });
-      alert(`Error: ${msg}`);
-    } finally {
-      setIsTestingSheet(false);
-    }
-  };
-
-  const handleSaveSheetConfig = async () => {
-    setIsSavingSheetConfig(true);
-    try {
-      const normalizedCsv = normalizeGoogleSheetUrl(sheetPublishedUrl);
-      const res = await fetch('/api/sheets', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'save_config',
-          publishedCsvUrl: normalizedCsv,
-          appsScriptUrl: sheetAppsScriptUrl.trim()
-        })
-      });
-      const data = await res.json();
-      if (data.success) {
-        if (typeof window !== 'undefined') {
-          if (normalizedCsv) localStorage.setItem(GOOGLE_SHEET_CSV_KEY, normalizedCsv);
-          if (sheetAppsScriptUrl.trim()) localStorage.setItem(APPS_SCRIPT_URL_KEY, sheetAppsScriptUrl.trim());
-        }
-        showNotify('Google Sheets settings successfully save ho gayi!');
-      } else {
-        alert('Config save error: ' + data.error);
-      }
-    } catch (err: unknown) {
-      alert('Save failed: ' + (err instanceof Error ? err.message : String(err)));
-    } finally {
-      setIsSavingSheetConfig(false);
-    }
-  };
-
-  const handleSaveCloudinaryConfig = () => {
-    setIsSavingCloudinaryConfig(true);
-    try {
-      if (typeof window !== 'undefined') {
-        localStorage.setItem(CLOUDINARY_CLOUD_NAME_KEY, cloudinaryCloudName.trim());
-        localStorage.setItem(CLOUDINARY_UPLOAD_PRESET_KEY, cloudinaryUploadPreset.trim());
-      }
-      showNotify('Cloudinary configuration saved successfully!');
-    } catch (e) {
-      alert('Save failed: ' + (e instanceof Error ? e.message : String(e)));
-    } finally {
-      setIsSavingCloudinaryConfig(false);
-    }
-  };
-
-  const handleCopyAppsScript = () => {
-    if (typeof navigator !== 'undefined' && navigator.clipboard) {
-      navigator.clipboard.writeText(GOOGLE_APPS_SCRIPT_TEMPLATE);
-      setCopiedAppsScript(true);
-      setTimeout(() => setCopiedAppsScript(false), 3000);
-      showNotify('Google Apps Script code clipboard me copy ho gaya!');
-    }
-  };
-
   const handleManualScan = () => {
     setIsScanningMedia(true);
     const scanned = scanAllArticlesForExternalMedia(posts);
@@ -2104,10 +1945,10 @@ export default function AdminPanelPage() {
 
       await saveBlogPostToFirestore(postToSave);
       await loadData(true);
-      showNotify(editingBlogId ? 'Tutorial updated & synced with Google Sheets!' : 'New tutorial published & saved to Google Sheets!');
+      showNotify(editingBlogId ? 'Tutorial updated & synced with Firebase!' : 'New tutorial published to Firebase!');
       setIsEditingBlog(false);
     } catch (err) {
-      alert('Error saving article: ' + (err as Error).message);
+      alert('Error saving to Firebase: ' + (err as Error).message);
     } finally {
       setIsSavingPost(false);
     }
@@ -2163,7 +2004,7 @@ export default function AdminPanelPage() {
                 {articleSizeInfo.isSafe ? 'Safe (< 1 MB)' : 'Limit Exceeded!'}
               </span>
             </div>
-            <div className="text-[10px] text-slate-400">Google Sheet Cell Safety Limit (&lt; 50K chars)</div>
+            <div className="text-[10px] text-slate-400">Firestore 1MB Max Document Limit</div>
           </div>
         </div>
 
@@ -3557,24 +3398,6 @@ export default function AdminPanelPage() {
             <Folder className="w-4 h-4" />
             <span>Categories Manager ({customCategories.length})</span>
           </button>
-          <button
-            onClick={() => setActiveTab('sheets')}
-            className={`px-5 py-2.5 rounded-2xl text-xs font-bold transition-all flex items-center gap-2 ${
-              activeTab === 'sheets' ? 'bg-emerald-600 text-white shadow-md' : 'bg-white text-black hover:bg-slate-100 border border-slate-200'
-            }`}
-          >
-            <FileSpreadsheet className="w-4 h-4 text-emerald-500" />
-            <span>Google Sheets Database</span>
-            {sheetPublishedUrl ? (
-              <span className="px-2 py-0.5 text-[10px] bg-emerald-500 text-white rounded-full font-bold">
-                Connected
-              </span>
-            ) : (
-              <span className="px-2 py-0.5 text-[10px] bg-amber-100 text-amber-800 rounded-full font-bold">
-                Setup
-              </span>
-            )}
-          </button>
         </div>
 
         {/* Tab 1: Tutorials Manager (Author column completely removed) */}
@@ -4033,462 +3856,6 @@ export default function AdminPanelPage() {
                   </div>
                 );
               })()}
-            </div>
-          </div>
-        )}
-
-        {/* Tab 4: Google Sheets Database & Migration Hub */}
-        {activeTab === 'sheets' && (
-          <div className="space-y-8">
-            {/* Header Banner */}
-            <div className="bg-gradient-to-r from-emerald-900 via-teal-900 to-slate-900 text-white rounded-3xl p-6 sm:p-8 shadow-xl relative overflow-hidden">
-              <div className="absolute top-0 right-0 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
-              <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
-                <div className="space-y-2 max-w-2xl">
-                  <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 text-xs font-bold border border-emerald-500/30">
-                    <FileSpreadsheet className="w-3.5 h-3.5" />
-                    <span>Google Sheets Headless CMS (0 Reads / ₹0 Database Cost)</span>
-                  </div>
-                  <h2 className="text-2xl sm:text-3xl font-extrabold text-white">
-                    Google Sheets Database & Sync Hub
-                  </h2>
-                  <p className="text-sm text-slate-300 font-medium leading-relaxed">
-                    Firebase की 50,000 Reads दैनिक सीमा की समस्या का परमानेंट समाधान! अपने सभी आर्टिकल्स को Google Sheets पर होस्ट करें, जहां से वेबसाइट बिना किसी कोटा लिमिट और बिना किसी रीड कॉस्ट के सुपर-फास्ट स्पीड से लोड होगी।
-                  </p>
-                </div>
-
-                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 shrink-0">
-                  <button
-                    onClick={handleDownloadSheetsCsv}
-                    className="px-5 py-3 bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-black rounded-2xl text-xs shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer"
-                  >
-                    <Download className="w-4 h-4" />
-                    <span>Download CSV ({posts.length} Articles)</span>
-                  </button>
-                  <button
-                    onClick={() => {
-                      clearClientCache();
-                      loadData(true);
-                      showNotify('Cache cleared & data refreshed!');
-                    }}
-                    className="px-4 py-3 bg-white/10 hover:bg-white/20 text-white font-bold rounded-2xl text-xs transition-all flex items-center justify-center gap-2 border border-white/15"
-                  >
-                    <RefreshCw className="w-4 h-4" />
-                    <span>Clear Cache & Reload</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* Stat Chips */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mt-6 pt-6 border-t border-white/10">
-                <div className="bg-black/25 backdrop-blur-sm rounded-2xl p-3 border border-white/10">
-                  <span className="text-[11px] text-slate-300 block font-medium">Database Status</span>
-                  <span className="text-sm font-extrabold text-emerald-400 flex items-center gap-1.5 mt-0.5">
-                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                    {sheetPublishedUrl ? 'Google Sheet Active' : 'Local Flat-File Active'}
-                  </span>
-                </div>
-                <div className="bg-black/25 backdrop-blur-sm rounded-2xl p-3 border border-white/10">
-                  <span className="text-[11px] text-slate-300 block font-medium">Daily Read Cost</span>
-                  <span className="text-sm font-extrabold text-white mt-0.5 block">0 Quota / ₹0 Free</span>
-                </div>
-                <div className="bg-black/25 backdrop-blur-sm rounded-2xl p-3 border border-white/10">
-                  <span className="text-[11px] text-slate-300 block font-medium">Total Articles</span>
-                  <span className="text-sm font-extrabold text-white mt-0.5 block">{posts.length} Posts Synced</span>
-                </div>
-                <div className="bg-black/25 backdrop-blur-sm rounded-2xl p-3 border border-white/10">
-                  <span className="text-[11px] text-slate-300 block font-medium">Cell Safety Limit</span>
-                  <span className="text-sm font-extrabold text-emerald-300 mt-0.5 block">100% Safe (&lt; 50k chars)</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Step-by-Step Setup Cards */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Card 1: Step 1 - Export CSV */}
-              <div className="bg-white rounded-3xl p-6 sm:p-7 border border-slate-200 shadow-sm flex flex-col justify-between">
-                <div className="space-y-4">
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-xl bg-orange-100 text-orange-700 flex items-center justify-center font-black text-sm">
-                      1
-                    </div>
-                    <div>
-                      <h3 className="text-base font-extrabold text-black">
-                        Step 1: Download Articles CSV
-                      </h3>
-                      <p className="text-xs text-slate-500 font-medium">
-                        आर्टिकल्स को Google Sheets के अनुकूल फॉर्मेट में डाउनलोड करें
-                      </p>
-                    </div>
-                  </div>
-
-                  <p className="text-xs text-slate-600 leading-relaxed font-medium">
-                    यह CSV आपके सभी 35 आर्टिकल्स को Google Sheets के लिए तैयार करता है। इसमें भारी Base64 नहीं है, और 50,000 कैरेक्टर सीमा से बचने के लिए लंबे आर्टिकल्स को स्वचालित रूप से split किया गया है।
-                  </p>
-
-                  <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200/80 space-y-2 text-xs text-slate-700 font-medium">
-                    <div className="font-bold text-black flex items-center gap-1.5">
-                      <CheckCircle className="w-4 h-4 text-emerald-600" />
-                      <span>Google Sheets में इम्पोर्ट कैसे करें:</span>
-                    </div>
-                    <ol className="list-decimal list-inside space-y-1 pl-1 text-[11px] text-slate-600">
-                      <li>नीचे दिए गए हरे बटन से CSV फाइल डाउनलोड करें।</li>
-                      <li>
-                        <a href="https://sheets.new" target="_blank" rel="noopener noreferrer" className="text-orange-600 font-bold underline hover:text-orange-700">
-                          sheets.new
-                        </a> खोलकर एक नई ब्लैंक स्प्रेडशीट बनाएं।
-                      </li>
-                      <li>Google Sheets में <strong>File &gt; Import &gt; Upload</strong> पर क्लिक करके डाउनलोड की गई CSV चुनें।</li>
-                      <li>Import location में <strong>&quot;Replace spreadsheet&quot;</strong> चुनें और Import पर क्लिक करें।</li>
-                    </ol>
-                  </div>
-                </div>
-
-                <div className="pt-6 mt-4 border-t border-slate-100 flex items-center justify-between">
-                  <span className="text-xs text-slate-500 font-semibold">{posts.length} Articles ready</span>
-                  <button
-                    onClick={handleDownloadSheetsCsv}
-                    className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs shadow-md transition-all flex items-center gap-2 cursor-pointer"
-                  >
-                    <Download className="w-4 h-4" />
-                    <span>Download CSV Now</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* Card 2: Step 2 - Published CSV URL */}
-              <div className="bg-white rounded-3xl p-6 sm:p-7 border border-slate-200 shadow-sm flex flex-col justify-between">
-                <div className="space-y-4">
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center font-black text-sm">
-                      2
-                    </div>
-                    <div>
-                      <h3 className="text-base font-extrabold text-black">
-                        Step 2: Connect Published Google Sheet
-                      </h3>
-                      <p className="text-xs text-slate-500 font-medium">
-                        वेबसाइट पर 0-Cost में तुरंत आर्टिकल लोड करने के लिए CSV URL जोड़ें
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-slate-800 flex items-center justify-between">
-                      <span>Google Sheet Published CSV URL:</span>
-                      <span className="text-[10px] text-emerald-600 font-semibold">Publish to web &gt; CSV</span>
-                    </label>
-                    <input
-                      type="url"
-                      value={sheetPublishedUrl}
-                      onChange={(e) => setSheetPublishedUrl(e.target.value)}
-                      placeholder="https://docs.google.com/spreadsheets/d/e/2PACX-.../pub?output=csv"
-                      className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono text-black focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                    />
-                    <p className="text-[11px] text-slate-500 leading-normal">
-                      <strong>कैसे मिलेगा:</strong> Google Sheet में <strong>File &gt; Share &gt; Publish to web</strong> पर जाएं। Link टैब में &quot;Entire Document&quot; और &quot;Comma-separated values (.csv)&quot; चुनकर Publish दबाएं। मिला हुआ लिंक यहां पेस्ट करें।
-                    </p>
-                  </div>
-
-                  {/* Sync status alert */}
-                  {sheetSyncStatus && (
-                    <div className={`p-3.5 rounded-2xl text-xs font-medium border ${
-                      sheetSyncStatus.success ? 'bg-emerald-50 text-emerald-900 border-emerald-200' : 'bg-red-50 text-red-900 border-red-200'
-                    }`}>
-                      <div className="font-bold flex items-center gap-1.5">
-                        {sheetSyncStatus.success ? <CheckCircle className="w-4 h-4 text-emerald-600" /> : <AlertCircle className="w-4 h-4 text-red-600" />}
-                        <span>{sheetSyncStatus.message}</span>
-                      </div>
-                      {sheetSyncStatus.sampleTitles && sheetSyncStatus.sampleTitles.length > 0 && (
-                        <div className="mt-2 text-[11px] text-slate-600 pl-5">
-                          <span className="font-bold">Sample Articles: </span>
-                          {sheetSyncStatus.sampleTitles.join(', ')}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                <div className="pt-6 mt-4 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3">
-                  <button
-                    onClick={handleSaveSheetConfig}
-                    disabled={isSavingSheetConfig}
-                    className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold rounded-xl text-xs transition-colors disabled:opacity-50"
-                  >
-                    {isSavingSheetConfig ? 'Saving...' : 'Save URL Only'}
-                  </button>
-
-                  <button
-                    onClick={handleTestAndSyncSheets}
-                    disabled={isTestingSheet || !sheetPublishedUrl.trim()}
-                    className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs shadow-md transition-all flex items-center gap-2 disabled:opacity-50 cursor-pointer"
-                  >
-                    {isTestingSheet ? (
-                      <>
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                        <span>Testing &amp; Syncing...</span>
-                      </>
-                    ) : (
-                      <>
-                        <RefreshCw className="w-4 h-4" />
-                        <span>Test &amp; Sync Articles Now</span>
-                      </>
-                    )}
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {/* Card 3: Step 3 - Google Apps Script 2-Way Sync (Auto Save/Delete) */}
-            <div className="bg-white rounded-3xl p-6 sm:p-7 border border-slate-200 shadow-sm space-y-5">
-              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center font-black text-sm">
-                    3
-                  </div>
-                  <div>
-                    <h3 className="text-base font-extrabold text-black">
-                      Step 3 (Optional): Google Apps Script 2-Way Webhook
-                    </h3>
-                    <p className="text-xs text-slate-500 font-medium">
-                      Admin Panel से नया आर्टिकल जोड़ने या डिलीट करने पर Google Sheet अपने आप अपडेट होगी
-                    </p>
-                  </div>
-                </div>
-
-                <button
-                  onClick={handleCopyAppsScript}
-                  className="px-4 py-2 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 font-bold rounded-xl text-xs flex items-center gap-1.5 transition-all cursor-pointer"
-                >
-                  {copiedAppsScript ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
-                  <span>{copiedAppsScript ? 'Code Copied!' : 'Copy Apps Script Code'}</span>
-                </button>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
-                <div className="space-y-4 text-xs text-slate-700 font-medium">
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-slate-800">
-                      Google Apps Script Web App URL:
-                    </label>
-                    <input
-                      type="url"
-                      value={sheetAppsScriptUrl}
-                      onChange={(e) => setSheetAppsScriptUrl(e.target.value)}
-                      placeholder="https://script.google.com/macros/s/.../exec"
-                      className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono text-black focus:outline-none focus:ring-2 focus:ring-purple-500"
-                    />
-                  </div>
-
-                  <div className="p-4 bg-purple-50/60 rounded-2xl border border-purple-100 space-y-2">
-                    <span className="font-bold text-purple-900 block">4-Step Setup Guide:</span>
-                    <ol className="list-decimal list-inside space-y-1 pl-1 text-[11px] text-purple-800 leading-relaxed">
-                      <li>अपनी Google Sheet में ऊपर मेनू से <strong>Extensions &gt; Apps Script</strong> खोलें।</li>
-                      <li>दाहिनी तरफ दिया गया कोड कॉपी करें, पुराना सारा कोड मिटाकर इसे पेस्ट करें और <strong>Save</strong> दबाएं।</li>
-                      <li>ऊपर नीले <strong>Deploy &gt; New deployment</strong> पर क्लिक करें। Gear icon से <strong>&quot;Web app&quot;</strong> चुनें।</li>
-                      <li><strong>Execute as</strong>: &quot;Me&quot; और <strong>Who has access</strong>: <strong>&quot;Anyone&quot;</strong> चुनें और Deploy दबाएं।</li>
-                      <li>मिले हुए <strong>Web App URL</strong> को ऊपर इनपुट बॉक्स में पेस्ट करके Save करें।</li>
-                    </ol>
-                  </div>
-
-                  <button
-                    onClick={handleSaveSheetConfig}
-                    disabled={isSavingSheetConfig}
-                    className="px-5 py-2.5 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-xl text-xs shadow-md transition-all disabled:opacity-50 cursor-pointer"
-                  >
-                    {isSavingSheetConfig ? 'Saving...' : 'Save Webhook Configuration'}
-                  </button>
-                </div>
-
-                {/* Code Preview Box */}
-                <div className="relative rounded-2xl overflow-hidden border border-slate-800 bg-slate-950 text-slate-200">
-                  <div className="flex items-center justify-between px-4 py-2 bg-slate-900 border-b border-slate-800 text-[11px] font-mono text-slate-400">
-                    <span>Code.gs (Google Apps Script)</span>
-                    <button
-                      onClick={handleCopyAppsScript}
-                      className="text-xs text-purple-400 hover:text-purple-300 font-bold flex items-center gap-1 cursor-pointer"
-                    >
-                      <Copy className="w-3.5 h-3.5" />
-                      <span>{copiedAppsScript ? 'Copied' : 'Copy'}</span>
-                    </button>
-                  </div>
-                  <pre className="p-4 text-[11px] font-mono overflow-x-auto max-h-72 leading-relaxed text-emerald-300/90">
-                    <code>{GOOGLE_APPS_SCRIPT_TEMPLATE}</code>
-                  </pre>
-                </div>
-              </div>
-            </div>
-
-            {/* Card 4: Cloudinary Media Storage Integration */}
-            <div className="bg-white rounded-3xl p-6 sm:p-7 border border-slate-200 shadow-sm space-y-5">
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center font-black text-sm">
-                  ☁️
-                </div>
-                <div>
-                  <h3 className="text-base font-extrabold text-black">
-                    Cloudinary Image &amp; Media Storage Integration
-                  </h3>
-                  <p className="text-xs text-slate-500 font-medium">
-                    आर्टिकल्स की इमेज Cloudinary CDN पर स्टोर करें ताकि डेटाबेस साइज हल्का रहे और स्पीड सुपर-फास्ट हो
-                  </p>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
-                <div className="space-y-4 text-xs text-slate-700 font-medium">
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-slate-800">
-                      Cloudinary Cloud Name:
-                    </label>
-                    <input
-                      type="text"
-                      value={cloudinaryCloudName}
-                      onChange={(e) => setCloudinaryCloudName(e.target.value)}
-                      placeholder="e.g. my-cloud-name"
-                      className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono text-black focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-slate-800">
-                      Cloudinary Unsigned Upload Preset:
-                    </label>
-                    <input
-                      type="text"
-                      value={cloudinaryUploadPreset}
-                      onChange={(e) => setCloudinaryUploadPreset(e.target.value)}
-                      placeholder="e.g. ml_default"
-                      className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono text-black focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-
-                  <div className="p-4 bg-blue-50/60 rounded-2xl border border-blue-100 space-y-2">
-                    <span className="font-bold text-blue-900 block">How it works:</span>
-                    <p className="text-[11px] text-blue-800 leading-relaxed">
-                      पुराने WordPress आर्टिकल URLs (https://.../wp-content/uploads/...) वैसे के वैसे सुरक्षित रखे जाएंगे। नए अपलोड होने वाले इमेज सीधे Cloudinary पर स्टोर होंगे और 0-cost CDN से लोड होंगे।
-                    </p>
-                  </div>
-
-                  <button
-                    onClick={handleSaveCloudinaryConfig}
-                    disabled={isSavingCloudinaryConfig}
-                    className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs shadow-md transition-all disabled:opacity-50 cursor-pointer"
-                  >
-                    {isSavingCloudinaryConfig ? 'Saving...' : 'Save Cloudinary Configuration'}
-                  </button>
-                </div>
-
-                <div className="p-6 bg-slate-50 rounded-2xl border border-slate-200 flex flex-col justify-center space-y-4">
-                  <div className="font-bold text-black text-sm flex items-center gap-2">
-                    <Sparkles className="w-4 h-4 text-blue-600" />
-                    <span>Cloudinary Integration Status</span>
-                  </div>
-                  <div className="space-y-2 text-xs text-slate-600">
-                    <div className="flex items-center justify-between">
-                      <span>Cloud Name:</span>
-                      <span className="font-mono font-bold text-black">{cloudinaryCloudName || 'Not Set'}</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span>Upload Preset:</span>
-                      <span className="font-mono font-bold text-black">{cloudinaryUploadPreset || 'Not Set'}</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span>CDN Status:</span>
-                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${cloudinaryCloudName && cloudinaryUploadPreset ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>
-                        {cloudinaryCloudName && cloudinaryUploadPreset ? 'Active & Ready' : 'Pending Configuration'}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Articles Database Inspection Table */}
-
-            <div className="bg-white rounded-3xl p-6 sm:p-7 border border-slate-200 shadow-sm space-y-4">
-              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-                <div>
-                  <h3 className="text-base font-extrabold text-black">
-                    Live Database Articles ({posts.length})
-                  </h3>
-                  <p className="text-xs text-slate-500 font-medium">
-                    Google Sheets / Flat-file डेटाबेस में मौजूद आर्टिकल्स और उनका साइज स्टेटस
-                  </p>
-                </div>
-
-                <span className="px-3 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-xl text-xs font-bold">
-                  All Articles Cell Limit Checked
-                </span>
-              </div>
-
-              <div className="overflow-x-auto border border-slate-200 rounded-2xl">
-                <table className="w-full text-left text-xs text-black">
-                  <thead className="bg-slate-50 text-slate-700 font-bold border-b border-slate-200 uppercase text-[10px] tracking-wider">
-                    <tr>
-                      <th className="p-3">#</th>
-                      <th className="p-3">Title</th>
-                      <th className="p-3">Slug</th>
-                      <th className="p-3">Category</th>
-                      <th className="p-3">Content Size</th>
-                      <th className="p-3">Google Sheet Safety</th>
-                      <th className="p-3">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 font-medium text-slate-800">
-                    {posts.slice(0, 15).map((p, idx) => {
-                      const contentLen = (p.content || '').length;
-                      const isSplit = contentLen > 40000;
-                      return (
-                        <tr key={p.id || p.slug} className="hover:bg-slate-50/70 transition-colors">
-                          <td className="p-3 text-slate-400 font-mono text-[11px]">{idx + 1}</td>
-                          <td className="p-3 font-bold text-black max-w-xs truncate" title={p.title}>
-                            {p.title}
-                          </td>
-                          <td className="p-3 font-mono text-[11px] text-slate-600 max-w-xs truncate">
-                            /{p.slug}
-                          </td>
-                          <td className="p-3">
-                            <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 text-[10px] font-semibold">
-                              {p.category || 'AI Guides'}
-                            </span>
-                          </td>
-                          <td className="p-3 font-mono text-[11px]">
-                            {contentLen.toLocaleString()} chars
-                          </td>
-                          <td className="p-3">
-                            {isSplit ? (
-                              <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 text-[10px] font-bold">
-                                Auto-Split (2 Cells)
-                              </span>
-                            ) : (
-                              <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold flex items-center gap-1 w-fit">
-                                <Check className="w-3 h-3 text-emerald-600" />
-                                <span>&lt; 40k Safe</span>
-                              </span>
-                            )}
-                          </td>
-                          <td className="p-3">
-                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                              p.status === 'draft' ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'
-                            }`}>
-                              {p.status || 'published'}
-                            </span>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-
-              {posts.length > 15 && (
-                <div className="text-center pt-2">
-                  <span className="text-xs text-slate-500 font-medium italic">
-                    Showing first 15 of {posts.length} articles. All {posts.length} articles are included in the CSV download and sync.
-                  </span>
-                </div>
-              )}
             </div>
           </div>
         )}
