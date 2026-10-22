@@ -1,65 +1,46 @@
-# Aitoolhindi.online - Next.js Migration & Hindi AI Tools Directory
+# Aitoolhindi.online - Next.js Migration & Google Sheets Headless CMS
 
-Migrate `aitoolhindi.online` from WordPress to a high-performance Next.js app with exact URL preservation for existing blog articles, an expanded Hindi AI Tools Directory, Hindi/English search & category filtering, AI tool submission and review system, and a dynamic Admin Panel at `/admin-panel`.
+Migrate `aitoolhindi.online` to a high-performance Next.js app with zero database read quotas by leveraging Google Sheets as a Headless CMS (via Published Web CSV & Google Apps Script 2-way Webhooks), with Cloudinary as the next phase for media assets.
 
-## User Review & Critical Decisions
+## Database & Architecture Milestone: Google Sheets Integration (Completed)
 
-> [!IMPORTANT]
-> - **URL Preservation**: Existing blog posts will be hosted at their exact WordPress URLs (e.g., `/[slug]`) on the main domain `aitoolhindi.online`, ensuring zero SEO harm or broken links during Vercel deployment.
-> - **Admin Panel**: Accessible at `/admin-panel` without authentication gating (per user preference), allowing full dynamic CRUD operations on blog posts and AI tools with persistent storage (localStorage + initial seed data).
-> - **Directory & Blog**: Rich Hindi/English bilingual UI, category filtering, search, AI tool submissions, and review ratings.
-
-- **Confirmed Decision 1**: Exact URL parity with WordPress for blog posts on the main domain.
-- **Confirmed Decision 2**: Dedicated admin panel at `/admin-panel` for managing tools and blog posts.
-- **Confirmed Decision 3**: Client-side robust state persistence with pre-seeded popular Hindi AI articles and tools.
+### 1. The Core Problem Solved
+- **Firebase Read Quota Problem**: Firebase Firestore has a daily quota limit of 50,000 reads which exhausted within hours, even with 1 user.
+- **The Google Sheets Solution**:
+  1. Google Sheets Published to Web CSV (`https://docs.google.com/spreadsheets/d/e/.../pub?output=csv`) provides **0-auth, 0-cost, unlimited CDN-cached reads**.
+  2. Local disk & browser caching (24-hour TTL) ensures visitors load pages in milliseconds without repeated network hits.
+  3. Cell limit protection: Google Sheets has a strict 50,000 character limit per cell. Long articles (> 40,000 characters) are automatically split between `content` and `content2` columns upon export and seamlessly reassembled upon fetch, ensuring 100% data integrity without Google Sheets errors.
 
 ---
 
-### 1. Overview & Core Concept
+### 2. Implemented Features & Endpoints
 
-- **What It Does**: A comprehensive bilingual (Hindi & English) portal combining the existing informational AI blog tutorials from WordPress with a modern AI Tools Directory, tool submission system, user reviews, and an admin content management dashboard.
-- **Target Audience**: Hindi speakers, students, creators, and professionals searching for AI tools and tutorials in Hindi.
-- **Key Value**: Preserves all existing blog URLs for seamless SEO migration while expanding into a top-tier AI tools directory with instant search, filters, and admin management.
+1. **Google Sheets Helper (`/lib/google-sheets.ts`)**:
+   - `convertPostsToCsv`: Generates RFC 4180 compliant CSV with UTF-8 BOM (`\uFEFF`) for perfect Hindi unicode rendering in Excel and Google Sheets.
+   - `parseCsvToBlogPosts`: Robust multiline CSV parser handling quotes, line breaks, and auto-joining `content` + `content2`.
+   - `normalizeGoogleSheetUrl`: Automatically detects and converts standard Google Sheets URLs (`/edit#gid=0` -> `/export?format=csv`).
+   - `GOOGLE_APPS_SCRIPT_TEMPLATE`: Complete copy-paste Google Apps Script code for `doGet` and `doPost` to enable 2-way live sync (auto-save and auto-delete from Admin Panel).
 
-### 2. User Experience & Visual Design
+2. **Google Sheets API Route (`/app/api/sheets/route.ts`)**:
+   - `GET /api/sheets?action=export`: 1-click download of all 35 articles as a Google Sheets-ready CSV.
+   - `GET /api/sheets?action=config`: Returns persistent configuration (`sheets-config.json`).
+   - `GET /api/sheets?action=sync&url=...`: Server-side connection test and live sync of articles from Google Sheet.
+   - `POST /api/sheets`: Updates configuration and proxies `webhook_save` and `webhook_delete` requests to Google Apps Script (bypassing browser CORS).
 
-- **Key User Flows**:
-  1. *Visitors landing on homepage*: Browse featured AI tools, latest Hindi blog articles, category filters, and search bar.
-  2. *Exploring AI Tools Directory*: Filter tools by category (Text, Image, Video, Coding, etc.), view tool cards with pricing/ratings, and read detailed tool info or submit a new tool.
-  3. *Reading Blog Posts*: Access articles at their exact WordPress URLs (`/[slug]`), complete with clean typography, share buttons, related tools, and breadcrumbs.
-  4. *Admin Panel (`/admin-panel`)*: Switch between "Manage Blog Posts" and "Manage AI Tools" tabs to add new items, edit existing entries, or delete records.
-- **Visual Identity & Theme**:
-  - *Aesthetic Direction*: Modern editorial & tech directory (clean neutral slate canvas, deep indigo/emerald accents, high legibility for Hindi Devanagari script and English text).
-  - *Color Palette*: Slate neutrals (`--background: #f8fafc`, `--foreground: #0f172a`), Primary Indigo (`#4f46e5`), Accent Emerald (`#10b981`).
-  - *Typography*: `Plus Jakarta Sans` for headings and clean bilingual body prose with proper line height (`1.7`).
+3. **Storage Pipeline (`/lib/storage.ts`)**:
+   - `fetchBlogPostsFromFirestore`: Checks 24-hr local cache -> pulls from Google Sheets CSV (if configured) -> merges with local disk backup (`/api/articles`).
+   - `saveBlogPostToFirestore`: Saves to localStorage, server disk (`/api/articles`), and fires background webhook to Google Sheets.
+   - `deleteBlogPostFromFirestore`: Deletes from localStorage, server disk, and fires background webhook to Google Sheets.
 
-### 3. Key Product Decisions & Trade-Offs
+4. **Admin Panel UI (`/app/admin-panel/page.tsx`)**:
+   - **Google Sheets Database Tab**:
+     - Quick status badges: Active Database Source, 0 Reads / Free Forever, 100% Safe Cell Limits.
+     - **Step 1 Card**: "Download CSV" with clear 4-step import instructions.
+     - **Step 2 Card**: Input for Published Google Sheet CSV URL + "Test & Sync Articles Now" button.
+     - **Step 3 Card**: 2-Way Webhook setup with 1-click "Copy Apps Script Code" and setup instructions.
+     - **Live Inspection Table**: Real-time overview of articles, character counts, and cell limit safety status.
 
-- **Decision 1**: Client-side storage with pre-seeded realistic data & localStorage persistence.
-  - *Why*: Instantly functional and testable without requiring an external database setup, while the Admin Panel allows immediate adding/editing of live items.
-- **Decision 2**: Dynamic routing for blog posts (`/[slug]`) and tools (`/tools/[id]`).
-  - *Why*: Matches exact WordPress URL slugs to protect search engine rankings and organic traffic.
+---
 
-### 4. Technical Architecture & Data Strategy *(Technical Reference)*
-
-```
-┌────────────────────────────────────────────────────────┐
-│                        Next.js                         │
-├──────────────────────┬─────────────────────────────────┤
-│  Public Routes       │  Admin & Management             │
-│  - / (Home)          │  - /admin-panel (CRUD Dashboard)│
-│  - /blog             │  - /submit-tool (User Submission│
-│  - /[slug] (Blog WP) │                                 │
-│  - /tools            │                                 │
-│  - /tools/[id]       │                                 │
-├──────────────────────┴─────────────────────────────────┤
-│                  React State / LocalStorage             │
-│                  (Blog Posts & AI Tools Store)          │
-└────────────────────────────────────────────────────────┘
-```
-
-- **Data Models**:
-  - *Blog Post*: id, slug, title, excerpt, content, category, author, date, readTime, image.
-  - *AI Tool*: id, name, tagline, description, category, pricing (Free, Freemium, Paid), rating, url, image, featured.
-- **SEO Implementation**:
-  - Next.js Metadata API for page titles, descriptions, OpenGraph cards, and JSON-LD Schema (`Article` and `SoftwareApplication`) for rich Google search snippets.
+### 3. Next Milestone: Cloudinary Integration
+- As requested by the user, now that the Google Sheets database migration is complete and tested, the next phase will implement Cloudinary media storage while preserving original WordPress image URL slugs.

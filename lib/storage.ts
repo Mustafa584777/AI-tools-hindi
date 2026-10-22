@@ -2,12 +2,15 @@ import { BlogPost } from './types';
 import { db } from './firebase';
 import { collection, getDocs, getDoc, doc, setDoc, deleteDoc } from 'firebase/firestore';
 import articlesBackup from '../data/articles-backup.json';
+import { parseCsvToBlogPosts, normalizeGoogleSheetUrl } from './google-sheets';
 
 export const INITIAL_BLOG_POSTS: BlogPost[] = (articlesBackup as unknown as BlogPost[]) || [];
 
-const BLOG_KEY = 'aitoolhindi_blog_posts_firebase_sync_v2';
-const CACHE_TIME_KEY = 'aitoolhindi_cache_timestamp';
-const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours cache for instant loading without network requests
+export const BLOG_KEY = 'aitoolhindi_blog_posts_firebase_sync_v2';
+export const CACHE_TIME_KEY = 'aitoolhindi_cache_timestamp';
+export const GOOGLE_SHEET_CSV_KEY = 'aitoolhindi_google_sheet_csv_url';
+export const APPS_SCRIPT_URL_KEY = 'aitoolhindi_google_apps_script_url';
+export const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours cache for instant loading without network requests
 
 export async function fetchBlogPostsFromFirestore(forceRefresh = false): Promise<BlogPost[]> {
   // 1. Check client-side 24-hour cache if not forcing refresh
@@ -29,7 +32,32 @@ export async function fetchBlogPostsFromFirestore(forceRefresh = false): Promise
     }
   }
 
-  // 2. Fetch from server flat-file JSON API (/api/articles)
+  // 2. Try fetching from Google Sheets if configured (0 database read cost)
+  let sheetPosts: BlogPost[] = [];
+  let googleSheetUrl = '';
+  if (typeof window !== 'undefined') {
+    googleSheetUrl = localStorage.getItem(GOOGLE_SHEET_CSV_KEY) || process.env.NEXT_PUBLIC_GOOGLE_SHEET_CSV_URL || '';
+  }
+
+  if (googleSheetUrl) {
+    try {
+      const normalized = normalizeGoogleSheetUrl(googleSheetUrl);
+      const res = await fetch(normalized, { cache: 'no-store' });
+      if (res.ok) {
+        const csvText = await res.text();
+        if (csvText && !csvText.includes('<!DOCTYPE html>') && !csvText.includes('accounts.google.com')) {
+          const parsed = parseCsvToBlogPosts(csvText);
+          if (parsed.length > 0) {
+            sheetPosts = parsed;
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('Google Sheets live fetch notice:', err);
+    }
+  }
+
+  // 3. Fetch from server flat-file JSON API (/api/articles)
   let serverPosts: BlogPost[] = [];
   try {
     const res = await fetch('/api/articles');
@@ -64,6 +92,10 @@ export async function fetchBlogPostsFromFirestore(forceRefresh = false): Promise
     if (key) postMap.set(key, p);
   });
   serverPosts.forEach(p => {
+    const key = p.slug || p.id;
+    if (key) postMap.set(key, p);
+  });
+  sheetPosts.forEach(p => {
     const key = p.slug || p.id;
     if (key) postMap.set(key, p);
   });
@@ -126,7 +158,18 @@ export async function saveBlogPostToFirestore(post: BlogPost): Promise<void> {
     console.warn('Server disk backup update error:', apiErr);
   }
 
-  // 3. Sync to Firestore in background (never block save if Firestore fails)
+  // 3. Sync to Google Sheets Webhook in background
+  try {
+    fetch('/api/sheets', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'webhook_save', post: postWithTime })
+    }).catch(sheetErr => console.warn('Background Google Sheet sync notice:', sheetErr));
+  } catch (sheetDispatchErr) {
+    console.warn('Sheet webhook dispatch error:', sheetDispatchErr);
+  }
+
+  // 4. Sync to Firestore in background (never block save if Firestore fails)
   try {
     const payloadString = JSON.stringify(postWithTime);
     if (payloadString.length <= 950000) {
@@ -218,7 +261,18 @@ export async function deleteBlogPostFromFirestore(id: string): Promise<void> {
     console.warn('Server disk backup delete error:', e);
   }
 
-  // 3. Delete from Firestore
+  // 3. Delete from Google Sheets Webhook in background
+  try {
+    fetch('/api/sheets', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'webhook_delete', id })
+    }).catch(sheetErr => console.warn('Background Google Sheet delete notice:', sheetErr));
+  } catch (sheetDispatchErr) {
+    console.warn('Sheet webhook dispatch error:', sheetDispatchErr);
+  }
+
+  // 4. Delete from Firestore
   try {
     await deleteDoc(doc(db, 'blogPosts', id));
   } catch (err) {
