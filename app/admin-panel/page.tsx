@@ -24,7 +24,10 @@ import {
   fetchMediaImageFromFirestore,
   compressImageBase64,
   GOOGLE_SHEET_CSV_KEY,
-  APPS_SCRIPT_URL_KEY
+  APPS_SCRIPT_URL_KEY,
+  CLOUDINARY_CLOUD_NAME_KEY,
+  CLOUDINARY_UPLOAD_PRESET_KEY,
+  uploadImageToCloudinary
 } from '@/lib/storage';
 import { BlogPost } from '@/lib/types';
 import { GOOGLE_APPS_SCRIPT_TEMPLATE, normalizeGoogleSheetUrl } from '@/lib/google-sheets';
@@ -85,6 +88,13 @@ export default function AdminPanelPage() {
   const [copiedAppsScript, setCopiedAppsScript] = useState(false);
   const [sheetLastSyncedAt, setSheetLastSyncedAt] = useState<number>(0);
   const [sheetArticleCount, setSheetArticleCount] = useState<number>(0);
+
+  // Cloudinary Media Storage State
+  const [cloudinaryCloudName, setCloudinaryCloudName] = useState('');
+  const [cloudinaryUploadPreset, setCloudinaryUploadPreset] = useState('');
+  const [isSavingCloudinaryConfig, setIsSavingCloudinaryConfig] = useState(false);
+  const [isUploadingCloudinary, setIsUploadingCloudinary] = useState(false);
+
   
   // Unmigrated / Pending WordPress Media State
   const [unmigratedMedia, setUnmigratedMedia] = useState<UnmigratedMediaItem[]>([]);
@@ -273,8 +283,12 @@ export default function AdminPanelPage() {
 
         const localCsvUrl = localStorage.getItem(GOOGLE_SHEET_CSV_KEY) || '';
         const localAppsScriptUrl = localStorage.getItem(APPS_SCRIPT_URL_KEY) || '';
+        const localCloudName = localStorage.getItem(CLOUDINARY_CLOUD_NAME_KEY) || '';
+        const localUploadPreset = localStorage.getItem(CLOUDINARY_UPLOAD_PRESET_KEY) || '';
         if (localCsvUrl) setSheetPublishedUrl(localCsvUrl);
         if (localAppsScriptUrl) setSheetAppsScriptUrl(localAppsScriptUrl);
+        if (localCloudName) setCloudinaryCloudName(localCloudName);
+        if (localUploadPreset) setCloudinaryUploadPreset(localUploadPreset);
       }
 
       // Load persistent sheets config from server
@@ -1501,6 +1515,21 @@ export default function AdminPanelPage() {
       alert('Save failed: ' + (err instanceof Error ? err.message : String(err)));
     } finally {
       setIsSavingSheetConfig(false);
+    }
+  };
+
+  const handleSaveCloudinaryConfig = () => {
+    setIsSavingCloudinaryConfig(true);
+    try {
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(CLOUDINARY_CLOUD_NAME_KEY, cloudinaryCloudName.trim());
+        localStorage.setItem(CLOUDINARY_UPLOAD_PRESET_KEY, cloudinaryUploadPreset.trim());
+      }
+      showNotify('Cloudinary configuration saved successfully!');
+    } catch (e) {
+      alert('Save failed: ' + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      setIsSavingCloudinaryConfig(false);
     }
   };
 
@@ -4290,7 +4319,93 @@ export default function AdminPanelPage() {
               </div>
             </div>
 
+            {/* Card 4: Cloudinary Media Storage Integration */}
+            <div className="bg-white rounded-3xl p-6 sm:p-7 border border-slate-200 shadow-sm space-y-5">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center font-black text-sm">
+                  ☁️
+                </div>
+                <div>
+                  <h3 className="text-base font-extrabold text-black">
+                    Cloudinary Image &amp; Media Storage Integration
+                  </h3>
+                  <p className="text-xs text-slate-500 font-medium">
+                    आर्टिकल्स की इमेज Cloudinary CDN पर स्टोर करें ताकि डेटाबेस साइज हल्का रहे और स्पीड सुपर-फास्ट हो
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
+                <div className="space-y-4 text-xs text-slate-700 font-medium">
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-slate-800">
+                      Cloudinary Cloud Name:
+                    </label>
+                    <input
+                      type="text"
+                      value={cloudinaryCloudName}
+                      onChange={(e) => setCloudinaryCloudName(e.target.value)}
+                      placeholder="e.g. my-cloud-name"
+                      className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono text-black focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-slate-800">
+                      Cloudinary Unsigned Upload Preset:
+                    </label>
+                    <input
+                      type="text"
+                      value={cloudinaryUploadPreset}
+                      onChange={(e) => setCloudinaryUploadPreset(e.target.value)}
+                      placeholder="e.g. ml_default"
+                      className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono text-black focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+
+                  <div className="p-4 bg-blue-50/60 rounded-2xl border border-blue-100 space-y-2">
+                    <span className="font-bold text-blue-900 block">How it works:</span>
+                    <p className="text-[11px] text-blue-800 leading-relaxed">
+                      पुराने WordPress आर्टिकल URLs (https://.../wp-content/uploads/...) वैसे के वैसे सुरक्षित रखे जाएंगे। नए अपलोड होने वाले इमेज सीधे Cloudinary पर स्टोर होंगे और 0-cost CDN से लोड होंगे।
+                    </p>
+                  </div>
+
+                  <button
+                    onClick={handleSaveCloudinaryConfig}
+                    disabled={isSavingCloudinaryConfig}
+                    className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs shadow-md transition-all disabled:opacity-50 cursor-pointer"
+                  >
+                    {isSavingCloudinaryConfig ? 'Saving...' : 'Save Cloudinary Configuration'}
+                  </button>
+                </div>
+
+                <div className="p-6 bg-slate-50 rounded-2xl border border-slate-200 flex flex-col justify-center space-y-4">
+                  <div className="font-bold text-black text-sm flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-blue-600" />
+                    <span>Cloudinary Integration Status</span>
+                  </div>
+                  <div className="space-y-2 text-xs text-slate-600">
+                    <div className="flex items-center justify-between">
+                      <span>Cloud Name:</span>
+                      <span className="font-mono font-bold text-black">{cloudinaryCloudName || 'Not Set'}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span>Upload Preset:</span>
+                      <span className="font-mono font-bold text-black">{cloudinaryUploadPreset || 'Not Set'}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span>CDN Status:</span>
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${cloudinaryCloudName && cloudinaryUploadPreset ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>
+                        {cloudinaryCloudName && cloudinaryUploadPreset ? 'Active & Ready' : 'Pending Configuration'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             {/* Articles Database Inspection Table */}
+
             <div className="bg-white rounded-3xl p-6 sm:p-7 border border-slate-200 shadow-sm space-y-4">
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                 <div>

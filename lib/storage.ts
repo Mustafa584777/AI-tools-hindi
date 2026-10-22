@@ -457,5 +457,35 @@ export async function compressImageBase64(base64Str: string, maxWidth = 800, qua
   });
 }
 
+export const CLOUDINARY_CLOUD_NAME_KEY = 'aitoolhindi_cloudinary_cloud_name';
+export const CLOUDINARY_UPLOAD_PRESET_KEY = 'aitoolhindi_cloudinary_upload_preset';
+
+export async function uploadImageToCloudinary(fileOrBase64: File | string, cloudName: string, uploadPreset: string): Promise<string> {
+  const url = `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`;
+  const formData = new FormData();
+  formData.append('upload_preset', uploadPreset);
+  
+  if (typeof fileOrBase64 === 'string' && fileOrBase64.startsWith('data:')) {
+    const res = await fetch(fileOrBase64);
+    const blob = await res.blob();
+    formData.append('file', blob, 'image.jpg');
+  } else {
+    formData.append('file', fileOrBase64);
+  }
+
+  const res = await fetch(url, {
+    method: 'POST',
+    body: formData,
+  });
+  
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}));
+    throw new Error(errData.error?.message || 'Cloudinary upload failed');
+  }
+  
+  const data = await res.json();
+  return data.secure_url;
+}
+
 
 
