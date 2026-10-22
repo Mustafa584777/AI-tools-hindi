@@ -9,9 +9,17 @@ const BLOG_KEY = 'aitoolhindi_blog_posts_firebase_sync_v2';
 const CACHE_TIME_KEY = 'aitoolhindi_cache_timestamp';
 const CACHE_TTL = 60 * 60 * 1000; // 1 hour cache to balance freshness with quota preservation
 
+const DELETED_POSTS_KEY = 'aitoolhindi_deleted_posts_v1';
+
 export async function fetchBlogPostsFromFirestore(forceRefresh = false): Promise<BlogPost[]> {
+  let deletedIds: string[] = [];
   let localPosts: BlogPost[] = [];
   if (typeof window !== 'undefined') {
+    try {
+      const del = localStorage.getItem(DELETED_POSTS_KEY);
+      if (del) deletedIds = JSON.parse(del);
+    } catch (e) {}
+
     try {
       const local = localStorage.getItem(BLOG_KEY);
       if (local) localPosts = JSON.parse(local);
@@ -64,7 +72,7 @@ export async function fetchBlogPostsFromFirestore(forceRefresh = false): Promise
     if (key) postMap.set(key, p);
   });
 
-  const merged = Array.from(postMap.values());
+  const merged = Array.from(postMap.values()).filter(p => !deletedIds.includes(p.id) && !deletedIds.includes(p.slug));
   merged.sort((a: BlogPost, b: BlogPost) => (b.createdAt || 0) - (a.createdAt || 0));
 
   if (typeof window !== 'undefined' && merged.length > 0) {
@@ -122,16 +130,14 @@ export async function saveBlogPostToFirestore(post: BlogPost): Promise<void> {
     console.warn('Server disk backup update error:', apiErr);
   }
 
-  // 3. Sync to Firestore in background (never block save if Firestore fails)
+  // 3. Sync to Firestore in background
   try {
     const payloadString = JSON.stringify(postWithTime);
     if (payloadString.length <= 950000) {
       await setDoc(doc(db, 'blogPosts', postWithTime.id), postWithTime);
-    } else {
-      console.warn('Post size exceeds 950KB. Saved to local and server storage successfully.');
     }
   } catch (err) {
-    console.warn('Firestore sync notice (Article successfully saved locally and on server):', (err as Error).message);
+    console.warn('Firestore sync notice:', (err as Error).message);
   }
 }
 
@@ -196,13 +202,24 @@ export async function restoreBackupPosts(
 }
 
 export async function deleteBlogPostFromFirestore(id: string): Promise<void> {
-  // 1. Remove from local storage
+  // 1. Mark as deleted in localStorage deleted list & remove from local posts
   if (typeof window !== 'undefined') {
-    const posts = getStoredBlogPostsSync();
-    const updated = posts.filter(p => p.id !== id && p.slug !== id);
-    updated.sort((a: BlogPost, b: BlogPost) => (b.createdAt || 0) - (a.createdAt || 0));
-    localStorage.setItem(BLOG_KEY, JSON.stringify(updated));
-    localStorage.setItem(CACHE_TIME_KEY, Date.now().toString());
+    try {
+      const deletedListStr = localStorage.getItem(DELETED_POSTS_KEY) || '[]';
+      const deletedList: string[] = JSON.parse(deletedListStr);
+      if (!deletedList.includes(id)) {
+        deletedList.push(id);
+        localStorage.setItem(DELETED_POSTS_KEY, JSON.stringify(deletedList));
+      }
+
+      const posts = getStoredBlogPostsSync();
+      const updated = posts.filter(p => p.id !== id && p.slug !== id);
+      updated.sort((a: BlogPost, b: BlogPost) => (b.createdAt || 0) - (a.createdAt || 0));
+      localStorage.setItem(BLOG_KEY, JSON.stringify(updated));
+      localStorage.setItem(CACHE_TIME_KEY, Date.now().toString());
+    } catch (e) {
+      console.warn('Local storage delete error:', e);
+    }
   }
 
   // 2. Delete from server disk storage

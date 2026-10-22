@@ -62,19 +62,8 @@ const CATEGORIES_KEY = 'aitoolhindi_categories_v1';
 export default function AdminPanelPage() {
   const [posts, setPosts] = useState<BlogPost[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'tutorials' | 'categories' | 'unmigrated'>('tutorials');
+  const [activeTab, setActiveTab] = useState<'tutorials' | 'categories'>('tutorials');
   const [tutorialSubTab, setTutorialSubTab] = useState<'published' | 'draft'>('published');
-  const [isMigratingImages, setIsMigratingImages] = useState(false);
-  const [migrationProgress, setMigrationProgress] = useState<{ current: number; total: number; text: string }>({ current: 0, total: 0, text: '' });
-  const [failedMigrationImages, setFailedMigrationImages] = useState<{ articleTitle: string; articleSlug: string; imageUrl: string }[]>([]);
-  
-  // Unmigrated / Pending WordPress Media State
-  const [unmigratedMedia, setUnmigratedMedia] = useState<UnmigratedMediaItem[]>([]);
-  const [mediaSearchQuery, setMediaSearchQuery] = useState('');
-  const [mediaTypeFilter, setMediaTypeFilter] = useState<'all' | 'image' | 'video' | 'featured'>('all');
-  const [copiedUrlId, setCopiedUrlId] = useState<string | null>(null);
-  const [migratingSingleId, setMigratingSingleId] = useState<string | null>(null);
-  const [isScanningMedia, setIsScanningMedia] = useState(false);
 
   // Categories list state
   const [customCategories, setCustomCategories] = useState<string[]>(['AI Guides', 'Image Tutorials', 'Video Tutorials', 'ChatGPT Guides']);
@@ -165,83 +154,11 @@ export default function AdminPanelPage() {
 
   const [notification, setNotification] = useState<string | null>(null);
 
-  const scanAllArticlesForExternalMedia = (currentPosts: BlogPost[]): UnmigratedMediaItem[] => {
-    const items: UnmigratedMediaItem[] = [];
-
-    currentPosts.forEach(post => {
-      // 1. Featured image check
-      if (post.image && post.image.startsWith('http') && !post.image.startsWith('data:') && !post.image.includes('picsum.photos')) {
-        items.push({
-          id: `unmig-feat-${post.id}`,
-          articleId: post.id,
-          articleTitle: post.title,
-          articleSlug: post.slug,
-          mediaType: 'featured',
-          wpUrl: post.image,
-          reason: 'Featured banner image still points to external WordPress URL'
-        });
-      }
-
-      // 2. In-content check
-      if (post.content && (post.content.includes('<img') || post.content.includes('<video') || post.content.includes('<source'))) {
-        try {
-          const parser = new DOMParser();
-          const doc = parser.parseFromString(post.content, 'text/html');
-
-          // Check Images
-          const imgs = Array.from(doc.querySelectorAll('img'));
-          imgs.forEach((img, idx) => {
-            let src = img.getAttribute('src') || '';
-            if (src.startsWith('//')) src = 'https:' + src;
-            if (src && src.startsWith('http') && !src.startsWith('data:') && !src.includes('picsum.photos')) {
-              items.push({
-                id: `unmig-img-${post.id}-${idx}`,
-                articleId: post.id,
-                articleTitle: post.title,
-                articleSlug: post.slug,
-                mediaType: 'image',
-                wpUrl: src,
-                reason: img.getAttribute('alt') ? `Alt: "${img.getAttribute('alt')}"` : 'In-content image on external WordPress URL'
-              });
-            }
-          });
-
-          // Check Videos & Sources
-          const sources = Array.from(doc.querySelectorAll('video, source'));
-          sources.forEach((el, idx) => {
-            let src = el.getAttribute('src') || '';
-            if (src.startsWith('//')) src = 'https:' + src;
-            const wrapper = el.closest('div.my-6') || el.parentElement;
-            const mediaId = wrapper?.getAttribute('data-media-video-id') || el.getAttribute('data-media-video-id');
-
-            if (src && src.startsWith('http') && !src.startsWith('data:') && !mediaId) {
-              items.push({
-                id: `unmig-vid-${post.id}-${idx}`,
-                articleId: post.id,
-                articleTitle: post.title,
-                articleSlug: post.slug,
-                mediaType: 'video',
-                wpUrl: src,
-                reason: 'MP4 Video on external WordPress URL'
-              });
-            }
-          });
-        } catch (e) {
-          console.warn('DOMParser error scanning post:', post.slug, e);
-        }
-      }
-    });
-
-    return items;
-  };
-
   const loadData = async (force = false) => {
     setLoading(true);
     try {
       const data = await fetchBlogPostsFromFirestore(force);
       setPosts(data);
-      const scanned = scanAllArticlesForExternalMedia(data);
-      setUnmigratedMedia(scanned);
 
       if (typeof window !== 'undefined') {
         const storedCats = localStorage.getItem(CATEGORIES_KEY);
@@ -256,7 +173,6 @@ export default function AdminPanelPage() {
     } catch {
       const fallback = getStoredBlogPostsSync();
       setPosts(fallback);
-      setUnmigratedMedia(scanAllArticlesForExternalMedia(fallback));
     } finally {
       setLoading(false);
     }
@@ -2755,6 +2671,9 @@ export default function AdminPanelPage() {
                     onChange={(e) => setEditImageSlug(e.target.value)}
                     className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono text-black font-medium focus:ring-2 focus:ring-orange-600/20"
                   />
+                  <div className="mt-1.5 text-[11px] font-mono text-orange-600 font-bold bg-orange-50 px-3 py-1.5 rounded-lg border border-orange-200">
+                    Preview URL: https://aitoolhindi.online/{editImageSlug || 'image-slug'}
+                  </div>
                 </div>
               </div>
 
@@ -2786,16 +2705,16 @@ export default function AdminPanelPage() {
                     type="button"
                     onClick={() => {
                       if (selectedImageEl) {
-                        selectedImageEl.setAttribute('alt', editImageAlt);
-                        const cleanSlug = editImageSlug.trim().replace(/^\/+/, '');
+                        const cleanAlt = (!editImageAlt.trim() || editImageAlt.toLowerCase().includes('tutorial image')) ? blogTitle : editImageAlt.trim();
+                        selectedImageEl.setAttribute('alt', cleanAlt);
+                        const cleanSlug = editImageSlug.trim().replace(/^\/+/, '') || blogSlug;
                         selectedImageEl.setAttribute('data-img-slug', cleanSlug);
 
                         const currentSrc = selectedImageEl.src;
                         if (currentSrc && currentSrc.startsWith('data:image/')) {
                           selectedImageEl.setAttribute('data-base64', currentSrc);
+                          selectedImageEl.setAttribute('src', currentSrc);
                         }
-                        const cleanUrl = cleanSlug.startsWith('http') ? cleanSlug : `https://aitoolhindi.online/media/${cleanSlug}`;
-                        selectedImageEl.setAttribute('src', cleanUrl);
 
                         if (visualContentRef.current) setBlogContent(visualContentRef.current.innerHTML);
                         setShowImageModal(false);
