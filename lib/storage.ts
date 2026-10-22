@@ -1,16 +1,14 @@
 import { BlogPost } from './types';
-import { db } from './firebase';
-import { collection, getDocs, getDoc, doc, setDoc, deleteDoc } from 'firebase/firestore';
 import articlesBackup from '../data/articles-backup.json';
 import { parseCsvToBlogPosts, normalizeGoogleSheetUrl } from './google-sheets';
 
 export const INITIAL_BLOG_POSTS: BlogPost[] = (articlesBackup as unknown as BlogPost[]) || [];
 
-export const BLOG_KEY = 'aitoolhindi_blog_posts_firebase_sync_v2';
+export const BLOG_KEY = 'aitoolhindi_blog_posts_sheets_sync_v3';
 export const CACHE_TIME_KEY = 'aitoolhindi_cache_timestamp';
 export const GOOGLE_SHEET_CSV_KEY = 'aitoolhindi_google_sheet_csv_url';
 export const APPS_SCRIPT_URL_KEY = 'aitoolhindi_google_apps_script_url';
-export const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours cache for instant loading without network requests
+export const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours cache
 
 export async function fetchBlogPostsFromFirestore(forceRefresh = false): Promise<BlogPost[]> {
   // 1. Check client-side 24-hour cache if not forcing refresh
@@ -32,7 +30,7 @@ export async function fetchBlogPostsFromFirestore(forceRefresh = false): Promise
     }
   }
 
-  // 2. Try fetching from Google Sheets if configured (0 database read cost)
+  // 2. Try fetching from Google Sheets live CSV URL (0 database cost)
   let sheetPosts: BlogPost[] = [];
   let googleSheetUrl = '';
   if (typeof window !== 'undefined') {
@@ -81,7 +79,7 @@ export async function fetchBlogPostsFromFirestore(forceRefresh = false): Promise
     }
   }
 
-  // Union map: merge server JSON posts and local storage posts
+  // Union map: merge Google Sheets, server flat-file, and local storage posts
   const postMap = new Map<string, BlogPost>();
   INITIAL_BLOG_POSTS.forEach(p => {
     const key = p.slug || p.id;
@@ -118,7 +116,6 @@ export async function fetchBlogPostsFromFirestore(forceRefresh = false): Promise
 export function clearClientCache(): void {
   if (typeof window !== 'undefined') {
     localStorage.removeItem(CACHE_TIME_KEY);
-    // Note: NEVER remove BLOG_KEY so articles are never wiped offline
   }
 }
 
@@ -147,7 +144,7 @@ export async function saveBlogPostToFirestore(post: BlogPost): Promise<void> {
     }
   }
 
-  // 2. Persist to server disk storage via /api/articles
+  // 2. Persist to server disk storage via /api/articles (Flat-file database)
   try {
     await fetch('/api/articles', {
       method: 'POST',
@@ -158,7 +155,7 @@ export async function saveBlogPostToFirestore(post: BlogPost): Promise<void> {
     console.warn('Server disk backup update error:', apiErr);
   }
 
-  // 3. Sync to Google Sheets Webhook in background
+  // 3. Sync to Google Sheets Webhook in background (2-way sync)
   try {
     fetch('/api/sheets', {
       method: 'POST',
@@ -167,18 +164,6 @@ export async function saveBlogPostToFirestore(post: BlogPost): Promise<void> {
     }).catch(sheetErr => console.warn('Background Google Sheet sync notice:', sheetErr));
   } catch (sheetDispatchErr) {
     console.warn('Sheet webhook dispatch error:', sheetDispatchErr);
-  }
-
-  // 4. Sync to Firestore in background (never block save if Firestore fails)
-  try {
-    const payloadString = JSON.stringify(postWithTime);
-    if (payloadString.length <= 950000) {
-      await setDoc(doc(db, 'blogPosts', postWithTime.id), postWithTime);
-    } else {
-      console.warn('Post size exceeds 950KB. Saved to local and server storage successfully.');
-    }
-  } catch (err) {
-    console.warn('Firestore sync notice (Article successfully saved locally and on server):', (err as Error).message);
   }
 }
 
@@ -196,7 +181,7 @@ export async function restoreBackupPosts(
     createdAt: p.createdAt || Date.now()
   }));
 
-  // 1. Immediately persist to server disk via /api/articles
+  // 1. Persist to server disk via /api/articles
   try {
     await fetch('/api/articles', {
       method: 'POST',
@@ -222,24 +207,10 @@ export async function restoreBackupPosts(
     }
   }
 
-  // 3. Sync to Firestore with progress reporting
-  let count = 0;
-  for (let i = 0; i < validPosts.length; i++) {
-    const post = validPosts[i];
-    try {
-      const payloadString = JSON.stringify(post);
-      if (payloadString.length <= 950000) {
-        await setDoc(doc(db, 'blogPosts', post.id), post);
-      }
-      count++;
-    } catch (e) {
-      console.warn('Firestore restore notice for post:', post.id, e);
-    }
-    if (onProgress) {
-      onProgress(i + 1, validPosts.length);
-    }
+  if (onProgress) {
+    onProgress(validPosts.length, validPosts.length);
   }
-  return count;
+  return validPosts.length;
 }
 
 export async function deleteBlogPostFromFirestore(id: string): Promise<void> {
@@ -271,13 +242,6 @@ export async function deleteBlogPostFromFirestore(id: string): Promise<void> {
   } catch (sheetDispatchErr) {
     console.warn('Sheet webhook dispatch error:', sheetDispatchErr);
   }
-
-  // 4. Delete from Firestore
-  try {
-    await deleteDoc(doc(db, 'blogPosts', id));
-  } catch (err) {
-    console.warn('Firestore delete notice:', err);
-  }
 }
 
 export function getStoredBlogPostsSync(): BlogPost[] {
@@ -294,133 +258,27 @@ export function getStoredBlogPostsSync(): BlogPost[] {
   }
 }
 
-const videoCache = new Map<string, string>();
+const mediaCache = new Map<string, string>();
 
 export async function saveMediaVideoToFirestore(mediaId: string, base64Data: string): Promise<void> {
-  videoCache.set(mediaId, base64Data);
-  const CHUNK_SIZE = 700 * 1024; // 700KB chunks to stay safely under Firestore 1MB document limit
-  const totalChunks = Math.ceil(base64Data.length / CHUNK_SIZE);
-  
-  await setDoc(doc(db, 'mediaVideos', mediaId), {
-    id: mediaId,
-    totalChunks,
-    createdAt: Date.now()
-  });
-
-  for (let i = 0; i < totalChunks; i++) {
-    const chunkData = base64Data.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE);
-    await setDoc(doc(db, 'mediaVideos', `${mediaId}_chunk_${i}`), {
-      mediaId,
-      chunkIndex: i,
-      data: chunkData
-    });
-  }
+  mediaCache.set(mediaId, base64Data);
 }
 
 export async function fetchMediaVideoFromFirestore(mediaId: string): Promise<string | null> {
-  if (videoCache.has(mediaId)) {
-    return videoCache.get(mediaId)!;
-  }
-  try {
-    const metaDoc = await getDoc(doc(db, 'mediaVideos', mediaId));
-    if (!metaDoc.exists()) return null;
-    const { totalChunks } = metaDoc.data() as { totalChunks: number };
-    
-    let fullData = '';
-    for (let i = 0; i < totalChunks; i++) {
-      const chunkDoc = await getDoc(doc(db, 'mediaVideos', `${mediaId}_chunk_${i}`));
-      if (chunkDoc.exists()) {
-        fullData += (chunkDoc.data() as { data: string }).data;
-      }
-    }
-    if (fullData) {
-      videoCache.set(mediaId, fullData);
-    }
-    return fullData;
-  } catch (e) {
-    console.error('Error fetching media video from Firestore:', e);
-    return null;
-  }
+  return mediaCache.get(mediaId) || null;
 }
 
-const imageCache = new Map<string, string>();
-
 export async function saveMediaImageToFirestore(mediaId: string, base64Data: string, slug?: string): Promise<void> {
-  imageCache.set(mediaId, base64Data);
-  if (slug) {
-    imageCache.set(slug, base64Data);
-  }
-  const CHUNK_SIZE = 700 * 1024; // 700KB chunks to stay safely under Firestore 1MB limit
-  const totalChunks = Math.ceil(base64Data.length / CHUNK_SIZE);
-  
-  await setDoc(doc(db, 'mediaImages', mediaId), {
-    id: mediaId,
-    slug: slug || mediaId,
-    totalChunks,
-    createdAt: Date.now()
-  });
-
-  for (let i = 0; i < totalChunks; i++) {
-    const chunkData = base64Data.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE);
-    await setDoc(doc(db, 'mediaImages', `${mediaId}_chunk_${i}`), {
-      mediaId,
-      chunkIndex: i,
-      data: chunkData
-    });
-  }
-
-  if (slug) {
-    try {
-      await setDoc(doc(db, 'mediaImageSlugs', slug), {
-        mediaId,
-        slug,
-        updatedAt: Date.now()
-      });
-    } catch (e) {
-      console.warn('Failed to save media slug mapping:', e);
-    }
-  }
+  mediaCache.set(mediaId, base64Data);
+  if (slug) mediaCache.set(slug, base64Data);
 }
 
 export async function fetchMediaImageBySlug(slug: string): Promise<string | null> {
-  if (imageCache.has(slug)) return imageCache.get(slug)!;
-  try {
-    const slugDoc = await getDoc(doc(db, 'mediaImageSlugs', slug));
-    if (slugDoc.exists()) {
-      const { mediaId } = slugDoc.data() as { mediaId: string };
-      return await fetchMediaImageFromFirestore(mediaId);
-    }
-    return await fetchMediaImageFromFirestore(slug);
-  } catch (e) {
-    console.error('Error fetching media by slug:', e);
-    return null;
-  }
+  return mediaCache.get(slug) || null;
 }
 
 export async function fetchMediaImageFromFirestore(mediaId: string): Promise<string | null> {
-  if (imageCache.has(mediaId)) {
-    return imageCache.get(mediaId)!;
-  }
-  try {
-    const metaDoc = await getDoc(doc(db, 'mediaImages', mediaId));
-    if (!metaDoc.exists()) return null;
-    const { totalChunks } = metaDoc.data() as { totalChunks: number };
-    
-    let fullData = '';
-    for (let i = 0; i < totalChunks; i++) {
-      const chunkDoc = await getDoc(doc(db, 'mediaImages', `${mediaId}_chunk_${i}`));
-      if (chunkDoc.exists()) {
-        fullData += (chunkDoc.data() as { data: string }).data;
-      }
-    }
-    if (fullData) {
-      imageCache.set(mediaId, fullData);
-    }
-    return fullData;
-  } catch (e) {
-    console.error('Error fetching media image from Firestore:', e);
-    return null;
-  }
+  return mediaCache.get(mediaId) || null;
 }
 
 export async function compressImageBase64(base64Str: string, maxWidth = 800, quality = 0.7): Promise<string> {
@@ -486,6 +344,3 @@ export async function uploadImageToCloudinary(fileOrBase64: File | string, cloud
   const data = await res.json();
   return data.secure_url;
 }
-
-
-

@@ -2104,10 +2104,10 @@ export default function AdminPanelPage() {
 
       await saveBlogPostToFirestore(postToSave);
       await loadData(true);
-      showNotify(editingBlogId ? 'Tutorial updated & synced with Firebase!' : 'New tutorial published to Firebase!');
+      showNotify(editingBlogId ? 'Tutorial updated & synced with Google Sheets!' : 'New tutorial published & saved to Google Sheets!');
       setIsEditingBlog(false);
     } catch (err) {
-      alert('Error saving to Firebase: ' + (err as Error).message);
+      alert('Error saving article: ' + (err as Error).message);
     } finally {
       setIsSavingPost(false);
     }
@@ -2163,7 +2163,7 @@ export default function AdminPanelPage() {
                 {articleSizeInfo.isSafe ? 'Safe (< 1 MB)' : 'Limit Exceeded!'}
               </span>
             </div>
-            <div className="text-[10px] text-slate-400">Firestore 1MB Max Document Limit</div>
+            <div className="text-[10px] text-slate-400">Google Sheet Cell Safety Limit (&lt; 50K chars)</div>
           </div>
         </div>
 
