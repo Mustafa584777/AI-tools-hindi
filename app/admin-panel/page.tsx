@@ -22,7 +22,8 @@ import {
   fetchMediaVideoFromFirestore,
   saveMediaImageToFirestore,
   fetchMediaImageFromFirestore,
-  compressImageBase64
+  compressImageBase64,
+  downloadPostsJsonFile
 } from '@/lib/storage';
 import { BlogPost } from '@/lib/types';
 
@@ -2657,6 +2658,14 @@ export default function AdminPanelPage() {
             >
               <RefreshCw className="w-4 h-4 text-black" />
               <span>Sync All 48 Articles</span>
+            </button>
+
+            <button
+              onClick={downloadPostsJsonFile}
+              className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold rounded-xl text-xs inline-flex items-center gap-2 cursor-pointer shadow-md transition-all"
+            >
+              <Download className="w-4 h-4" />
+              <span>Download posts.json</span>
             </button>
           </div>
         </div>
