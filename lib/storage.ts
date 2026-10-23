@@ -105,16 +105,25 @@ export async function saveBlogPostToFirestore(post: BlogPost): Promise<void> {
 }
 
 export async function restoreBackupPosts(
-  importedPosts: BlogPost[],
+  importedPosts: any[],
   onProgress?: (current: number, total: number) => void
 ): Promise<number> {
-  const validPosts = importedPosts.map(p => ({
-    ...p,
-    id: p.id || ('blog-' + (p.slug || Math.random().toString(36).substring(7))),
-    slug: p.slug || 'imported-article',
+  const validPosts: BlogPost[] = importedPosts.map((p, idx) => ({
+    id: p.id || ('blog-' + (p.slug || idx)),
+    slug: p.slug || (p.title ? p.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') : ('imported-post-' + idx)),
     title: p.title || 'Untitled',
+    excerpt: p.excerpt || '',
+    metaDescription: p.metaDescription || '',
     content: p.content || '',
+    category: p.category || 'AI Guides',
+    author: p.author || 'Anwar',
+    date: p.date || new Date().toLocaleDateString('hi-IN'),
+    readTime: p.readTime || '5 min read',
+    image: p.image || 'https://picsum.photos/seed/newpost/800/450',
+    imageAlt: p.imageAlt || p.title || 'AI tutorial featured image',
+    imageSlug: p.imageSlug || 'ai-tutorial-featured',
     status: p.status || 'published',
+    noIndex: p.noIndex || false,
     createdAt: p.createdAt || Date.now()
   }));
 
@@ -131,13 +140,8 @@ export async function restoreBackupPosts(
 
   // 2. Update local storage
   if (typeof window !== 'undefined') {
-    const postMap = new Map<string, BlogPost>();
-    getStoredBlogPostsSync().forEach(p => postMap.set(p.slug || p.id, p));
-    validPosts.forEach(p => postMap.set(p.slug || p.id, p));
-    const merged = Array.from(postMap.values());
-    merged.sort((a: BlogPost, b: BlogPost) => (b.createdAt || 0) - (a.createdAt || 0));
     try {
-      localStorage.setItem(BLOG_KEY, JSON.stringify(merged));
+      localStorage.setItem(BLOG_KEY, JSON.stringify(validPosts));
       localStorage.setItem(CACHE_TIME_KEY, Date.now().toString());
     } catch (e) {
       console.warn('Local storage write warning during restore:', e);

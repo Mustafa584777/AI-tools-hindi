@@ -1187,29 +1187,7 @@ export default function AdminPanelPage() {
     reader.readAsText(file);
   };
 
-  const handleRestoreFromCloudBackup = async () => {
-    if (!confirm('Kya aap built-in cloud backup se sabhi 48 articles ko restore & sync karna chahte hain?')) {
-      return;
-    }
-    try {
-      showNotify('Fetching built-in 48 articles backup...');
-      const res = await fetch('/initial-articles-backup.json');
-      if (!res.ok) throw new Error('Could not load built-in backup');
-      const backupPosts: BlogPost[] = await res.json();
-      if (!Array.isArray(backupPosts) || backupPosts.length === 0) {
-        throw new Error('Backup file is empty');
-      }
-      showNotify(`Restoring ${backupPosts.length} articles to Firestore...`);
-      const count = await restoreBackupPosts(backupPosts, (curr, tot) => {
-        showNotify(`Restoring article ${curr} of ${tot}...`);
-      });
-      setPosts(backupPosts);
-      await loadData(true);
-      showNotify(`All ${count} articles successfully restored!`);
-    } catch (err) {
-      alert('Error restoring from built-in backup: ' + (err as Error).message);
-    }
-  };
+
 
   const handleOpenNewBlog = () => {
     setEditingBlogId(null);
@@ -2652,13 +2630,7 @@ export default function AdminPanelPage() {
               <span>Restore Backup</span>
             </label>
 
-            <button
-              onClick={handleRestoreFromCloudBackup}
-              className="px-4 py-2.5 bg-amber-500/90 hover:bg-amber-500 border border-amber-300/40 text-black font-extrabold rounded-xl text-xs inline-flex items-center gap-2 cursor-pointer shadow-md transition-all"
-            >
-              <RefreshCw className="w-4 h-4 text-black" />
-              <span>Sync All 48 Articles</span>
-            </button>
+
 
             <button
               onClick={downloadPostsJsonFile}
