@@ -5,69 +5,19 @@ import articlesBackup from '../data/posts.json';
 
 export const INITIAL_BLOG_POSTS: BlogPost[] = (articlesBackup as unknown as BlogPost[]) || [];
 
-const BLOG_KEY = 'aitoolhindi_blog_posts_json_v3';
-const CACHE_TIME_KEY = 'aitoolhindi_cache_timestamp';
-
 export async function fetchBlogPostsFromFirestore(forceRefresh = false): Promise<BlogPost[]> {
-  // 1. Fetch from persistent server backup API (/api/articles -> posts.json)
-  let serverPosts: BlogPost[] = [];
   try {
     const res = await fetch('/api/articles', { cache: forceRefresh ? 'reload' : 'default' });
     if (res.ok) {
       const data = await res.json();
-      if (data.posts && Array.isArray(data.posts)) {
-        serverPosts = data.posts;
+      if (data.posts && Array.isArray(data.posts) && data.posts.length > 0) {
+        return data.posts;
       }
     }
   } catch (err) {
     console.warn('Server articles API read notice:', err);
   }
-
-  // 2. Local storage fallback
-  let localPosts: BlogPost[] = [];
-  if (typeof window !== 'undefined') {
-    try {
-      const local = localStorage.getItem(BLOG_KEY);
-      if (local) localPosts = JSON.parse(local);
-    } catch (e) {
-      console.warn('Local read error:', e);
-    }
-  }
-
-  // Union map: merge serverPosts, localPosts, INITIAL_BLOG_POSTS
-  const postMap = new Map<string, BlogPost>();
-  INITIAL_BLOG_POSTS.forEach(p => {
-    const key = p.slug || p.id;
-    if (key) postMap.set(key, p);
-  });
-  localPosts.forEach(p => {
-    const key = p.slug || p.id;
-    if (key) postMap.set(key, p);
-  });
-  serverPosts.forEach(p => {
-    const key = p.slug || p.id;
-    if (key) postMap.set(key, p);
-  });
-
-  const merged = Array.from(postMap.values());
-  merged.sort((a: BlogPost, b: BlogPost) => (b.createdAt || 0) - (a.createdAt || 0));
-
-  if (typeof window !== 'undefined') {
-    try {
-      localStorage.setItem(BLOG_KEY, JSON.stringify(merged));
-      localStorage.setItem(CACHE_TIME_KEY, Date.now().toString());
-    } catch (e) {
-      console.warn('Local storage write error:', e);
-    }
-  }
-
-  return merged;
-}
-
-export function clearClientCache(): void {
-  if (typeof window !== 'undefined') {
-    localStorage.removeItem(CACHE_TIME_KEY);
-  }
+  return INITIAL_BLOG_POSTS;
 }
 
 export async function saveBlogPostToFirestore(post: BlogPost): Promise<void> {
@@ -76,23 +26,6 @@ export async function saveBlogPostToFirestore(post: BlogPost): Promise<void> {
     createdAt: post.createdAt || Date.now()
   };
 
-  // 1. Immediately update local storage
-  if (typeof window !== 'undefined') {
-    try {
-      const posts = getStoredBlogPostsSync();
-      const exists = posts.some(p => p.id === postWithTime.id || p.slug === postWithTime.slug);
-      const updated = exists 
-        ? posts.map(p => (p.id === postWithTime.id || p.slug === postWithTime.slug) ? postWithTime : p)
-        : [postWithTime, ...posts];
-      updated.sort((a: BlogPost, b: BlogPost) => (b.createdAt || 0) - (a.createdAt || 0));
-      localStorage.setItem(BLOG_KEY, JSON.stringify(updated));
-      localStorage.setItem(CACHE_TIME_KEY, Date.now().toString());
-    } catch (e) {
-      console.warn('LocalStorage save error:', e);
-    }
-  }
-
-  // 2. Persist to server disk storage via /api/articles (automatically updates posts.json)
   try {
     await fetch('/api/articles', {
       method: 'POST',
@@ -127,7 +60,6 @@ export async function restoreBackupPosts(
     createdAt: p.createdAt || Date.now()
   }));
 
-  // 1. Persist to server disk via /api/articles
   try {
     await fetch('/api/articles', {
       method: 'POST',
@@ -138,16 +70,6 @@ export async function restoreBackupPosts(
     console.warn('Server disk backup update error:', e);
   }
 
-  // 2. Update local storage
-  if (typeof window !== 'undefined') {
-    try {
-      localStorage.setItem(BLOG_KEY, JSON.stringify(validPosts));
-      localStorage.setItem(CACHE_TIME_KEY, Date.now().toString());
-    } catch (e) {
-      console.warn('Local storage write warning during restore:', e);
-    }
-  }
-
   if (onProgress) {
     onProgress(validPosts.length, validPosts.length);
   }
@@ -155,20 +77,6 @@ export async function restoreBackupPosts(
 }
 
 export async function deleteBlogPostFromFirestore(id: string): Promise<void> {
-  // 1. Remove from local posts
-  if (typeof window !== 'undefined') {
-    try {
-      const posts = getStoredBlogPostsSync();
-      const updated = posts.filter(p => p.id !== id && p.slug !== id);
-      updated.sort((a: BlogPost, b: BlogPost) => (b.createdAt || 0) - (a.createdAt || 0));
-      localStorage.setItem(BLOG_KEY, JSON.stringify(updated));
-      localStorage.setItem(CACHE_TIME_KEY, Date.now().toString());
-    } catch (e) {
-      console.warn('Local storage delete error:', e);
-    }
-  }
-
-  // 2. Delete from server disk storage (/api/articles)
   try {
     await fetch(`/api/articles?id=${encodeURIComponent(id)}`, {
       method: 'DELETE'
@@ -179,17 +87,7 @@ export async function deleteBlogPostFromFirestore(id: string): Promise<void> {
 }
 
 export function getStoredBlogPostsSync(): BlogPost[] {
-  if (typeof window === 'undefined') return INITIAL_BLOG_POSTS;
-  try {
-    const data = localStorage.getItem(BLOG_KEY);
-    if (!data) return INITIAL_BLOG_POSTS;
-    const posts: BlogPost[] = JSON.parse(data);
-    if (posts.length === 0) return INITIAL_BLOG_POSTS;
-    posts.sort((a: BlogPost, b: BlogPost) => (b.createdAt || 0) - (a.createdAt || 0));
-    return posts;
-  } catch {
-    return INITIAL_BLOG_POSTS;
-  }
+  return INITIAL_BLOG_POSTS;
 }
 
 export async function downloadPostsJsonFile(): Promise<void> {
@@ -197,7 +95,7 @@ export async function downloadPostsJsonFile(): Promise<void> {
     const res = await fetch('/api/articles');
     if (res.ok) {
       const data = await res.json();
-      const posts = data.posts || [];
+      const posts = data.posts || INITIAL_BLOG_POSTS;
       const blob = new Blob([JSON.stringify(posts, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -211,6 +109,10 @@ export async function downloadPostsJsonFile(): Promise<void> {
   } catch (e) {
     console.error('Error downloading posts.json:', e);
   }
+}
+
+export function clearClientCache(): void {
+  // no-op
 }
 
 const videoCache = new Map<string, string>();
