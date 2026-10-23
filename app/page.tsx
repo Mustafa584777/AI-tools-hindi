@@ -6,7 +6,7 @@ import Image from 'next/image';
 import { Search, Sparkles, ArrowRight, BookOpen, CheckCircle } from 'lucide-react';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
-import { fetchBlogPostsFromFirestore, getStoredBlogPostsSync } from '@/lib/storage';
+import { fetchBlogPostsFromDisk, getStoredBlogPostsSync } from '@/lib/storage';
 import { BlogPost } from '@/lib/types';
 
 export default function HomePage() {
@@ -17,8 +17,8 @@ export default function HomePage() {
   useEffect(() => {
     async function loadPosts() {
       try {
-        const firestorePosts = await fetchBlogPostsFromFirestore();
-        setPosts(firestorePosts.filter(p => p.status !== 'draft'));
+        const diskPosts = await fetchBlogPostsFromDisk();
+        setPosts(diskPosts.filter(p => p.status !== 'draft'));
       } catch {
         setPosts(getStoredBlogPostsSync().filter(p => p.status !== 'draft'));
       } finally {

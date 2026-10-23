@@ -7,7 +7,7 @@ import Image from 'next/image';
 import { ArrowLeft, Clock, Calendar, Share2, Folder } from 'lucide-react';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
-import { fetchBlogPostsFromFirestore, getStoredBlogPostsSync } from '@/lib/storage';
+import { fetchBlogPostsFromDisk, getStoredBlogPostsSync } from '@/lib/storage';
 import { BlogPost } from '@/lib/types';
 import ArticleContent from '@/components/ArticleContent';
 
@@ -43,7 +43,7 @@ export default function SlugPage() {
   useEffect(() => {
     async function loadData() {
       try {
-        const allPosts = await fetchBlogPostsFromFirestore();
+        const allPosts = await fetchBlogPostsFromDisk();
         setPosts(allPosts);
       } catch {
         setPosts(getStoredBlogPostsSync());

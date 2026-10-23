@@ -1,5 +1,5 @@
 import { MetadataRoute } from 'next';
-import { fetchBlogPostsFromFirestore, getStoredBlogPostsSync } from '@/lib/storage';
+import { fetchBlogPostsFromDisk, getStoredBlogPostsSync } from '@/lib/storage';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,7 +28,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
   let blogPosts: any[] = [];
   try {
-    blogPosts = await fetchBlogPostsFromFirestore();
+    blogPosts = await fetchBlogPostsFromDisk();
   } catch {
     blogPosts = getStoredBlogPostsSync();
   }
