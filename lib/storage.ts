@@ -5,7 +5,7 @@ import articlesBackup from '../data/posts.json';
 
 export const INITIAL_BLOG_POSTS: BlogPost[] = (articlesBackup as unknown as BlogPost[]) || [];
 
-// 1. For Admin Panel: Load from Firebase Firestore
+// 1. For Admin Panel: Load from Firebase Firestore and auto-sync to posts.json on disk if empty
 export async function fetchBlogPostsFromFirestore(forceRefresh = false): Promise<BlogPost[]> {
   try {
     const querySnapshot = await getDocs(collection(db, 'blogPosts'));
@@ -16,6 +16,24 @@ export async function fetchBlogPostsFromFirestore(forceRefresh = false): Promise
 
     if (firestorePosts.length > 0) {
       firestorePosts.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+
+      // Auto-sync to server disk posts.json if disk is currently empty
+      try {
+        const res = await fetch('/api/articles', { cache: forceRefresh ? 'reload' : 'default' });
+        if (res.ok) {
+          const data = await res.json();
+          if (!data.posts || data.posts.length === 0) {
+            await fetch('/api/articles', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(firestorePosts)
+            });
+          }
+        }
+      } catch (e) {
+        console.warn('Auto-sync disk posts notice:', e);
+      }
+
       return firestorePosts;
     }
   } catch (err) {
@@ -28,7 +46,6 @@ export async function fetchBlogPostsFromFirestore(forceRefresh = false): Promise
     if (res.ok) {
       const data = await res.json();
       if (data.posts && Array.isArray(data.posts) && data.posts.length > 0) {
-        // Seed Firestore
         for (const p of data.posts) {
           try {
             await setDoc(doc(db, 'blogPosts', p.id || p.slug), p);
@@ -68,7 +85,6 @@ export async function saveBlogPostToFirestore(post: BlogPost): Promise<void> {
     createdAt: post.createdAt || Date.now()
   };
 
-  // Save to Firebase Firestore
   try {
     await setDoc(doc(db, 'blogPosts', postWithTime.id), postWithTime);
     if (postWithTime.slug && postWithTime.slug !== postWithTime.id) {
@@ -78,7 +94,6 @@ export async function saveBlogPostToFirestore(post: BlogPost): Promise<void> {
     console.warn('Firestore save error:', e);
   }
 
-  // Automatically update posts.json on disk
   try {
     await fetch('/api/articles', {
       method: 'POST',
@@ -127,7 +142,7 @@ export async function restoreBackupPosts(
     }
   }
 
-  // Automatically create/update posts.json on disk with all restored posts
+  // Force update posts.json on disk with all restored posts
   try {
     await fetch('/api/articles', {
       method: 'POST',
@@ -142,7 +157,7 @@ export async function restoreBackupPosts(
 }
 
 // 5. Delete post from Firestore AND automatically update posts.json on disk
-export async function deleteBlogPostFromFirestore(id: string): Promise<string | void> {
+export async function deleteBlogPostFromFirestore(id: string): Promise<void> {
   try {
     await deleteDoc(doc(db, 'blogPosts', id));
   } catch (e) {
@@ -164,20 +179,43 @@ export function getStoredBlogPostsSync(): BlogPost[] {
 
 export async function downloadPostsJsonFile(): Promise<void> {
   try {
-    const res = await fetch('/api/articles');
-    if (res.ok) {
-      const data = await res.json();
-      const posts = data.posts || INITIAL_BLOG_POSTS;
-      const blob = new Blob([JSON.stringify(posts, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'posts.json';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+    let posts: BlogPost[] = [];
+    try {
+      const res = await fetch('/api/articles');
+      if (res.ok) {
+        const data = await res.json();
+        posts = data.posts || [];
+      }
+    } catch {}
+
+    if (!posts || posts.length === 0) {
+      try {
+        posts = await fetchBlogPostsFromFirestore();
+      } catch {}
     }
+
+    if (!posts || posts.length === 0) {
+      posts = INITIAL_BLOG_POSTS;
+    }
+
+    // Ensure posts.json on disk is populated before downloading
+    try {
+      await fetch('/api/articles', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(posts)
+      });
+    } catch {}
+
+    const blob = new Blob([JSON.stringify(posts, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'posts.json';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   } catch (e) {
     console.error('Error downloading posts.json:', e);
   }
