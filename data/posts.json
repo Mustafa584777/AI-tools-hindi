@@ -1,0 +1,38 @@
+[
+  {
+    "id": "chatgpt-hindi-guide",
+    "title": "ChatGPT in Hindi: Complete Guide for Beginners and Advanced Users",
+    "slug": "chatgpt-hindi-guide",
+    "excerpt": "Learn how to use ChatGPT effectively in Hindi with prompts, tips, and step-by-step instructions.",
+    "metaDescription": "Discover how to use ChatGPT in Hindi. Complete beginner guide with prompts and practical use cases.",
+    "content": "<p class=\"mb-6 text-slate-700 leading-relaxed text-lg\">ChatGPT ek advanced artificial intelligence language model hai jise OpenAI ne develop kiya hai. Is article me hum seekhenge ki ChatGPT ko Hindi me kaise use karein.</p><img src=\"https://aitoolhindi.online/wp-content/uploads/2026/04/chatgpt-hindi-banner.webp\" alt=\"ChatGPT in Hindi Guide\" data-img-slug=\"wp-content/uploads/2026/04/chatgpt-hindi-banner.webp\" class=\"w-full rounded-2xl my-6 shadow-md object-cover\" /><h2 class=\"text-2xl font-bold text-black mt-6 mb-3\">ChatGPT ka istemal kaise karein?</h2><p class=\"mb-6 text-slate-700 leading-relaxed text-lg\">Aap openai.com par jaakar apna account bana sakte hain aur chatgpt ka free version use kar sakte hain.</p>",
+    "category": "AI Guides",
+    "author": "Anwar",
+    "date": "24 October 2026",
+    "readTime": "5 min read",
+    "image": "https://aitoolhindi.online/wp-content/uploads/2026/04/chatgpt-hindi-banner.webp",
+    "imageAlt": "ChatGPT in Hindi Guide",
+    "imageSlug": "wp-content/uploads/2026/04/chatgpt-hindi-banner.webp",
+    "status": "published",
+    "noIndex": false,
+    "createdAt": 1761200000000
+  },
+  {
+    "id": "ai-image-generator-tools",
+    "title": "Top 5 Free AI Image Generator Tools in 2026",
+    "slug": "top-5-free-ai-image-generator-tools",
+    "excerpt": "Explore the best free AI image generator tools to create stunning graphics and photos instantly.",
+    "metaDescription": "Explore top free AI image generators in 2026. Create breathtaking images from text prompts.",
+    "content": "<p class=\"mb-6 text-slate-700 leading-relaxed text-lg\">AI image generators ne digital art ki duniya me kranti la di hai. Aaj hum top 5 free tools ke baare me baat karenge.</p><img src=\"https://aitoolhindi.online/wp-content/uploads/2026/04/ai-image-tools-1024x687.webp\" alt=\"Top AI Image Generators\" data-img-slug=\"wp-content/uploads/2026/04/ai-image-tools-1024x687.webp\" class=\"w-full rounded-2xl my-6 shadow-md object-cover\" /><h2 class=\"text-2xl font-bold text-black mt-6 mb-3\">1. Midjourney & DALL-E 3</h2><p class=\"mb-6 text-slate-700 leading-relaxed text-lg\">Ye dono tools sabse advanced images generate karte hain text prompts ke zariye.</p>",
+    "category": "Image Tutorials",
+    "author": "Anwar",
+    "date": "23 October 2026",
+    "readTime": "6 min read",
+    "image": "https://aitoolhindi.online/wp-content/uploads/2026/04/ai-image-tools-1024x687.webp",
+    "imageAlt": "Top AI Image Generators",
+    "imageSlug": "wp-content/uploads/2026/04/ai-image-tools-1024x687.webp",
+    "status": "published",
+    "noIndex": false,
+    "createdAt": 1761100000000
+  }
+]

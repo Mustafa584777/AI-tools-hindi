@@ -115,9 +115,6 @@ export default function AdminPanelPage() {
   const [isOptimizingAi, setIsOptimizingAi] = useState(false);
   const [analysisResult, setAnalysisResult] = useState<AIAnalysis | null>(null);
 
-  // WordPress Code Importer State
-  const [wpRawCode, setWpRawCode] = useState('');
-  const [showWpImporter, setShowWpImporter] = useState(false);
 
   const visualContentRef = useRef<HTMLDivElement>(null);
   const savedRangeRef = useRef<Range | null>(null);
@@ -987,92 +984,6 @@ export default function AdminPanelPage() {
     if (featuredImageInputRef.current) featuredImageInputRef.current.value = '';
   };
 
-  const handleConvertWpCode = async () => {
-    if (!wpRawCode.trim()) return;
-
-    let cleaned = wpRawCode
-      .replace(/<!-- wp:.*?-->/g, '')
-      .replace(/<!-- \/wp:.*?-->/g, '')
-      .trim();
-
-    if (!cleaned.includes('<p>') && !cleaned.includes('<h1>')) {
-      cleaned = cleaned
-        .split('\n\n')
-        .map(p => p.trim() ? `<p class="mb-6 text-slate-700 leading-relaxed text-lg">${p.trim()}</p>` : '')
-        .join('\n');
-    }
-
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(cleaned, 'text/html');
-    const imgs = doc.querySelectorAll('img');
-    let firstLocalImgSrc = '';
-    let firstImgSlug = '';
-
-    for (let idx = 0; idx < imgs.length; idx++) {
-      const img = imgs[idx];
-      const oldSrc = img.getAttribute('src') || '';
-      const oldAlt = img.getAttribute('alt') || `Tutorial image ${idx + 1}`;
-      
-      let imgSlug = `wp-image-${idx + 1}`;
-      if (oldSrc) {
-        try {
-          const urlObj = new URL(oldSrc, window.location.origin);
-          let pathname = urlObj.pathname;
-          if (pathname.startsWith('/')) {
-            pathname = pathname.substring(1);
-          }
-          if (pathname) {
-            imgSlug = pathname;
-          }
-        } catch {
-          let cleanPath = oldSrc.replace(/^https?:\/\/[^\/]+\//, '');
-          if (cleanPath) {
-            imgSlug = cleanPath;
-          }
-        }
-      }
-
-      let localSrc = oldSrc;
-      if (oldSrc && !oldSrc.startsWith('data:')) {
-        try {
-          const res = await fetch(`/api/fetch-image?url=${encodeURIComponent(oldSrc)}`);
-          const data = await res.json();
-          if (data.dataUrl) {
-            localSrc = data.dataUrl;
-          }
-        } catch (e) {
-          console.warn('Failed to convert image to local base64:', e);
-        }
-      }
-
-      if (idx === 0) {
-        firstLocalImgSrc = localSrc;
-        firstImgSlug = imgSlug;
-      }
-
-      img.setAttribute('src', localSrc);
-      img.setAttribute('alt', oldAlt);
-      img.setAttribute('data-img-slug', imgSlug);
-      img.className = 'w-full rounded-2xl my-6 shadow-md object-cover cursor-pointer hover:ring-2 hover:ring-orange-500 transition-all';
-    }
-
-    cleaned = doc.body.innerHTML;
-
-    const updated = blogContent ? blogContent + '\n\n' + cleaned : cleaned;
-    setBlogContent(updated);
-    if (visualContentRef.current) {
-      visualContentRef.current.innerHTML = updated;
-    }
-
-    if (firstLocalImgSrc && (blogImage.includes('picsum.photos/seed/newpost') || blogImage.includes('blogdefault'))) {
-      setBlogImage(firstLocalImgSrc);
-      setBlogImageSlug(firstImgSlug);
-    }
-
-    setWpRawCode('');
-    setShowWpImporter(false);
-    showNotify('WordPress code imported & all images successfully converted to local permanent storage (Base64)!');
-  };
 
   // FAQ Builder Handlers
   const handleAddFaq = () => {
@@ -1900,45 +1811,6 @@ export default function AdminPanelPage() {
               )}
             </div>
 
-            {/* WordPress Code Importer Widget */}
-            <div className="bg-orange-50/70 border border-orange-200 rounded-2xl p-6 space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 text-black font-bold text-sm">
-                  <Code className="w-4 h-4 text-orange-600" />
-                  <span>WordPress Code Importer (Gutenberg / HTML)</span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setShowWpImporter(!showWpImporter)}
-                  className="px-3.5 py-1.5 bg-orange-600 text-white rounded-lg text-xs font-bold hover:bg-orange-700 transition-colors"
-                >
-                  {showWpImporter ? 'Hide Importer' : 'Open Importer'}
-                </button>
-              </div>
-
-              {showWpImporter && (
-                <div className="space-y-3 pt-2">
-                  <p className="text-xs text-black leading-relaxed font-medium">
-                    अपने पुराने WordPress पोस्ट का HTML या Gutenberg ब्लॉक कोड यहाँ पेस्ट करें। &ldquo;Convert &amp; Insert&rdquo; पर क्लिक करते ही यह विजुअल एडिटर में आ जाएगा।
-                  </p>
-                  <textarea
-                    rows={15}
-                    value={wpRawCode}
-                    onChange={(e) => setWpRawCode(e.target.value)}
-                    placeholder="Paste WordPress post code here (supports 5000+ words)..."
-                    className="w-full p-4 bg-white border border-orange-200 rounded-xl text-xs font-mono text-black font-medium focus:ring-2 focus:ring-orange-600/20"
-                  />
-                  <button
-                    type="button"
-                    onClick={handleConvertWpCode}
-                    className="px-5 py-2.5 bg-orange-600 hover:bg-orange-700 text-white font-bold rounded-xl text-xs inline-flex items-center gap-2 shadow-sm"
-                  >
-                    <Wand2 className="w-3.5 h-3.5" />
-                    <span>Convert & Insert into Editor</span>
-                  </button>
-                </div>
-              )}
-            </div>
 
             <form onSubmit={handleSaveBlog} className="space-y-6">
               {/* ========================================== */}
@@ -2780,18 +2652,13 @@ export default function AdminPanelPage() {
             </label>
 
             <button
-            <button
               onClick={handleRestoreFromCloudBackup}
               className="px-4 py-2.5 bg-amber-500/90 hover:bg-amber-500 border border-amber-300/40 text-black font-extrabold rounded-xl text-xs inline-flex items-center gap-2 cursor-pointer shadow-md transition-all"
             >
               <RefreshCw className="w-4 h-4 text-black" />
               <span>Sync All 48 Articles</span>
             </button>
-            <div className="mt-3 bg-black/30 backdrop-blur-md px-4 py-2 rounded-xl text-xs text-white font-medium flex items-center justify-between">
-              <span className="truncate max-w-[280px]">{migrationProgress.text}</span>
-              <span className="font-extrabold text-amber-300">{migrationProgress.current}%</span>
-            </div>
-          )}
+          </div>
         </div>
 
         {/* Navigation Tabs */}
@@ -2806,8 +2673,15 @@ export default function AdminPanelPage() {
             <span>Tutorials Manager ({posts.length})</span>
           </button>
           <button
-            onClick={() => setActiveTab('unmigrated')}
+            onClick={() => setActiveTab('categories')}
             className={`px-5 py-2.5 rounded-2xl text-xs font-bold transition-all flex items-center gap-2 ${
+              activeTab === 'categories' ? 'bg-orange-600 text-white shadow-md' : 'bg-white text-black hover:bg-slate-100 border border-slate-200'
+            }`}
+          >
+            <Folder className="w-4 h-4" />
+            <span>Categories ({customCategories.length})</span>
+          </button>
+        </div>
         {/* Tab 1: Tutorials Manager (Author column completely removed) */}
         {activeTab === 'tutorials' && (
           <div className="space-y-6">
@@ -2983,5 +2857,7 @@ export default function AdminPanelPage() {
             </div>
           </div>
         )}
-
-        {/* Tab 3: Unmigrated / Pending WordPress Media Fallback Hub */}
+      </main>
+    </div>
+  );
+}

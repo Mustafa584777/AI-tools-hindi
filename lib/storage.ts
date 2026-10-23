@@ -1,7 +1,7 @@
 import { BlogPost } from './types';
 import { db } from './firebase';
 import { collection, getDocs, getDoc, doc, setDoc, deleteDoc } from 'firebase/firestore';
-import articlesBackup from '../data/articles-backup.json';
+import articlesBackup from '../data/posts.json';
 
 export const INITIAL_BLOG_POSTS: BlogPost[] = (articlesBackup as unknown as BlogPost[]) || [];
 
