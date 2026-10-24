@@ -5,8 +5,8 @@ import articlesBackup from '../data/posts.json';
 
 export const INITIAL_BLOG_POSTS: BlogPost[] = (articlesBackup as unknown as BlogPost[]) || [];
 
-// 1. For Admin Panel: Load from Firebase Firestore and auto-sync to posts.json on disk if empty
-export async function fetchBlogPostsFromFirestore(forceRefresh = false): Promise<BlogPost[]> {
+// Helper to sync all Firestore posts to disk posts.json
+export async function syncFirestorePostsToDisk(): Promise<BlogPost[]> {
   try {
     const querySnapshot = await getDocs(collection(db, 'blogPosts'));
     const firestorePosts: BlogPost[] = [];
@@ -16,24 +16,24 @@ export async function fetchBlogPostsFromFirestore(forceRefresh = false): Promise
 
     if (firestorePosts.length > 0) {
       firestorePosts.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+      await fetch('/api/articles', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(firestorePosts)
+      });
+      return firestorePosts;
+    }
+  } catch (e) {
+    console.warn('Sync Firestore to disk error:', e);
+  }
+  return [];
+}
 
-      // Auto-sync to server disk posts.json if disk is currently empty
-      try {
-        const res = await fetch('/api/articles', { cache: forceRefresh ? 'reload' : 'default' });
-        if (res.ok) {
-          const data = await res.json();
-          if (!data.posts || data.posts.length === 0) {
-            await fetch('/api/articles', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(firestorePosts)
-            });
-          }
-        }
-      } catch (e) {
-        console.warn('Auto-sync disk posts notice:', e);
-      }
-
+// 1. For Admin Panel: Load from Firebase Firestore and auto-sync to posts.json on disk
+export async function fetchBlogPostsFromFirestore(forceRefresh = false): Promise<BlogPost[]> {
+  try {
+    const firestorePosts = await syncFirestorePostsToDisk();
+    if (firestorePosts.length > 0) {
       return firestorePosts;
     }
   } catch (err) {
@@ -77,7 +77,7 @@ export async function fetchBlogPostsFromDisk(forceRefresh = false): Promise<Blog
   return INITIAL_BLOG_POSTS;
 }
 
-// 3. Save post to Firestore AND automatically update posts.json on disk
+// 3. Save post to Firestore AND automatically sync all posts to posts.json on disk
 export async function saveBlogPostToFirestore(post: BlogPost): Promise<void> {
   const postWithTime: BlogPost = {
     ...post,
@@ -94,18 +94,11 @@ export async function saveBlogPostToFirestore(post: BlogPost): Promise<void> {
     console.warn('Firestore save error:', e);
   }
 
-  try {
-    await fetch('/api/articles', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(postWithTime)
-    });
-  } catch (apiErr) {
-    console.warn('Server disk backup update error:', apiErr);
-  }
+  // Full sync of all Firestore posts to disk posts.json
+  await syncFirestorePostsToDisk();
 }
 
-// 4. Restore backup posts to Firestore AND automatically update posts.json on disk
+// 4. Restore backup posts to Firestore AND automatically sync all posts to posts.json on disk
 export async function restoreBackupPosts(
   importedPosts: any[],
   onProgress?: (current: number, total: number) => void
@@ -142,21 +135,13 @@ export async function restoreBackupPosts(
     }
   }
 
-  // Force update posts.json on disk with all restored posts
-  try {
-    await fetch('/api/articles', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(validPosts)
-    });
-  } catch (e) {
-    console.warn('Server disk backup update error during restore:', e);
-  }
+  // Full sync of all Firestore posts to disk posts.json
+  await syncFirestorePostsToDisk();
 
   return validPosts.length;
 }
 
-// 5. Delete post from Firestore AND automatically update posts.json on disk
+// 5. Delete post from Firestore AND automatically sync remaining posts to posts.json on disk
 export async function deleteBlogPostFromFirestore(id: string): Promise<void> {
   try {
     await deleteDoc(doc(db, 'blogPosts', id));
@@ -171,6 +156,9 @@ export async function deleteBlogPostFromFirestore(id: string): Promise<void> {
   } catch (e) {
     console.warn('Server disk backup delete error:', e);
   }
+
+  // Full sync of all Firestore posts to disk posts.json
+  await syncFirestorePostsToDisk();
 }
 
 export function getStoredBlogPostsSync(): BlogPost[] {
@@ -179,35 +167,10 @@ export function getStoredBlogPostsSync(): BlogPost[] {
 
 export async function downloadPostsJsonFile(): Promise<void> {
   try {
-    let posts: BlogPost[] = [];
-    try {
-      const res = await fetch('/api/articles');
-      if (res.ok) {
-        const data = await res.json();
-        posts = data.posts || [];
-      }
-    } catch {}
+    const posts = await syncFirestorePostsToDisk();
+    const finalPosts = posts.length > 0 ? posts : INITIAL_BLOG_POSTS;
 
-    if (!posts || posts.length === 0) {
-      try {
-        posts = await fetchBlogPostsFromFirestore();
-      } catch {}
-    }
-
-    if (!posts || posts.length === 0) {
-      posts = INITIAL_BLOG_POSTS;
-    }
-
-    // Ensure posts.json on disk is populated before downloading
-    try {
-      await fetch('/api/articles', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(posts)
-      });
-    } catch {}
-
-    const blob = new Blob([JSON.stringify(posts, null, 2)], { type: 'application/json' });
+    const blob = new Blob([JSON.stringify(finalPosts, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
