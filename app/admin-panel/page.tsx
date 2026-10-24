@@ -61,8 +61,8 @@ interface AIAnalysis {
 const CATEGORIES_KEY = 'aitoolhindi_categories_v1';
 
 export default function AdminPanelPage() {
-  const [posts, setPosts] = useState<BlogPost[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [posts, setPosts] = useState<BlogPost[]>(() => getStoredBlogPostsSync());
+  const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<'tutorials' | 'categories'>('tutorials');
   const [tutorialSubTab, setTutorialSubTab] = useState<'published' | 'draft'>('published');
 
@@ -153,7 +153,6 @@ export default function AdminPanelPage() {
   const [notification, setNotification] = useState<string | null>(null);
 
   const loadData = async (force = false) => {
-    setLoading(true);
     try {
       const data = await fetchBlogPostsFromFirestore(force);
       setPosts(data);
@@ -171,8 +170,6 @@ export default function AdminPanelPage() {
     } catch {
       const fallback = getStoredBlogPostsSync();
       setPosts(fallback);
-    } finally {
-      setLoading(false);
     }
   };
 
