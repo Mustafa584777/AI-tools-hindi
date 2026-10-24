@@ -5,68 +5,45 @@ import articlesBackup from '../data/posts.json';
 
 export const INITIAL_BLOG_POSTS: BlogPost[] = (articlesBackup as unknown as BlogPost[]) || [];
 
-const ADMIN_CACHE_KEY = 'aitoolhindi_admin_posts_cache_v2';
+const CACHE_KEY = 'aitoolhindi_posts_cache_v4';
 
-// 1. For Admin Panel: Instant load using local cache / posts.json, with background Firebase sync
-export async function fetchBlogPostsFromFirestore(forceRefresh = false): Promise<BlogPost[]> {
-  // Instant load from localStorage if available and not forced refresh
-  if (!forceRefresh && typeof window !== 'undefined') {
+// Instant load for both Admin and Main Site using posts.json & localStorage (0 network wait for Firestore)
+export async function fetchBlogPostsFromFirestore(_forceRefresh = false): Promise<BlogPost[]> {
+  if (typeof window !== 'undefined') {
     try {
-      const cached = localStorage.getItem(ADMIN_CACHE_KEY);
+      const cached = localStorage.getItem(CACHE_KEY);
       if (cached) {
         const parsed: BlogPost[] = JSON.parse(cached);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          // Trigger background sync with disk posts.json
-          fetch('/api/articles')
-            .then(res => res.json())
-            .then(data => {
-              if (data.posts && Array.isArray(data.posts) && data.posts.length > 0) {
-                localStorage.setItem(ADMIN_CACHE_KEY, JSON.stringify(data.posts));
-              }
-            })
-            .catch(() => {});
           return parsed;
         }
       }
     } catch {}
   }
 
-  // Fast load from server disk posts.json
   try {
-    const res = await fetch('/api/articles', { cache: forceRefresh ? 'reload' : 'default' });
+    const res = await fetch('/api/articles');
     if (res.ok) {
       const data = await res.json();
       if (data.posts && Array.isArray(data.posts) && data.posts.length > 0) {
         if (typeof window !== 'undefined') {
-          localStorage.setItem(ADMIN_CACHE_KEY, JSON.stringify(data.posts));
+          localStorage.setItem(CACHE_KEY, JSON.stringify(data.posts));
         }
         return data.posts;
       }
     }
   } catch (err) {
-    console.warn('Server articles API read notice:', err);
+    console.warn('API fetch warning:', err);
   }
 
   return INITIAL_BLOG_POSTS;
 }
 
-// 2. For Main Site / Frontend: Load exclusively from server disk (posts.json) with 0 Firebase reads
-export async function fetchBlogPostsFromDisk(forceRefresh = false): Promise<BlogPost[]> {
-  try {
-    const res = await fetch('/api/articles', { cache: forceRefresh ? 'reload' : 'default' });
-    if (res.ok) {
-      const data = await res.json();
-      if (data.posts && Array.isArray(data.posts) && data.posts.length > 0) {
-        return data.posts;
-      }
-    }
-  } catch (err) {
-    console.warn('Disk posts read error:', err);
-  }
-  return INITIAL_BLOG_POSTS;
+export async function fetchBlogPostsFromDisk(_forceRefresh = false): Promise<BlogPost[]> {
+  return fetchBlogPostsFromFirestore(_forceRefresh);
 }
 
-// 3. Save post instantly to posts.json / cache AND sync to Firebase in background
+// Save post instantly to posts.json / cache AND sync to Firebase in the background
 export async function saveBlogPostToFirestore(post: BlogPost): Promise<void> {
   const postWithTime: BlogPost = {
     ...post,
@@ -77,7 +54,7 @@ export async function saveBlogPostToFirestore(post: BlogPost): Promise<void> {
   // 1. Update localStorage cache instantly
   if (typeof window !== 'undefined') {
     try {
-      const cached = localStorage.getItem(ADMIN_CACHE_KEY);
+      const cached = localStorage.getItem(CACHE_KEY);
       let posts: BlogPost[] = cached ? JSON.parse(cached) : INITIAL_BLOG_POSTS;
       const index = posts.findIndex(p => p.id === postWithTime.id || p.slug === postWithTime.slug);
       if (index >= 0) {
@@ -86,7 +63,7 @@ export async function saveBlogPostToFirestore(post: BlogPost): Promise<void> {
         posts.unshift(postWithTime);
       }
       posts.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-      localStorage.setItem(ADMIN_CACHE_KEY, JSON.stringify(posts));
+      localStorage.setItem(CACHE_KEY, JSON.stringify(posts));
     } catch {}
   }
 
@@ -101,14 +78,14 @@ export async function saveBlogPostToFirestore(post: BlogPost): Promise<void> {
     console.warn('Server disk backup update error:', apiErr);
   }
 
-  // 3. Update Firebase in background (non-blocking)
-  setDoc(doc(db, 'blogPosts', postWithTime.id), postWithTime).catch(e => console.warn('Background Firebase save error:', e));
+  // 3. Background Firebase sync
+  setDoc(doc(db, 'blogPosts', postWithTime.id), postWithTime).catch(() => {});
   if (postWithTime.slug && postWithTime.slug !== postWithTime.id) {
     setDoc(doc(db, 'blogPosts', postWithTime.slug), postWithTime).catch(() => {});
   }
 }
 
-// 4. Restore backup posts instantly to posts.json / cache AND sync to Firebase
+// Restore backup posts instantly to posts.json / cache AND sync to Firebase
 export async function restoreBackupPosts(
   importedPosts: any[],
   onProgress?: (current: number, total: number) => void
@@ -132,10 +109,9 @@ export async function restoreBackupPosts(
     createdAt: p.createdAt || Date.now()
   }));
 
-  // 1. Update cache & disk posts.json instantly
   if (typeof window !== 'undefined') {
     try {
-      localStorage.setItem(ADMIN_CACHE_KEY, JSON.stringify(validPosts));
+      localStorage.setItem(CACHE_KEY, JSON.stringify(validPosts));
     } catch {}
   }
 
@@ -149,7 +125,6 @@ export async function restoreBackupPosts(
     console.warn('Server disk backup update error during restore:', e);
   }
 
-  // 2. Sync to Firebase in background
   let completed = 0;
   for (const post of validPosts) {
     setDoc(doc(db, 'blogPosts', post.id), post).catch(() => {});
@@ -162,16 +137,15 @@ export async function restoreBackupPosts(
   return validPosts.length;
 }
 
-// 5. Delete post instantly from cache & posts.json AND sync to Firebase
+// Delete post instantly from cache & posts.json AND sync to Firebase
 export async function deleteBlogPostFromFirestore(id: string): Promise<void> {
-  // 1. Update cache & disk posts.json instantly
   if (typeof window !== 'undefined') {
     try {
-      const cached = localStorage.getItem(ADMIN_CACHE_KEY);
+      const cached = localStorage.getItem(CACHE_KEY);
       if (cached) {
         let posts: BlogPost[] = JSON.parse(cached);
         posts = posts.filter(p => p.id !== id && p.slug !== id);
-        localStorage.setItem(ADMIN_CACHE_KEY, JSON.stringify(posts));
+        localStorage.setItem(CACHE_KEY, JSON.stringify(posts));
       }
     } catch {}
   }
@@ -184,14 +158,13 @@ export async function deleteBlogPostFromFirestore(id: string): Promise<void> {
     console.warn('Server disk backup delete error:', e);
   }
 
-  // 2. Delete from Firebase in background
   deleteDoc(doc(db, 'blogPosts', id)).catch(() => {});
 }
 
 export function getStoredBlogPostsSync(): BlogPost[] {
   if (typeof window !== 'undefined') {
     try {
-      const cached = localStorage.getItem(ADMIN_CACHE_KEY);
+      const cached = localStorage.getItem(CACHE_KEY);
       if (cached) {
         const posts: BlogPost[] = JSON.parse(cached);
         if (posts.length > 0) return posts;
@@ -228,7 +201,7 @@ export async function downloadPostsJsonFile(): Promise<void> {
 
 export function clearClientCache(): void {
   if (typeof window !== 'undefined') {
-    localStorage.removeItem(ADMIN_CACHE_KEY);
+    localStorage.removeItem(CACHE_KEY);
   }
 }
 
