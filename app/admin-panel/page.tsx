@@ -152,6 +152,26 @@ export default function AdminPanelPage() {
 
   const [notification, setNotification] = useState<string | null>(null);
 
+  const [cloudinaryCloudName, setCloudinaryCloudName] = useState(() => {
+    if (typeof window !== 'undefined') return localStorage.getItem('aitoolhindi_cloudinary_cloud_name') || '';
+    return '';
+  });
+  const [cloudinaryUploadPreset, setCloudinaryUploadPreset] = useState(() => {
+    if (typeof window !== 'undefined') return localStorage.getItem('aitoolhindi_cloudinary_preset') || '';
+    return '';
+  });
+  const [showCloudinaryModal, setShowCloudinaryModal] = useState(false);
+
+  const handleSaveCloudinaryConfig = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('aitoolhindi_cloudinary_cloud_name', cloudinaryCloudName.trim());
+      localStorage.setItem('aitoolhindi_cloudinary_preset', cloudinaryUploadPreset.trim());
+    }
+    setShowCloudinaryModal(false);
+    showNotify('Cloudinary settings saved successfully!');
+  };
+
   const loadData = async (force = false) => {
     try {
       const data = await fetchBlogPostsFromFirestore(force);
@@ -927,59 +947,83 @@ export default function AdminPanelPage() {
     }
   };
 
-  const handleContentImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const uploadToCloudinary = async (file: File): Promise<string> => {
+    if (!cloudinaryCloudName || !cloudinaryUploadPreset) {
+      return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = (e) => resolve(e.target?.result as string);
+        reader.readAsDataURL(file);
+      });
+    }
+    showNotify('Uploading image to Cloudinary...');
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('upload_preset', cloudinaryUploadPreset);
+
+    try {
+      const res = await fetch(`https://api.cloudinary.com/v1_1/${cloudinaryCloudName}/image/upload`, {
+        method: 'POST',
+        body: formData
+      });
+      const data = await res.json();
+      if (data.secure_url) {
+        showNotify('Image successfully uploaded to Cloudinary!');
+        return data.secure_url;
+      }
+      throw new Error(data.error?.message || 'Cloudinary upload failed');
+    } catch (e) {
+      alert('Cloudinary upload error: ' + (e as Error).message);
+      return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = (ev) => resolve(ev.target?.result as string);
+        reader.readAsDataURL(file);
+      });
+    }
+  };
+
+  const handleContentImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = (uploadEvent) => {
-      const base64String = uploadEvent.target?.result as string;
-      const alt = prompt('Enter Image Alt Text (SEO):', blogTitle);
-      const cleanAlt = (alt && alt.trim() && !['tutorial image', 'tutorial illustration image', 'illustration', 'ai tutorial featured image'].includes(alt.trim().toLowerCase())) ? alt.trim() : blogTitle;
-      const imgSlug = cleanAlt.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+    const imageUrl = await uploadToCloudinary(file);
+    const alt = prompt('Enter Image Alt Text (SEO):', blogTitle);
+    const cleanAlt = (alt && alt.trim() && !['tutorial image', 'tutorial illustration image', 'illustration', 'ai tutorial featured image'].includes(alt.trim().toLowerCase())) ? alt.trim() : blogTitle;
+    const imgSlug = cleanAlt.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
 
-      const newImg: ArticleImage = {
-        id: 'img-' + (articleImages.length + 1),
-        base64: base64String,
-        alt: cleanAlt,
-        slug: imgSlug
-      };
-
-      setArticleImages(prev => [...prev, newImg]);
-
-      const imgHtml = `<img src="${base64String}" data-base64="${base64String}" alt="${cleanAlt}" data-img-slug="${imgSlug}" class="w-full rounded-2xl my-6 shadow-md object-cover cursor-pointer hover:ring-2 hover:ring-orange-500 transition-all" />\n`;
-
-      if (selectedBlockElementRef.current && visualContentRef.current?.contains(selectedBlockElementRef.current)) {
-        const tempDiv = document.createElement('div');
-        tempDiv.innerHTML = imgHtml;
-        const imgNode = tempDiv.firstChild;
-        selectedBlockElementRef.current.after(imgNode!);
-        setBlogContent(visualContentRef.current.innerHTML);
-        showNotify('Image inserted right after selected block!');
-      } else {
-        insertHtmlAtSelection(imgHtml);
-      }
+    const newImg: ArticleImage = {
+      id: 'img-' + (articleImages.length + 1),
+      base64: imageUrl,
+      alt: cleanAlt,
+      slug: imgSlug
     };
-    reader.readAsDataURL(file);
+
+    setArticleImages(prev => [...prev, newImg]);
+
+    const imgHtml = `<img src="${imageUrl}" data-base64="${imageUrl}" alt="${cleanAlt}" data-img-slug="${imgSlug}" class="w-full rounded-2xl my-6 shadow-md object-cover cursor-pointer hover:ring-2 hover:ring-orange-500 transition-all" />\n`;
+
+    if (selectedBlockElementRef.current && visualContentRef.current?.contains(selectedBlockElementRef.current)) {
+      const tempDiv = document.createElement('div');
+      tempDiv.innerHTML = imgHtml;
+      const imgNode = tempDiv.firstChild;
+      selectedBlockElementRef.current.after(imgNode!);
+      setBlogContent(visualContentRef.current.innerHTML);
+      showNotify('Image inserted right after selected block!');
+    } else {
+      insertHtmlAtSelection(imgHtml);
+    }
     if (contentImageInputRef.current) contentImageInputRef.current.value = '';
   };
 
-  const handleFeaturedImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFeaturedImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = (uploadEvent) => {
-      const base64String = uploadEvent.target?.result as string;
-      setBlogImage(base64String);
-      if (!blogImageSlug) {
-        const cleanSlug = file.name.replace(/\.[^/.]+$/, "").toLowerCase().replace(/[^a-z0-9]+/g, '-');
-        setBlogImageSlug(cleanSlug);
-      }
-      showNotify('Featured image uploaded locally successfully!');
-    };
-    reader.readAsDataURL(file);
-    if (featuredImageInputRef.current) featuredImageInputRef.current.value = '';
+    const imageUrl = await uploadToCloudinary(file);
+    setBlogImage(imageUrl);
+    if (!blogImageSlug) {
+      const cleanSlug = file.name.replace(/\.[^/.]+$/, "").toLowerCase().replace(/[^a-z0-9]+/g, '-');
+      setBlogImageSlug(cleanSlug);
+    }
   };
 
 
@@ -2636,6 +2680,14 @@ export default function AdminPanelPage() {
               <Download className="w-4 h-4" />
               <span>Download posts.json</span>
             </button>
+
+            <button
+              onClick={() => setShowCloudinaryModal(true)}
+              className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs inline-flex items-center gap-2 shadow-md transition-all"
+            >
+              <ImageIcon className="w-4 h-4" />
+              <span>Cloudinary Config</span>
+            </button>
           </div>
         </div>
 
@@ -2832,6 +2884,71 @@ export default function AdminPanelPage() {
                   </div>
                 );
               })}
+            </div>
+          </div>
+        )}
+
+        {/* Cloudinary Configuration Modal */}
+        {showCloudinaryModal && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-3xl max-w-md w-full p-6 space-y-6 shadow-2xl border border-slate-200">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+                <div className="flex items-center gap-2 font-bold text-black text-lg">
+                  <ImageIcon className="w-5 h-5 text-blue-600" />
+                  <span>Cloudinary Image Uploader Config</span>
+                </div>
+                <button
+                  onClick={() => setShowCloudinaryModal(false)}
+                  className="p-2 hover:bg-slate-100 rounded-xl text-slate-500 transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <form onSubmit={handleSaveCloudinaryConfig} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-bold text-black mb-1.5">Cloud Name *</label>
+                  <input
+                    type="text"
+                    required
+                    value={cloudinaryCloudName}
+                    onChange={(e) => setCloudinaryCloudName(e.target.value)}
+                    placeholder="e.g. dxy8... or my-cloud"
+                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono text-black font-medium focus:ring-2 focus:ring-blue-600/20"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-black mb-1.5">Unsigned Upload Preset *</label>
+                  <input
+                    type="text"
+                    required
+                    value={cloudinaryUploadPreset}
+                    onChange={(e) => setCloudinaryUploadPreset(e.target.value)}
+                    placeholder="e.g. aitoolhindi_preset"
+                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono text-black font-medium focus:ring-2 focus:ring-blue-600/20"
+                  />
+                  <p className="text-[11px] text-slate-500 font-medium mt-1">
+                    Cloudinary Settings &rarr; Upload &rarr; Upload presets me jaakar Unsigned preset banayein.
+                  </p>
+                </div>
+
+                <div className="flex items-center justify-end gap-2 pt-4 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => setShowCloudinaryModal(false)}
+                    className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-black font-bold rounded-xl text-xs transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs shadow-sm transition-colors"
+                  >
+                    Save Cloudinary Settings
+                  </button>
+                </div>
+              </form>
             </div>
           </div>
         )}
