@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
 
 /* Theme table styles for WordPress imported tables and editor tables */
 table {
@@ -56,6 +57,40 @@ tr:hover {
 
 .prose a:hover, .editor-content a:hover, article a:hover {
   color: #c2410c !important; /* orange-700 */
+}
+
+/* Robust list styling for all articles and prose content */
+.prose ul, .editor-content ul, article ul {
+  list-style-type: disc !important;
+  padding-left: 1.75rem !important;
+  margin-top: 1rem !important;
+  margin-bottom: 1rem !important;
+}
+
+.prose ol, .editor-content ol, article ol {
+  list-style-type: decimal !important;
+  padding-left: 1.75rem !important;
+  margin-top: 1rem !important;
+  margin-bottom: 1rem !important;
+}
+
+.prose li, .editor-content li, article li {
+  margin-top: 0.5rem !important;
+  margin-bottom: 0.5rem !important;
+  line-height: 1.7 !important;
+  color: #0f172a !important;
+}
+
+.prose ul ul, .editor-content ul ul, article ul ul {
+  list-style-type: circle !important;
+  margin-top: 0.25rem !important;
+  margin-bottom: 0.25rem !important;
+}
+
+.prose ol ol, .editor-content ol ol, article ol ol {
+  list-style-type: lower-alpha !important;
+  margin-top: 0.25rem !important;
+  margin-bottom: 0.25rem !important;
 }
 
 /* Video editor badge & click interaction */

@@ -3,11 +3,60 @@
 import { useMemo, useRef, useEffect } from 'react';
 import { fetchMediaVideoFromFirestore, fetchMediaImageFromFirestore } from '@/lib/storage';
 
+function removeManualTOC(doc: Document) {
+  const tocSelectors = [
+    '.ez-toc',
+    '[class*="toc-container"]',
+    '[class*="table-of-contents"]',
+    '[class*="ez-toc"]',
+    '[id*="toc"]',
+    '.su-table-of-contents',
+    '#ez-toc-container',
+    '.toc'
+  ];
+  tocSelectors.forEach(sel => {
+    doc.querySelectorAll(sel).forEach(el => el.remove());
+  });
+
+  const potentialTocs = Array.from(doc.querySelectorAll('div, section, aside, p, h2, h3, h4'));
+  potentialTocs.forEach(el => {
+    const text = (el.textContent || '').trim().toLowerCase();
+    const isTocTitle = 
+      text === 'table of contents' ||
+      text === 'विषय सूची' ||
+      text === 'table of content' ||
+      text === 'विषय-सूची' ||
+      text === 'in this article' ||
+      text === 'इस लेख में' ||
+      text === 'कुंजी बिंदु' ||
+      text.startsWith('table of contents') ||
+      text.startsWith('विषय सूची');
+
+    if (isTocTitle) {
+      const hasLinks = el.querySelector('a[href^="#"]') || (el.nextElementSibling && el.nextElementSibling.querySelectorAll('a[href^="#"]').length > 0);
+      if (hasLinks) {
+        if (el.tagName === 'DIV' || el.tagName === 'SECTION' || el.tagName === 'ASIDE') {
+          el.remove();
+        } else {
+          const next = el.nextElementSibling;
+          if (next && (next.tagName === 'UL' || next.tagName === 'OL')) {
+            next.remove();
+          }
+          el.remove();
+        }
+      }
+    }
+  });
+}
+
 function getProcessedContentWithTOC(html: string) {
   if (typeof window === 'undefined') return html;
 
   const parser = new DOMParser();
   const doc = parser.parseFromString(html, 'text/html');
+
+  // Remove any existing manual TOC first to avoid duplication
+  removeManualTOC(doc);
 
   // Find h2 and h3 headings for Table of Contents without modifying the author's tags
   const headings = Array.from(doc.querySelectorAll('h2, h3'));
