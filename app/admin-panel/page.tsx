@@ -1677,16 +1677,14 @@ export default function AdminPanelPage() {
                       </div>
                       <input
                         type="text"
-                        value={blogImage.startsWith('data:image/') ? (blogImageSlug ? `[Image Slug: ${blogImageSlug}] (Local Base64 Upload)` : '[Local Uploaded Base64 Image]') : blogImage}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          if (!val.startsWith('[') && !val.startsWith('📁')) {
-                            setBlogImage(val);
-                          }
-                        }}
-                        placeholder="Or paste image URL here..."
+                        value={blogImage.startsWith('data:image/') ? '' : blogImage}
+                        onChange={(e) => setBlogImage(e.target.value)}
+                        placeholder="Or paste direct image URL here (Cloudinary / Web URL)..."
                         className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs text-black font-medium font-mono"
                       />
+                      {blogImage.startsWith('data:image/') && (
+                        <div className="text-[11px] text-emerald-600 font-bold">✓ Local Image File Active</div>
+                      )}
                     </div>
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-3">
