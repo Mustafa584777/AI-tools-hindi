@@ -1,6 +1,6 @@
 import { BlogPost } from './types';
 import { db } from './firebase';
-import { doc, setDoc, deleteDoc, getDoc } from 'firebase/firestore';
+import { doc, setDoc, deleteDoc, getDoc, collection, getDocs } from 'firebase/firestore';
 import articlesBackup from '../data/posts.json';
 
 export const INITIAL_BLOG_POSTS: BlogPost[] = (articlesBackup as unknown as BlogPost[]) || [];
@@ -9,7 +9,30 @@ const CACHE_KEY = 'aitoolhindi_posts_cache_v4';
 
 // Instant load for both Admin and Main Site using posts.json & localStorage (0 network wait for Firestore)
 export async function fetchBlogPostsFromFirestore(_forceRefresh = false): Promise<BlogPost[]> {
-  if (typeof window !== 'undefined') {
+  try {
+    if (db) {
+      const querySnapshot = await getDocs(collection(db, 'blogPosts'));
+      const firestorePostsMap = new Map<string, BlogPost>();
+      querySnapshot.forEach((docSnap) => {
+        const data = docSnap.data() as BlogPost;
+        if (data && (data.id || data.slug)) {
+          firestorePostsMap.set(data.id || data.slug, data);
+        }
+      });
+      if (firestorePostsMap.size > 0) {
+        const posts = Array.from(firestorePostsMap.values());
+        posts.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+        if (typeof window !== 'undefined') {
+          localStorage.setItem(CACHE_KEY, JSON.stringify(posts));
+        }
+        return posts;
+      }
+    }
+  } catch (e) {
+    console.warn('Firestore fetch warning:', e);
+  }
+
+  if (typeof window !== 'undefined' && !_forceRefresh) {
     try {
       const cached = localStorage.getItem(CACHE_KEY);
       if (cached) {
@@ -22,7 +45,7 @@ export async function fetchBlogPostsFromFirestore(_forceRefresh = false): Promis
   }
 
   try {
-    const res = await fetch('/api/articles');
+    const res = await fetch('/api/articles?t=' + Date.now(), { cache: 'no-store' });
     if (res.ok) {
       const data = await res.json();
       if (data.posts && Array.isArray(data.posts) && data.posts.length > 0) {
@@ -233,25 +256,41 @@ export function getStoredBlogPostsSync(): BlogPost[] {
 
 export async function downloadPostsJsonFile(): Promise<void> {
   try {
-    let posts: BlogPost[] = getStoredBlogPostsSync();
+    let posts: BlogPost[] = [];
 
-    // Ensure server disk posts.json is synced with current admin storage state before downloading
+    // 1. Fetch directly from Firebase Firestore as primary source of truth
+    try {
+      if (db) {
+        const querySnapshot = await getDocs(collection(db, 'blogPosts'));
+        const firestorePostsMap = new Map<string, BlogPost>();
+        querySnapshot.forEach((docSnap) => {
+          const data = docSnap.data() as BlogPost;
+          if (data && (data.id || data.slug)) {
+            firestorePostsMap.set(data.id || data.slug, data);
+          }
+        });
+        if (firestorePostsMap.size > 0) {
+          posts = Array.from(firestorePostsMap.values());
+        }
+      }
+    } catch (e) {
+      console.warn('Firestore fetch for download warning:', e);
+    }
+
+    // 2. Fallback to localStorage / local sync if Firestore returned empty
+    if (posts.length === 0) {
+      posts = getStoredBlogPostsSync();
+    }
+
+    posts.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+
+    // 3. Sync to server disk before downloading
     try {
       await fetch('/api/articles', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(posts)
       });
-    } catch {}
-
-    try {
-      const res = await fetch(`/api/articles?t=${Date.now()}`, { cache: 'no-store' });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.posts && Array.isArray(data.posts) && data.posts.length > 0) {
-          posts = data.posts;
-        }
-      }
     } catch {}
 
     const blob = new Blob([JSON.stringify(posts, null, 2)], { type: 'application/json' });
