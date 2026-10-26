@@ -102,6 +102,7 @@ export async function saveBlogPostToFirestore(post: BlogPost): Promise<void> {
     createdAt: post.createdAt || Date.now()
   };
 
+  let allPosts: BlogPost[] = [];
   // 1. Update localStorage cache instantly
   if (typeof window !== 'undefined') {
     try {
@@ -115,15 +116,16 @@ export async function saveBlogPostToFirestore(post: BlogPost): Promise<void> {
       }
       posts.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
       localStorage.setItem(CACHE_KEY, JSON.stringify(posts));
+      allPosts = posts;
     } catch {}
   }
 
-  // 2. Instantly update posts.json on server disk
+  // 2. Instantly update posts.json on server disk with full array
   try {
     await fetch('/api/articles', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(postWithTime)
+      body: JSON.stringify(allPosts.length > 0 ? allPosts : postWithTime)
     });
   } catch (apiErr) {
     console.warn('Server disk backup update error:', apiErr);
@@ -193,6 +195,7 @@ export async function restoreBackupPosts(
 
 // Delete post instantly from cache & posts.json AND sync to Firebase
 export async function deleteBlogPostFromFirestore(id: string): Promise<void> {
+  let updatedPosts: BlogPost[] = [];
   if (typeof window !== 'undefined') {
     try {
       const cached = localStorage.getItem(CACHE_KEY);
@@ -200,16 +203,29 @@ export async function deleteBlogPostFromFirestore(id: string): Promise<void> {
         let posts: BlogPost[] = JSON.parse(cached);
         posts = posts.filter(p => p.id !== id && p.slug !== id);
         localStorage.setItem(CACHE_KEY, JSON.stringify(posts));
+        updatedPosts = posts;
       }
     } catch {}
   }
 
   try {
     await fetch(`/api/articles?id=${encodeURIComponent(id)}`, {
-      method: 'DELETE'
+      method: 'DELETE',
+      cache: 'no-store'
     });
   } catch (e) {
     console.warn('Server disk backup delete error:', e);
+  }
+
+  // Also push updated posts array to server API to ensure posts.json matches localStorage perfectly
+  if (updatedPosts.length > 0) {
+    try {
+      await fetch('/api/articles', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updatedPosts)
+      });
+    } catch {}
   }
 
   deleteDoc(doc(db, 'blogPosts', id)).catch(() => {});
@@ -231,11 +247,21 @@ export function getStoredBlogPostsSync(): BlogPost[] {
 export async function downloadPostsJsonFile(): Promise<void> {
   try {
     let posts: BlogPost[] = getStoredBlogPostsSync();
+
+    // Ensure server disk posts.json is synced with current admin storage state before downloading
+    try {
+      await fetch('/api/articles', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(posts)
+      });
+    } catch {}
+
     try {
       const res = await fetch(`/api/articles?t=${Date.now()}`, { cache: 'no-store' });
       if (res.ok) {
         const data = await res.json();
-        if (data.posts && Array.isArray(data.posts)) {
+        if (data.posts && Array.isArray(data.posts) && data.posts.length > 0) {
           posts = data.posts;
         }
       }
