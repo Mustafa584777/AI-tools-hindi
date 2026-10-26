@@ -22,6 +22,7 @@ export default function Navbar() {
               referrerPolicy="no-referrer"
             />
           </div>
+          <span className="font-extrabold text-base sm:text-lg tracking-tight text-slate-900">AI Tool Hindi</span>
         </Link>
 
         {/* Desktop Navigation Links - Only Homepage */}

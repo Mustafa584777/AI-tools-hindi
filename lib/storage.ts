@@ -43,37 +43,57 @@ export async function fetchBlogPostsFromDisk(_forceRefresh = false): Promise<Blo
   return fetchBlogPostsFromFirestore(_forceRefresh);
 }
 
-export function extractFirstImageAndAlt(content: string, fallbackImage?: string, fallbackAlt?: string): { image: string; imageAlt: string } {
+export function extractFirstImageAndAlt(
+  content: string, 
+  fallbackImage?: string, 
+  fallbackAlt?: string,
+  fallbackTitle?: string
+): { image: string; imageAlt: string } {
   if (!content) {
     return {
       image: fallbackImage || 'https://picsum.photos/seed/default/800/450',
-      imageAlt: fallbackAlt || 'AI tutorial featured image'
+      imageAlt: fallbackAlt || fallbackTitle || 'AI tutorial featured image'
     };
   }
 
-  const imgRegex = /<img[^>]+src=["']([^"']+)["'][^>]*>/i;
-  const match = content.match(imgRegex);
+  const imgRegex = /<img[^>]+src=["']([^"']+)["'][^>]*>/gi;
+  let match;
+  let firstValidImage: { image: string; imageAlt: string } | null = null;
+  let firstAnyImage: { image: string; imageAlt: string } | null = null;
 
-  if (match && match[1]) {
-    const src = match[1];
-    if (!src.startsWith('data:image/')) {
-      const imgTag = match[0];
-      const altMatch = imgTag.match(/alt=["']([^"']*)["']/i);
-      const cleanSrc = src.trim().replace(/[\\\"\']+$/, '');
-      const alt = altMatch && altMatch[1] ? altMatch[1].trim() : (fallbackAlt || 'AI tutorial featured image');
-      return { image: cleanSrc, imageAlt: alt };
+  while ((match = imgRegex.exec(content)) !== null) {
+    const rawSrc = match[1];
+    const imgTag = match[0];
+    const altMatch = imgTag.match(/alt=["']([^"']*)["']/i);
+    const cleanSrc = rawSrc.trim().replace(/[\\\"\']+$/, '');
+    const cleanAlt = altMatch && altMatch[1] && altMatch[1].trim()
+      ? altMatch[1].trim()
+      : (fallbackAlt || fallbackTitle || 'AI tutorial featured image');
+
+    if (!firstAnyImage && cleanSrc) {
+      firstAnyImage = { image: cleanSrc, imageAlt: cleanAlt };
     }
+
+    if (!firstValidImage && cleanSrc && !cleanSrc.includes('img.youtube.com') && !cleanSrc.includes('i.ytimg.com')) {
+      firstValidImage = { image: cleanSrc, imageAlt: cleanAlt };
+      break;
+    }
+  }
+
+  const selected = firstValidImage || firstAnyImage;
+  if (selected) {
+    return selected;
   }
 
   return {
     image: fallbackImage || 'https://picsum.photos/seed/default/800/450',
-    imageAlt: fallbackAlt || 'AI tutorial featured image'
+    imageAlt: fallbackAlt || fallbackTitle || 'AI tutorial featured image'
   };
 }
 
 // Save post instantly to posts.json / cache AND sync to Firebase in the background
 export async function saveBlogPostToFirestore(post: BlogPost): Promise<void> {
-  const { image, imageAlt } = extractFirstImageAndAlt(post.content, post.image, post.imageAlt);
+  const { image, imageAlt } = extractFirstImageAndAlt(post.content, post.image, post.imageAlt, post.title);
   const postWithTime: BlogPost = {
     ...post,
     image,
@@ -122,7 +142,7 @@ export async function restoreBackupPosts(
   onProgress?: (current: number, total: number) => void
 ): Promise<number> {
   const validPosts: BlogPost[] = importedPosts.map((p, idx) => {
-    const { image, imageAlt } = extractFirstImageAndAlt(p.content, p.image, p.imageAlt);
+    const { image, imageAlt } = extractFirstImageAndAlt(p.content, p.image, p.imageAlt, p.title);
     return {
       id: p.id || ('blog-' + (p.slug || idx)),
       slug: p.slug || (p.title ? p.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') : ('imported-post-' + idx)),

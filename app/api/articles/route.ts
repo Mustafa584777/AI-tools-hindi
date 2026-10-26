@@ -26,31 +26,51 @@ export async function GET() {
   }
 }
 
-function extractFirstImageAndAlt(content: string, fallbackImage?: string, fallbackAlt?: string): { image: string; imageAlt: string } {
+function extractFirstImageAndAlt(
+  content: string, 
+  fallbackImage?: string, 
+  fallbackAlt?: string,
+  fallbackTitle?: string
+): { image: string; imageAlt: string } {
   if (!content) {
     return {
       image: fallbackImage || 'https://picsum.photos/seed/default/800/450',
-      imageAlt: fallbackAlt || 'AI tutorial featured image'
+      imageAlt: fallbackAlt || fallbackTitle || 'AI tutorial featured image'
     };
   }
 
-  const imgRegex = /<img[^>]+src=["']([^"']+)["'][^>]*>/i;
-  const match = content.match(imgRegex);
+  const imgRegex = /<img[^>]+src=["']([^"']+)["'][^>]*>/gi;
+  let match;
+  let firstValidImage: { image: string; imageAlt: string } | null = null;
+  let firstAnyImage: { image: string; imageAlt: string } | null = null;
 
-  if (match && match[1]) {
-    const src = match[1];
-    if (!src.startsWith('data:image/')) {
-      const imgTag = match[0];
-      const altMatch = imgTag.match(/alt=["']([^"']*)["']/i);
-      const cleanSrc = src.trim().replace(/[\\\"\']+$/, '');
-      const alt = altMatch && altMatch[1] ? altMatch[1].trim() : (fallbackAlt || 'AI tutorial featured image');
-      return { image: cleanSrc, imageAlt: alt };
+  while ((match = imgRegex.exec(content)) !== null) {
+    const rawSrc = match[1];
+    const imgTag = match[0];
+    const altMatch = imgTag.match(/alt=["']([^"']*)["']/i);
+    const cleanSrc = rawSrc.trim().replace(/[\\\"\']+$/, '');
+    const cleanAlt = altMatch && altMatch[1] && altMatch[1].trim()
+      ? altMatch[1].trim()
+      : (fallbackAlt || fallbackTitle || 'AI tutorial featured image');
+
+    if (!firstAnyImage && cleanSrc) {
+      firstAnyImage = { image: cleanSrc, imageAlt: cleanAlt };
     }
+
+    if (!firstValidImage && cleanSrc && !cleanSrc.includes('img.youtube.com') && !cleanSrc.includes('i.ytimg.com')) {
+      firstValidImage = { image: cleanSrc, imageAlt: cleanAlt };
+      break;
+    }
+  }
+
+  const selected = firstValidImage || firstAnyImage;
+  if (selected) {
+    return selected;
   }
 
   return {
     image: fallbackImage || 'https://picsum.photos/seed/default/800/450',
-    imageAlt: fallbackAlt || 'AI tutorial featured image'
+    imageAlt: fallbackAlt || fallbackTitle || 'AI tutorial featured image'
   };
 }
 
@@ -68,18 +88,14 @@ export async function POST(req: NextRequest) {
       const postMap = new Map<string, BlogPost>();
       posts.forEach(p => postMap.set(p.slug || p.id, p));
       body.forEach(p => {
-        const { image, imageAlt } = extractFirstImageAndAlt(p.content, p.image, p.imageAlt);
-        const cleanContent = p.content ? p.content.replace(/src="data:image\/[^"]+"/g, 'src=""') : '';
-        const cleanImage = image && image.startsWith('data:image/') ? 'https://aitoolhindi.online/wp-content/uploads/default.webp' : image;
-        postMap.set(p.slug || p.id, { ...p, content: cleanContent, image: cleanImage, imageAlt });
+        const { image, imageAlt } = extractFirstImageAndAlt(p.content, p.image, p.imageAlt, p.title);
+        postMap.set(p.slug || p.id, { ...p, image, imageAlt });
       });
       posts = Array.from(postMap.values());
     } else {
       const p = body as BlogPost;
-      const { image, imageAlt } = extractFirstImageAndAlt(p.content, p.image, p.imageAlt);
-      const cleanContent = p.content ? p.content.replace(/src="data:image\/[^"]+"/g, 'src=""') : '';
-      const cleanImage = image && image.startsWith('data:image/') ? 'https://aitoolhindi.online/wp-content/uploads/default.webp' : image;
-      const sanitizedPost = { ...p, content: cleanContent, image: cleanImage, imageAlt };
+      const { image, imageAlt } = extractFirstImageAndAlt(p.content, p.image, p.imageAlt, p.title);
+      const sanitizedPost = { ...p, image, imageAlt };
 
       const index = posts.findIndex(existing => existing.id === sanitizedPost.id || existing.slug === sanitizedPost.slug);
       if (index >= 0) {

@@ -11,6 +11,7 @@ import { fetchBlogPostsFromDisk, getStoredBlogPostsSync } from '@/lib/storage';
 import { BlogPost } from '@/lib/types';
 import ArticleContent from '@/components/ArticleContent';
 import { resolveDisplayImageUrl } from '@/lib/utils';
+import BlogImage from '@/components/BlogImage';
 
 export const dynamic = 'force-dynamic';
 
@@ -119,13 +120,12 @@ export default function SlugPage() {
                   className="bg-white rounded-2xl border border-slate-200/80 overflow-hidden shadow-sm hover:shadow-md transition-all flex flex-col group"
                 >
                   <div className="h-48 relative w-full bg-slate-200">
-                    <Image
-                      src={resolveDisplayImageUrl(p.image)}
+                    <BlogImage
+                      src={p.image}
                       alt={p.imageAlt || p.title}
                       fill
                       sizes="(max-width: 768px) 100vw, 33vw"
                       className="object-cover group-hover:scale-105 transition-transform duration-300"
-                      referrerPolicy="no-referrer"
                     />
                   </div>
                   <div className="p-6 flex flex-col justify-between flex-1 space-y-4">
@@ -237,52 +237,52 @@ export default function SlugPage() {
 
       <Navbar />
 
-      <main className="flex-1 max-w-4xl mx-auto px-4 sm:px-6 py-12 space-y-8">
+      <main className="flex-1 max-w-4xl mx-auto px-3 sm:px-6 py-6 sm:py-10 md:py-12 space-y-6 sm:space-y-8 w-full max-w-full overflow-hidden">
         <Link href="/" className="inline-flex items-center gap-2 text-sm font-bold text-black hover:text-orange-600 transition-colors">
           <ArrowLeft className="w-4 h-4" />
           <span>Back to Home</span>
         </Link>
 
         {/* Article Header */}
-        <article className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
-          <div className="h-72 md:h-96 relative w-full bg-slate-200">
-            <Image
-              src={resolveDisplayImageUrl(post.image)}
+        <article className="bg-white rounded-2xl sm:rounded-3xl border border-slate-200 overflow-hidden shadow-sm w-full max-w-full">
+          <div className="min-h-[220px] h-60 sm:h-80 md:h-96 relative w-full bg-slate-900 overflow-hidden">
+            <BlogImage
+              src={post.image}
               alt={post.imageAlt || post.title}
               fill
               sizes="(max-width: 1024px) 100vw, 800px"
               className="object-cover"
               priority
-              referrerPolicy="no-referrer"
+              fallbackSrc="https://picsum.photos/seed/articlefeatured/1200/675"
             />
-            <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-slate-950/30 to-transparent"></div>
-            <div className="absolute bottom-6 left-6 right-6 text-white space-y-3">
-              <span className="inline-block px-3.5 py-1.5 bg-orange-600 text-white font-bold text-xs rounded-full">
+            <div className="absolute inset-0 bg-gradient-to-t from-slate-950/90 via-slate-950/45 to-transparent"></div>
+            <div className="absolute bottom-4 sm:bottom-6 left-4 sm:left-6 right-4 sm:right-6 text-white space-y-2 sm:space-y-3">
+              <span className="inline-block px-3 py-1 bg-orange-600 text-white font-bold text-xs rounded-full shadow-sm">
                 {post.category}
               </span>
-              <h1 className="text-2xl md:text-4xl font-extrabold tracking-tight leading-tight text-white">
+              <h1 className="text-xl sm:text-2xl md:text-4xl font-extrabold tracking-tight leading-snug sm:leading-tight text-white break-words">
                 {post.title}
               </h1>
             </div>
           </div>
 
-          <div className="p-6 md:p-12 space-y-8">
+          <div className="p-4 sm:p-6 md:p-10 space-y-6 sm:space-y-8">
             {/* Metadata bar */}
-            <div className="flex flex-wrap items-center justify-between gap-4 py-4 border-y border-slate-100 text-xs text-black font-medium">
-              <div className="flex items-center gap-6">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4 py-3 sm:py-4 border-y border-slate-100 text-xs text-black font-medium">
+              <div className="flex items-center gap-4 sm:gap-6">
                 <span className="flex items-center gap-1.5">
-                  <Calendar className="w-4 h-4 text-orange-600" />
+                  <Calendar className="w-4 h-4 text-orange-600 shrink-0" />
                   {post.date}
                 </span>
                 <span className="flex items-center gap-1.5">
-                  <Clock className="w-4 h-4 text-orange-600" />
+                  <Clock className="w-4 h-4 text-orange-600 shrink-0" />
                   {post.readTime}
                 </span>
               </div>
 
               <button
                 onClick={handleShare}
-                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-black rounded-lg font-bold transition-colors"
+                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-black rounded-lg font-bold transition-colors text-xs"
               >
                 <Share2 className="w-3.5 h-3.5" />
                 <span>{copied ? 'Link Copied!' : 'Share Article'}</span>

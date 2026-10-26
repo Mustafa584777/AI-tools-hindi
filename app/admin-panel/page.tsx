@@ -23,7 +23,8 @@ import {
   saveMediaImageToFirestore,
   fetchMediaImageFromFirestore,
   compressImageBase64,
-  downloadPostsJsonFile
+  downloadPostsJsonFile,
+  extractFirstImageAndAlt
 } from '@/lib/storage';
 import { BlogPost } from '@/lib/types';
 import { resolveDisplayImageUrl } from '@/lib/utils';
@@ -1302,25 +1303,9 @@ export default function AdminPanelPage() {
     setBlogCategory(cat);
     setIsNewCategoryMode(false);
     setNewCategoryName('');
-    let activeImage = b.image;
-    let activeAlt = b.imageAlt || '';
-    if (b.content) {
-      const parser = new DOMParser();
-      const doc = parser.parseFromString(b.content, 'text/html');
-      const firstImg = doc.querySelector('img');
-      if (firstImg) {
-        const src = firstImg.getAttribute('src');
-        const alt = firstImg.getAttribute('alt');
-        if (src && !src.startsWith('data:image/')) {
-          activeImage = src.trim().replace(/[\\\"\']+$/, '');
-          if (alt && alt.trim()) {
-            activeAlt = alt.trim();
-          }
-        }
-      }
-    }
-    setBlogImage(activeImage);
-    setBlogImageAlt(activeAlt);
+    const extracted = extractFirstImageAndAlt(b.content, b.image, b.imageAlt, b.title);
+    setBlogImage(extracted.image);
+    setBlogImageAlt(extracted.imageAlt);
     setBlogImageSlug(b.imageSlug || '');
     setFailedImageSrc(null);
     setBlogStatus(b.status || 'published');
@@ -1457,11 +1442,9 @@ export default function AdminPanelPage() {
         finalMetaDesc = plainText.trim().substring(0, 160);
       }
 
-      let finalBlogImage = blogImage;
-      let finalBlogImageAlt = blogImageAlt.trim();
-      if (!finalBlogImageAlt || ['tutorial image', 'tutorial illustration image', 'illustration', 'ai tutorial featured image'].includes(finalBlogImageAlt.toLowerCase())) {
-        finalBlogImageAlt = blogTitle;
-      }
+      const extracted = extractFirstImageAndAlt(processedHtmlContent, blogImage, blogImageAlt, blogTitle);
+      const finalBlogImage = extracted.image;
+      const finalBlogImageAlt = extracted.imageAlt;
 
       const postToSave: BlogPost = {
         id: postId,

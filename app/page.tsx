@@ -9,6 +9,7 @@ import Footer from '@/components/Footer';
 import { fetchBlogPostsFromDisk, getStoredBlogPostsSync } from '@/lib/storage';
 import { BlogPost } from '@/lib/types';
 import { resolveDisplayImageUrl } from '@/lib/utils';
+import BlogImage from '@/components/BlogImage';
 
 export default function HomePage() {
   const [posts, setPosts] = useState<BlogPost[]>([]);
@@ -113,13 +114,12 @@ export default function HomePage() {
                   className="bg-white rounded-2xl border border-slate-200/80 overflow-hidden shadow-sm hover:shadow-md transition-all flex flex-col group"
                 >
                   <div className="h-48 relative w-full bg-slate-200">
-                    <Image
-                      src={resolveDisplayImageUrl(post.image)}
+                    <BlogImage
+                      src={post.image}
                       alt={post.imageAlt || post.title}
                       fill
                       sizes="(max-width: 768px) 100vw, 33vw"
                       className="object-cover group-hover:scale-105 transition-transform duration-300"
-                      referrerPolicy="no-referrer"
                     />
                   </div>
                   <div className="p-6 flex flex-col justify-between flex-1 space-y-4">

@@ -76,7 +76,7 @@ function getProcessedContentWithTOC(html: string) {
 
   const paragraphs = Array.from(doc.querySelectorAll('p'));
   const tocHtml = `
-    <div class="auto-toc-box my-8 p-6 bg-orange-50/70 border border-orange-200 rounded-2xl shadow-sm space-y-3">
+    <div class="auto-toc-box my-6 sm:my-8 p-4 sm:p-6 bg-orange-50/70 border border-orange-200 rounded-2xl shadow-sm space-y-3">
       <div class="flex items-center gap-2 font-extrabold text-black text-base">
         <svg class="w-5 h-5 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h7"/></svg>
         <span>Table of Contents (विषय सूची)</span>
@@ -166,15 +166,67 @@ export default function ArticleContent({ content }: { content: string }) {
     const allImages = container.querySelectorAll('img');
     allImages.forEach((imgEl) => {
       imgEl.setAttribute('referrerpolicy', 'no-referrer');
+      imgEl.classList.add('max-w-full', 'h-auto', 'rounded-xl');
+
+      let attempts = 0;
       imgEl.onerror = () => {
-        const src = imgEl.getAttribute('src');
-        if (src && src.includes('aitoolhindi.online/wp-content/')) {
-          const localSrc = src.replace(/^https?:\/\/[^/]+(\/wp-content\/.+)$/, '$1');
-          if (localSrc !== src) {
-            imgEl.src = localSrc;
+        attempts++;
+        const currentSrc = imgEl.getAttribute('src') || '';
+
+        // Remove srcset and sizes so the browser will load the retry src directly
+        imgEl.removeAttribute('srcset');
+        imgEl.removeAttribute('sizes');
+
+        if (attempts === 1) {
+          if (currentSrc.startsWith('/wp-content/')) {
+            imgEl.src = `https://aitoolhindi.online${currentSrc}`;
+            return;
+          }
+          if (currentSrc.includes('aitoolhindi.online/wp-content/')) {
+            const localSrc = currentSrc.replace(/^https?:\/\/[^/]+(\/wp-content\/.+)$/, '$1');
+            if (localSrc !== currentSrc) {
+              imgEl.src = localSrc;
+              return;
+            }
           }
         }
+
+        // Final fallback to clean placeholder if image cannot be loaded
+        if (!imgEl.src.includes('picsum.photos')) {
+          imgEl.src = 'https://picsum.photos/seed/tutorialcontent/800/450';
+          imgEl.classList.add('opacity-90');
+        }
       };
+    });
+
+    // Fix all iframes and embedded players for responsive mobile display
+    const iframes = container.querySelectorAll('iframe');
+    iframes.forEach((iframe) => {
+      iframe.style.maxWidth = '100%';
+      iframe.removeAttribute('width');
+      iframe.classList.add('w-full', 'max-w-full', 'aspect-video', 'rounded-xl');
+      const parent = iframe.parentElement;
+      if (parent && (parent.classList.contains('wp-block-embed__wrapper') || parent.tagName === 'FIGURE')) {
+        parent.style.maxWidth = '100%';
+        parent.style.overflow = 'hidden';
+      }
+    });
+
+    // Wrap tables in responsive horizontal-scroll container
+    const tables = container.querySelectorAll('table');
+    tables.forEach((table) => {
+      if (!table.parentElement?.classList.contains('table-responsive-wrapper')) {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'table-responsive-wrapper w-full max-w-full overflow-x-auto my-6 border border-slate-200 rounded-xl shadow-sm';
+        table.parentNode?.insertBefore(wrapper, table);
+        wrapper.appendChild(table);
+      }
+    });
+
+    // Constrain pre/code blocks
+    const pres = container.querySelectorAll('pre');
+    pres.forEach((pre) => {
+      pre.classList.add('max-w-full', 'overflow-x-auto', 'whitespace-pre-wrap', 'break-words');
     });
 
     const mediaImages = container.querySelectorAll('img[data-media-image-id]');
@@ -194,7 +246,6 @@ export default function ArticleContent({ content }: { content: string }) {
       }
     });
 
-
     return () => {
       handlers.forEach(({ el, handler }) => {
         el.removeEventListener('click', handler);
@@ -205,7 +256,7 @@ export default function ArticleContent({ content }: { content: string }) {
   return (
     <div 
       ref={containerRef}
-      className="prose prose-slate max-w-none text-black leading-relaxed space-y-4 text-base md:text-lg font-medium [&>h1]:text-2xl [&>h1]:md:text-3xl [&>h1]:font-extrabold [&>h1]:text-black [&>h1]:pt-4 [&>h2]:text-xl [&>h2]:md:text-2xl [&>h2]:font-bold [&>h2]:text-black [&>h2]:pt-3 [&>h3]:text-lg [&>h3]:font-bold [&>h3]:text-black [&_ul]:list-disc [&_ul]:pl-6 [&_ul]:space-y-2 [&_ul]:my-4 [&_ol]:list-decimal [&_ol]:pl-6 [&_ol]:space-y-2 [&_ol]:my-4 [&_li]:my-1 [&>blockquote]:border-l-4 [&>blockquote]:border-orange-600 [&>blockquote]:pl-4 [&>blockquote]:italic [&>blockquote]:text-black [&>blockquote]:my-4 [&>blockquote]:bg-orange-50/50 [&>blockquote]:py-3 [&>blockquote]:rounded-r-xl"
+      className="prose prose-slate max-w-none text-black leading-relaxed space-y-4 text-base md:text-lg font-medium w-full max-w-full break-words [overflow-wrap:anywhere] overflow-hidden [&>h1]:text-2xl [&>h1]:md:text-3xl [&>h1]:font-extrabold [&>h1]:text-black [&>h1]:pt-4 [&>h2]:text-xl [&>h2]:md:text-2xl [&>h2]:font-bold [&>h2]:text-black [&>h2]:pt-3 [&>h3]:text-lg [&>h3]:font-bold [&>h3]:text-black [&_ul]:list-disc [&_ul]:pl-6 [&_ul]:space-y-2 [&_ul]:my-4 [&_ol]:list-decimal [&_ol]:pl-6 [&_ol]:space-y-2 [&_ol]:my-4 [&_li]:my-1 [&>blockquote]:border-l-4 [&>blockquote]:border-orange-600 [&>blockquote]:pl-4 [&>blockquote]:italic [&>blockquote]:text-black [&>blockquote]:my-4 [&>blockquote]:bg-orange-50/50 [&>blockquote]:py-3 [&>blockquote]:rounded-r-xl"
       dangerouslySetInnerHTML={{ __html: processedContent }}
     />
   );

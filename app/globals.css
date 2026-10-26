@@ -40,12 +40,50 @@ tr:hover {
   background-color: #f8fafc;
 }
 
-/* Responsive table wrapper */
+/* Responsive table wrapper and media constraints */
+.prose, .editor-content, article {
+  max-width: 100% !important;
+  overflow-wrap: break-word !important;
+  word-break: break-word !important;
+}
+
 .prose table, .editor-content table {
   display: block;
   width: 100%;
+  max-width: 100%;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
+}
+
+.prose iframe, .editor-content iframe, article iframe {
+  max-width: 100% !important;
+  width: 100% !important;
+  height: auto !important;
+  aspect-ratio: 16 / 9 !important;
+  border-radius: 0.75rem;
+}
+
+.prose figure, .editor-content figure, article figure,
+.wp-block-embed, .wp-block-embed__wrapper, .wp-block-table, .wp-block-image {
+  max-width: 100% !important;
+  width: 100% !important;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+  overflow-x: auto !important;
+}
+
+.prose img, .editor-content img, article img {
+  max-width: 100% !important;
+  height: auto !important;
+  object-fit: cover;
+  border-radius: 0.75rem;
+}
+
+.prose pre, .editor-content pre {
+  max-width: 100% !important;
+  overflow-x: auto !important;
+  white-space: pre-wrap !important;
+  word-break: break-all !important;
 }
 
 /* Added links orange highlight styling strictly inside articles / prose / editor */
