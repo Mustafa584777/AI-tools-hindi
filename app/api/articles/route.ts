@@ -42,8 +42,9 @@ function extractFirstImageAndAlt(content: string, fallbackImage?: string, fallba
     if (!src.startsWith('data:image/')) {
       const imgTag = match[0];
       const altMatch = imgTag.match(/alt=["']([^"']*)["']/i);
-      const alt = altMatch && altMatch[1] ? altMatch[1] : (fallbackAlt || 'AI tutorial featured image');
-      return { image: src, imageAlt: alt };
+      const cleanSrc = src.trim().replace(/[\\\"\']+$/, '');
+      const alt = altMatch && altMatch[1] ? altMatch[1].trim() : (fallbackAlt || 'AI tutorial featured image');
+      return { image: cleanSrc, imageAlt: alt };
     }
   }
 

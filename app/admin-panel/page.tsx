@@ -26,6 +26,7 @@ import {
   downloadPostsJsonFile
 } from '@/lib/storage';
 import { BlogPost } from '@/lib/types';
+import { resolveDisplayImageUrl } from '@/lib/utils';
 
 export interface UnmigratedMediaItem {
   id: string;
@@ -85,6 +86,7 @@ export default function AdminPanelPage() {
   const [blogImage, setBlogImage] = useState('https://picsum.photos/seed/blogdefault/800/450');
   const [blogImageAlt, setBlogImageAlt] = useState('');
   const [blogImageSlug, setBlogImageSlug] = useState('');
+  const [failedImageSrc, setFailedImageSrc] = useState<string | null>(null);
   const [blogStatus, setBlogStatus] = useState<'published' | 'draft'>('published');
   const [blogNoIndex, setBlogNoIndex] = useState(false);
 
@@ -288,6 +290,19 @@ export default function AdminPanelPage() {
 
   const hydrateEditorImages = async (container: HTMLElement) => {
     if (!container) return;
+
+    const allImages = Array.from(container.querySelectorAll('img'));
+    for (const imgEl of allImages) {
+      imgEl.setAttribute('referrerpolicy', 'no-referrer');
+      const currentSrc = imgEl.getAttribute('src');
+      if (currentSrc && (currentSrc.includes('aitoolhindi.online/wp-content/') || currentSrc.startsWith('http://'))) {
+        const resolved = resolveDisplayImageUrl(currentSrc);
+        if (resolved !== currentSrc) {
+          imgEl.setAttribute('src', resolved);
+        }
+      }
+    }
+
     const images = Array.from(container.querySelectorAll('img[data-media-image-id]'));
     for (const imgEl of images) {
       const mediaId = imgEl.getAttribute('data-media-image-id');
@@ -1002,6 +1017,7 @@ export default function AdminPanelPage() {
     setArticleImages(prev => [...prev, newImg]);
     setBlogImage(imageUrl);
     setBlogImageAlt(cleanAlt);
+    setFailedImageSrc(null);
     if (!blogImageSlug) {
       setBlogImageSlug(imgSlug);
     }
@@ -1027,6 +1043,7 @@ export default function AdminPanelPage() {
 
     const imageUrl = await uploadToCloudinary(file);
     setBlogImage(imageUrl);
+    setFailedImageSrc(null);
     if (!blogImageSlug) {
       const cleanSlug = file.name.replace(/\.[^/.]+$/, "").toLowerCase().replace(/[^a-z0-9]+/g, '-');
       setBlogImageSlug(cleanSlug);
@@ -1253,6 +1270,7 @@ export default function AdminPanelPage() {
     setBlogImage('https://picsum.photos/seed/newpost/800/450');
     setBlogImageAlt('');
     setBlogImageSlug('');
+    setFailedImageSrc(null);
     setBlogStatus('published');
     setBlogNoIndex(false);
     setArticleImages([]);
@@ -1294,7 +1312,7 @@ export default function AdminPanelPage() {
         const src = firstImg.getAttribute('src');
         const alt = firstImg.getAttribute('alt');
         if (src && !src.startsWith('data:image/')) {
-          activeImage = src;
+          activeImage = src.trim().replace(/[\\\"\']+$/, '');
           if (alt && alt.trim()) {
             activeAlt = alt.trim();
           }
@@ -1304,6 +1322,7 @@ export default function AdminPanelPage() {
     setBlogImage(activeImage);
     setBlogImageAlt(activeAlt);
     setBlogImageSlug(b.imageSlug || '');
+    setFailedImageSrc(null);
     setBlogStatus(b.status || 'published');
     setBlogNoIndex(!!b.noIndex);
     setArticleImages([]);
@@ -1673,12 +1692,13 @@ export default function AdminPanelPage() {
                   <div className="flex flex-col md:flex-row items-start md:items-center gap-4">
                     <div className="w-32 h-20 relative rounded-xl overflow-hidden bg-slate-200 border border-slate-300 shrink-0">
                       <Image
-                        src={blogImage}
-                        alt="Featured preview"
+                        src={failedImageSrc === blogImage ? 'https://picsum.photos/seed/blogdefault/800/450' : resolveDisplayImageUrl(blogImage)}
+                        alt={blogImageAlt || "Featured preview"}
                         fill
                         sizes="128px"
                         className="object-cover"
                         referrerPolicy="no-referrer"
+                        onError={() => setFailedImageSrc(blogImage)}
                       />
                     </div>
                     <div className="space-y-2 flex-1 w-full">
@@ -1702,7 +1722,10 @@ export default function AdminPanelPage() {
                       <input
                         type="text"
                         value={blogImage.startsWith('data:image/') ? '' : blogImage}
-                        onChange={(e) => setBlogImage(e.target.value)}
+                        onChange={(e) => {
+                          setBlogImage(e.target.value);
+                          setFailedImageSrc(null);
+                        }}
                         placeholder="Or paste direct image URL here (Cloudinary / Web URL)..."
                         className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs text-black font-medium font-mono"
                       />
@@ -2166,7 +2189,7 @@ export default function AdminPanelPage() {
                   <div className="h-40 relative rounded-xl overflow-hidden bg-slate-100 border border-slate-200">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
-                      src={selectedImageEl?.src || ''}
+                      src={resolveDisplayImageUrl(selectedImageEl?.src || '')}
                       alt="Preview"
                       className="w-full h-full object-cover"
                       referrerPolicy="no-referrer"

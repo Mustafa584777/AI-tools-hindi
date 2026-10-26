@@ -52,8 +52,11 @@ function removeManualTOC(doc: Document) {
 function getProcessedContentWithTOC(html: string) {
   if (typeof window === 'undefined') return html;
 
+  // Ensure all aitoolhindi.online wp-content images and videos resolve to the local static path
+  const normalizedHtml = html.replace(/https?:\/\/(?:www\.)?aitoolhindi\.online(\/wp-content\/[^\s"'>]+)/gi, '$1');
+
   const parser = new DOMParser();
-  const doc = parser.parseFromString(html, 'text/html');
+  const doc = parser.parseFromString(normalizedHtml, 'text/html');
 
   // Remove any existing manual TOC first to avoid duplication
   removeManualTOC(doc);
@@ -158,6 +161,20 @@ export default function ArticleContent({ content }: { content: string }) {
           console.warn('Failed to load video chunk from Firestore:', mediaId, e);
         }
       }
+    });
+
+    const allImages = container.querySelectorAll('img');
+    allImages.forEach((imgEl) => {
+      imgEl.setAttribute('referrerpolicy', 'no-referrer');
+      imgEl.onerror = () => {
+        const src = imgEl.getAttribute('src');
+        if (src && src.includes('aitoolhindi.online/wp-content/')) {
+          const localSrc = src.replace(/^https?:\/\/[^/]+(\/wp-content\/.+)$/, '$1');
+          if (localSrc !== src) {
+            imgEl.src = localSrc;
+          }
+        }
+      };
     });
 
     const mediaImages = container.querySelectorAll('img[data-media-image-id]');

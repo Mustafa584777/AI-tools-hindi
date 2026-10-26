@@ -10,6 +10,7 @@ import Footer from '@/components/Footer';
 import { fetchBlogPostsFromDisk, getStoredBlogPostsSync } from '@/lib/storage';
 import { BlogPost } from '@/lib/types';
 import ArticleContent from '@/components/ArticleContent';
+import { resolveDisplayImageUrl } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
 
@@ -119,7 +120,7 @@ export default function SlugPage() {
                 >
                   <div className="h-48 relative w-full bg-slate-200">
                     <Image
-                      src={p.image}
+                      src={resolveDisplayImageUrl(p.image)}
                       alt={p.imageAlt || p.title}
                       fill
                       sizes="(max-width: 768px) 100vw, 33vw"
@@ -246,7 +247,7 @@ export default function SlugPage() {
         <article className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
           <div className="h-72 md:h-96 relative w-full bg-slate-200">
             <Image
-              src={post.image}
+              src={resolveDisplayImageUrl(post.image)}
               alt={post.imageAlt || post.title}
               fill
               sizes="(max-width: 1024px) 100vw, 800px"

@@ -8,6 +8,7 @@ import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import { fetchBlogPostsFromDisk, getStoredBlogPostsSync } from '@/lib/storage';
 import { BlogPost } from '@/lib/types';
+import { resolveDisplayImageUrl } from '@/lib/utils';
 
 export default function HomePage() {
   const [posts, setPosts] = useState<BlogPost[]>([]);
@@ -113,7 +114,7 @@ export default function HomePage() {
                 >
                   <div className="h-48 relative w-full bg-slate-200">
                     <Image
-                      src={post.image}
+                      src={resolveDisplayImageUrl(post.image)}
                       alt={post.imageAlt || post.title}
                       fill
                       sizes="(max-width: 768px) 100vw, 33vw"
