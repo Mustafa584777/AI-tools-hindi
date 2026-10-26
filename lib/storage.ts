@@ -195,7 +195,6 @@ export async function restoreBackupPosts(
 
 // Delete post instantly from cache & posts.json AND sync to Firebase
 export async function deleteBlogPostFromFirestore(id: string): Promise<void> {
-  let updatedPosts: BlogPost[] = [];
   if (typeof window !== 'undefined') {
     try {
       const cached = localStorage.getItem(CACHE_KEY);
@@ -203,7 +202,6 @@ export async function deleteBlogPostFromFirestore(id: string): Promise<void> {
         let posts: BlogPost[] = JSON.parse(cached);
         posts = posts.filter(p => p.id !== id && p.slug !== id);
         localStorage.setItem(CACHE_KEY, JSON.stringify(posts));
-        updatedPosts = posts;
       }
     } catch {}
   }
@@ -215,17 +213,6 @@ export async function deleteBlogPostFromFirestore(id: string): Promise<void> {
     });
   } catch (e) {
     console.warn('Server disk backup delete error:', e);
-  }
-
-  // Also push updated posts array to server API to ensure posts.json matches localStorage perfectly
-  if (updatedPosts.length > 0) {
-    try {
-      await fetch('/api/articles', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updatedPosts)
-      });
-    } catch {}
   }
 
   deleteDoc(doc(db, 'blogPosts', id)).catch(() => {});

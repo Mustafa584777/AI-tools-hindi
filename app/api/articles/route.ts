@@ -178,7 +178,8 @@ export async function DELETE(req: NextRequest) {
       } catch {}
     }
 
-    posts = posts.filter(p => p.id !== id && p.slug !== id);
+    const decodedId = decodeURIComponent(id);
+    posts = posts.filter(p => p.id !== id && p.slug !== id && p.id !== decodedId && p.slug !== decodedId);
     saveToDisk(posts);
 
     return NextResponse.json({ success: true }, {
