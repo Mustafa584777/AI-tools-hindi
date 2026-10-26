@@ -230,14 +230,16 @@ export function getStoredBlogPostsSync(): BlogPost[] {
 
 export async function downloadPostsJsonFile(): Promise<void> {
   try {
-    const res = await fetch('/api/articles');
-    let posts = INITIAL_BLOG_POSTS;
-    if (res.ok) {
-      const data = await res.json();
-      if (data.posts && data.posts.length > 0) {
-        posts = data.posts;
+    let posts: BlogPost[] = getStoredBlogPostsSync();
+    try {
+      const res = await fetch(`/api/articles?t=${Date.now()}`, { cache: 'no-store' });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.posts && Array.isArray(data.posts)) {
+          posts = data.posts;
+        }
       }
-    }
+    } catch {}
 
     const blob = new Blob([JSON.stringify(posts, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);

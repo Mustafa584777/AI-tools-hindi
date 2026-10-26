@@ -166,14 +166,15 @@ export default function ArticleContent({ content }: { content: string }) {
     const allImages = container.querySelectorAll('img');
     allImages.forEach((imgEl) => {
       imgEl.setAttribute('referrerpolicy', 'no-referrer');
-      imgEl.classList.add('max-w-full', 'h-auto', 'rounded-xl');
+      imgEl.classList.add('max-w-full', 'w-full', 'h-auto', 'object-cover', 'rounded-xl', 'my-4', 'mx-auto');
+      imgEl.style.maxWidth = '100%';
+      imgEl.style.height = 'auto';
 
       let attempts = 0;
       imgEl.onerror = () => {
         attempts++;
         const currentSrc = imgEl.getAttribute('src') || '';
 
-        // Remove srcset and sizes so the browser will load the retry src directly
         imgEl.removeAttribute('srcset');
         imgEl.removeAttribute('sizes');
 
@@ -191,9 +192,26 @@ export default function ArticleContent({ content }: { content: string }) {
           }
         }
 
-        // Final fallback to clean placeholder if image cannot be loaded
+        if (attempts === 2 && currentSrc.startsWith('http')) {
+          // Try proxying via fetch-image API
+          fetch(`/api/fetch-image?url=${encodeURIComponent(currentSrc)}`)
+            .then(res => res.json())
+            .then(data => {
+              if (data.dataUrl) {
+                imgEl.src = data.dataUrl;
+              } else {
+                imgEl.src = `https://picsum.photos/seed/${encodeURIComponent(imgEl.alt || 'aitoolhindi')} /800/450`;
+              }
+            })
+            .catch(() => {
+              imgEl.src = `https://picsum.photos/seed/${encodeURIComponent(imgEl.alt || 'aitoolhindi')}/800/450`;
+            });
+          return;
+        }
+
+        // Final fallback
         if (!imgEl.src.includes('picsum.photos')) {
-          imgEl.src = 'https://picsum.photos/seed/tutorialcontent/800/450';
+          imgEl.src = `https://picsum.photos/seed/${encodeURIComponent(imgEl.alt || 'aitoolhindi')}/800/450`;
           imgEl.classList.add('opacity-90');
         }
       };
