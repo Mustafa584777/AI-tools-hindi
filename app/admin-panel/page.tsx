@@ -316,6 +316,8 @@ export default function AdminPanelPage() {
     }
   }, [blogContent, editorMode, isEditingBlog]);
 
+
+
   const updateActiveStates = (el?: HTMLElement | null) => {
     const targetEl = el || selectedBlockElementRef.current;
     if (targetEl) {
@@ -998,6 +1000,11 @@ export default function AdminPanelPage() {
     };
 
     setArticleImages(prev => [...prev, newImg]);
+    setBlogImage(imageUrl);
+    setBlogImageAlt(cleanAlt);
+    if (!blogImageSlug) {
+      setBlogImageSlug(imgSlug);
+    }
 
     const imgHtml = `<img src="${imageUrl}" data-base64="${imageUrl}" alt="${cleanAlt}" data-img-slug="${imgSlug}" class="w-full rounded-2xl my-6 shadow-md object-cover cursor-pointer hover:ring-2 hover:ring-orange-500 transition-all" />\n`;
 
@@ -1277,8 +1284,25 @@ export default function AdminPanelPage() {
     setBlogCategory(cat);
     setIsNewCategoryMode(false);
     setNewCategoryName('');
-    setBlogImage(b.image);
-    setBlogImageAlt(b.imageAlt || '');
+    let activeImage = b.image;
+    let activeAlt = b.imageAlt || '';
+    if (b.content) {
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(b.content, 'text/html');
+      const firstImg = doc.querySelector('img');
+      if (firstImg) {
+        const src = firstImg.getAttribute('src');
+        const alt = firstImg.getAttribute('alt');
+        if (src && !src.startsWith('data:image/')) {
+          activeImage = src;
+          if (alt && alt.trim()) {
+            activeAlt = alt.trim();
+          }
+        }
+      }
+    }
+    setBlogImage(activeImage);
+    setBlogImageAlt(activeAlt);
     setBlogImageSlug(b.imageSlug || '');
     setBlogStatus(b.status || 'published');
     setBlogNoIndex(!!b.noIndex);
