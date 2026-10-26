@@ -43,10 +43,40 @@ export async function fetchBlogPostsFromDisk(_forceRefresh = false): Promise<Blo
   return fetchBlogPostsFromFirestore(_forceRefresh);
 }
 
+export function extractFirstImageAndAlt(content: string, fallbackImage?: string, fallbackAlt?: string): { image: string; imageAlt: string } {
+  if (!content) {
+    return {
+      image: fallbackImage || 'https://picsum.photos/seed/default/800/450',
+      imageAlt: fallbackAlt || 'AI tutorial featured image'
+    };
+  }
+
+  const imgRegex = /<img[^>]+src=["']([^"']+)["'][^>]*>/i;
+  const match = content.match(imgRegex);
+
+  if (match && match[1]) {
+    const src = match[1];
+    if (!src.startsWith('data:image/')) {
+      const imgTag = match[0];
+      const altMatch = imgTag.match(/alt=["']([^"']*)["']/i);
+      const alt = altMatch && altMatch[1] ? altMatch[1] : (fallbackAlt || 'AI tutorial featured image');
+      return { image: src, imageAlt: alt };
+    }
+  }
+
+  return {
+    image: fallbackImage || 'https://picsum.photos/seed/default/800/450',
+    imageAlt: fallbackAlt || 'AI tutorial featured image'
+  };
+}
+
 // Save post instantly to posts.json / cache AND sync to Firebase in the background
 export async function saveBlogPostToFirestore(post: BlogPost): Promise<void> {
+  const { image, imageAlt } = extractFirstImageAndAlt(post.content, post.image, post.imageAlt);
   const postWithTime: BlogPost = {
     ...post,
+    image,
+    imageAlt,
     id: post.id || ('blog-' + (post.slug || Date.now())),
     createdAt: post.createdAt || Date.now()
   };
@@ -90,24 +120,27 @@ export async function restoreBackupPosts(
   importedPosts: any[],
   onProgress?: (current: number, total: number) => void
 ): Promise<number> {
-  const validPosts: BlogPost[] = importedPosts.map((p, idx) => ({
-    id: p.id || ('blog-' + (p.slug || idx)),
-    slug: p.slug || (p.title ? p.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') : ('imported-post-' + idx)),
-    title: p.title || 'Untitled',
-    excerpt: p.excerpt || '',
-    metaDescription: p.metaDescription || '',
-    content: p.content || '',
-    category: p.category || 'AI Guides',
-    author: p.author || 'Anwar',
-    date: p.date || new Date().toLocaleDateString('hi-IN'),
-    readTime: p.readTime || '5 min read',
-    image: p.image || 'https://picsum.photos/seed/newpost/800/450',
-    imageAlt: p.imageAlt || p.title || 'AI tutorial featured image',
-    imageSlug: p.imageSlug || 'ai-tutorial-featured',
-    status: p.status || 'published',
-    noIndex: p.noIndex || false,
-    createdAt: p.createdAt || Date.now()
-  }));
+  const validPosts: BlogPost[] = importedPosts.map((p, idx) => {
+    const { image, imageAlt } = extractFirstImageAndAlt(p.content, p.image, p.imageAlt);
+    return {
+      id: p.id || ('blog-' + (p.slug || idx)),
+      slug: p.slug || (p.title ? p.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') : ('imported-post-' + idx)),
+      title: p.title || 'Untitled',
+      excerpt: p.excerpt || '',
+      metaDescription: p.metaDescription || '',
+      content: p.content || '',
+      category: p.category || 'AI Guides',
+      author: p.author || 'Anwar',
+      date: p.date || new Date().toLocaleDateString('hi-IN'),
+      readTime: p.readTime || '5 min read',
+      image,
+      imageAlt,
+      imageSlug: p.imageSlug || 'ai-tutorial-featured',
+      status: p.status || 'published',
+      noIndex: p.noIndex || false,
+      createdAt: p.createdAt || Date.now()
+    };
+  });
 
   if (typeof window !== 'undefined') {
     try {

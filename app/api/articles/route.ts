@@ -26,6 +26,33 @@ export async function GET() {
   }
 }
 
+function extractFirstImageAndAlt(content: string, fallbackImage?: string, fallbackAlt?: string): { image: string; imageAlt: string } {
+  if (!content) {
+    return {
+      image: fallbackImage || 'https://picsum.photos/seed/default/800/450',
+      imageAlt: fallbackAlt || 'AI tutorial featured image'
+    };
+  }
+
+  const imgRegex = /<img[^>]+src=["']([^"']+)["'][^>]*>/i;
+  const match = content.match(imgRegex);
+
+  if (match && match[1]) {
+    const src = match[1];
+    if (!src.startsWith('data:image/')) {
+      const imgTag = match[0];
+      const altMatch = imgTag.match(/alt=["']([^"']*)["']/i);
+      const alt = altMatch && altMatch[1] ? altMatch[1] : (fallbackAlt || 'AI tutorial featured image');
+      return { image: src, imageAlt: alt };
+    }
+  }
+
+  return {
+    image: fallbackImage || 'https://picsum.photos/seed/default/800/450',
+    imageAlt: fallbackAlt || 'AI tutorial featured image'
+  };
+}
+
 export async function POST(req: NextRequest) {
   try {
     ensureDataFile();
@@ -40,17 +67,18 @@ export async function POST(req: NextRequest) {
       const postMap = new Map<string, BlogPost>();
       posts.forEach(p => postMap.set(p.slug || p.id, p));
       body.forEach(p => {
-        // Strip base64 data URIs from content if requested to keep json light
+        const { image, imageAlt } = extractFirstImageAndAlt(p.content, p.image, p.imageAlt);
         const cleanContent = p.content ? p.content.replace(/src="data:image\/[^"]+"/g, 'src=""') : '';
-        const cleanImage = p.image && p.image.startsWith('data:image/') ? 'https://aitoolhindi.online/wp-content/uploads/default.webp' : p.image;
-        postMap.set(p.slug || p.id, { ...p, content: cleanContent, image: cleanImage });
+        const cleanImage = image && image.startsWith('data:image/') ? 'https://aitoolhindi.online/wp-content/uploads/default.webp' : image;
+        postMap.set(p.slug || p.id, { ...p, content: cleanContent, image: cleanImage, imageAlt });
       });
       posts = Array.from(postMap.values());
     } else {
       const p = body as BlogPost;
+      const { image, imageAlt } = extractFirstImageAndAlt(p.content, p.image, p.imageAlt);
       const cleanContent = p.content ? p.content.replace(/src="data:image\/[^"]+"/g, 'src=""') : '';
-      const cleanImage = p.image && p.image.startsWith('data:image/') ? 'https://aitoolhindi.online/wp-content/uploads/default.webp' : p.image;
-      const sanitizedPost = { ...p, content: cleanContent, image: cleanImage };
+      const cleanImage = image && image.startsWith('data:image/') ? 'https://aitoolhindi.online/wp-content/uploads/default.webp' : image;
+      const sanitizedPost = { ...p, content: cleanContent, image: cleanImage, imageAlt };
 
       const index = posts.findIndex(existing => existing.id === sanitizedPost.id || existing.slug === sanitizedPost.slug);
       if (index >= 0) {
