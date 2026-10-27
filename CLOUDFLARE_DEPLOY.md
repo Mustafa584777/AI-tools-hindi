@@ -1,17 +1,16 @@
-# Cloudflare Pages & Workers Deployment Guide
+# Cloudflare Pages Deployment Guide (Fixed)
 
-To deploy `aitoolhindi.online` successfully to Cloudflare Pages, use the exact configuration below (as seen in your Cloudflare dashboard):
+To prevent infinite build recursion loops on Cloudflare Pages, follow these exact settings:
 
 ## ⚙️ Cloudflare Pages Dashboard Settings:
 
-1. **Framework preset**: `None` (or custom)
-2. **Build command**: `npm run build`
+1. **Framework preset**: `None`
+2. **Build command**: `npx @opennextjs/cloudflare` *(DO NOT use `npm run build` here)*
 3. **Build output directory**: `.open-next`
 4. **Root directory**: `/` (Leave empty)
 
 ---
 
-## 📄 Required Files Configured:
-- **`wrangler.toml`**: Configured with `pages_build_output_dir = ".open-next"` and `nodejs_compat`.
-- **`open-next.config.ts`**: OpenNext Cloudflare adapter settings.
-- **`package.json`**: `"build"` script is set to `npx opennextjs-cloudflare build` which automatically compiles Next.js and generates the `.open-next` output directory.
+## 🛠️ How It Works:
+- **`package.json` `"build"` script** is set to `"next build"`.
+- When Cloudflare runs `npx @opennextjs/cloudflare`, OpenNext triggers `"next build"` safely once, packages the output into `.open-next`, and deploys successfully without infinite looping.
