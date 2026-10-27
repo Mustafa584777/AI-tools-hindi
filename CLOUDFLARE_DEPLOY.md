@@ -1,45 +1,17 @@
-# Cloudflare Deployment Guide for Aitoolhindi.online
+# Cloudflare Pages & Workers Deployment Guide
 
-This Next.js application is fully configured for seamless deployment to **Cloudflare Workers / Pages** using **OpenNext** (`@opennextjs/cloudflare`).
+To deploy `aitoolhindi.online` successfully to Cloudflare Pages, use the exact configuration below (as seen in your Cloudflare dashboard):
 
-## 📁 Cloudflare Configuration Files Created:
-1. **`wrangler.jsonc`**: Defines worker settings, `nodejs_compat` compatibility flags, and static asset bindings (`.open-next/assets`).
-2. **`open-next.config.ts`**: Configures the OpenNext Cloudflare adapter.
-3. **`package.json`**: Updated with build, preview, and deploy scripts.
+## ⚙️ Cloudflare Pages Dashboard Settings:
 
----
-
-## 🚀 How to Build and Deploy
-
-### 1. Build for Cloudflare
-To build your Next.js application into Cloudflare worker format:
-```bash
-npm run build
-```
-*(This runs `npx opennextjs-cloudflare build`)*
-
-### 2. Preview Locally (Wrangler Runtime)
-To test and preview the production build locally inside Cloudflare's `workerd` runtime:
-```bash
-npm run preview
-```
-
-### 3. Deploy to Cloudflare
-To deploy live to Cloudflare Workers:
-1. Log in to your Cloudflare account via Wrangler (if not already logged in):
-   ```bash
-   npx wrangler login
-   ```
-2. Run the deployment command:
-   ```bash
-   npm run deploy
-   ```
+1. **Framework preset**: `None` (or custom)
+2. **Build command**: `npm run build`
+3. **Build output directory**: `.open-next`
+4. **Root directory**: `/` (Leave empty)
 
 ---
 
-### 🌐 Deploying via Cloudflare Dashboard (Pages)
-If you prefer connecting your GitHub repository to **Cloudflare Pages**:
-- **Framework preset**: `Next.js (OpenNext)`
-- **Build command**: `npm run build`
-- **Build output directory**: `.open-next`
-- **Node.js version**: `20+` or `22+`
+## 📄 Required Files Configured:
+- **`wrangler.toml`**: Configured with `pages_build_output_dir = ".open-next"` and `nodejs_compat`.
+- **`open-next.config.ts`**: OpenNext Cloudflare adapter settings.
+- **`package.json`**: `"build"` script is set to `npx opennextjs-cloudflare build` which automatically compiles Next.js and generates the `.open-next` output directory.
