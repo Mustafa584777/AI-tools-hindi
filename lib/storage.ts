@@ -1,18 +1,69 @@
 import { BlogPost } from './types';
-import { db } from './firebase';
+import { db, auth } from './firebase';
 import { doc, setDoc, deleteDoc, getDoc, collection, getDocs } from 'firebase/firestore';
 import articlesBackup from '../data/posts.json';
 
+export enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
+
+export interface FirestoreErrorInfo {
+  error: string;
+  operationType: OperationType;
+  path: string | null;
+  authInfo: {
+    userId?: string | null;
+    email?: string | null;
+    emailVerified?: boolean | null;
+    isAnonymous?: boolean | null;
+    tenantId?: string | null;
+    providerInfo?: {
+      providerId?: string | null;
+      email?: string | null;
+    }[];
+  };
+}
+
+export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null): never {
+  const errInfo: FirestoreErrorInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {
+      userId: auth?.currentUser?.uid,
+      email: auth?.currentUser?.email,
+      emailVerified: auth?.currentUser?.emailVerified,
+      isAnonymous: auth?.currentUser?.isAnonymous,
+      tenantId: auth?.currentUser?.tenantId,
+      providerInfo: auth?.currentUser?.providerData?.map(provider => ({
+        providerId: provider.providerId,
+        email: provider.email,
+      })) || []
+    },
+    operationType,
+    path
+  };
+  console.error('Firestore Error: ', JSON.stringify(errInfo));
+  throw new Error(JSON.stringify(errInfo));
+}
+
 export const INITIAL_BLOG_POSTS: BlogPost[] = (articlesBackup as unknown as BlogPost[]) || [];
 
-const CACHE_KEY = 'aitoolhindi_posts_cache_v4';
+const PUBLIC_CACHE_KEY = 'aitoolhindi_public_posts_v5';
+const ADMIN_CACHE_KEY = 'aitoolhindi_admin_posts_cache_v5';
 
-// Instant load for both Admin and Main Site using posts.json & localStorage (0 network wait for Firestore)
-// Main site loader: loads from posts.json (API / Disk / Cache), NOT from Firebase
-export async function fetchBlogPostsFromFirestore(_forceRefresh = false): Promise<BlogPost[]> {
-  if (typeof window !== 'undefined' && !_forceRefresh) {
+// =========================================================================
+// 1. PUBLIC SITE LOADERS:
+// Strictly reads from posts.json (API or disk/repo).
+// NEVER touches Firebase, ensuring zero latency, zero quota, and pure posts.json delivery.
+// =========================================================================
+export async function fetchBlogPostsFromDisk(): Promise<BlogPost[]> {
+  if (typeof window !== 'undefined') {
     try {
-      const cached = localStorage.getItem(CACHE_KEY);
+      const cached = localStorage.getItem(PUBLIC_CACHE_KEY);
       if (cached) {
         const parsed: BlogPost[] = JSON.parse(cached);
         if (Array.isArray(parsed) && parsed.length > 0) {
@@ -28,7 +79,7 @@ export async function fetchBlogPostsFromFirestore(_forceRefresh = false): Promis
       const data = await res.json();
       if (data.posts && Array.isArray(data.posts) && data.posts.length > 0) {
         if (typeof window !== 'undefined') {
-          localStorage.setItem(CACHE_KEY, JSON.stringify(data.posts));
+          localStorage.setItem(PUBLIC_CACHE_KEY, JSON.stringify(data.posts));
         }
         return data.posts;
       }
@@ -40,8 +91,85 @@ export async function fetchBlogPostsFromFirestore(_forceRefresh = false): Promis
   return INITIAL_BLOG_POSTS;
 }
 
-export async function fetchBlogPostsFromDisk(_forceRefresh = false): Promise<BlogPost[]> {
-  return fetchBlogPostsFromFirestore(_forceRefresh);
+export async function fetchBlogPostsFromFirestore(): Promise<BlogPost[]> {
+  // Alias for public consumer pages
+  return fetchBlogPostsFromDisk();
+}
+
+export function getStoredBlogPostsSync(): BlogPost[] {
+  if (typeof window !== 'undefined') {
+    try {
+      const cached = localStorage.getItem(PUBLIC_CACHE_KEY);
+      if (cached) {
+        const posts: BlogPost[] = JSON.parse(cached);
+        if (posts.length > 0) return posts;
+      }
+    } catch {}
+  }
+  return INITIAL_BLOG_POSTS;
+}
+
+// =========================================================================
+// 2. ADMIN PANEL OPERATIONS:
+// Directly connected to Firebase Firestore for real-time CRUD and export.
+// =========================================================================
+
+// Fetch all posts directly from Firebase Firestore for Admin Panel
+export async function fetchAdminBlogPostsFromFirestore(forceRefresh = false): Promise<BlogPost[]> {
+  if (typeof window !== 'undefined' && !forceRefresh) {
+    try {
+      const cached = localStorage.getItem(ADMIN_CACHE_KEY);
+      if (cached) {
+        const parsed: BlogPost[] = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed;
+        }
+      }
+    } catch {}
+  }
+
+  try {
+    if (!db) throw new Error('Firestore DB is not initialized');
+    const querySnapshot = await getDocs(collection(db, 'blogPosts'));
+    const slugMap = new Map<string, BlogPost>();
+
+    querySnapshot.forEach((docSnap) => {
+      const data = docSnap.data() as BlogPost;
+      const rawSlug = (data.slug || docSnap.id.replace(/^blog-/, '')).trim();
+      if (!rawSlug) return;
+      const cleanSlug = rawSlug.toLowerCase().replace(/[^a-z0-9\-]+/g, '-').replace(/^-+|-+$/g, '');
+      const canonicalId = 'blog-' + cleanSlug;
+
+      const normalized: BlogPost = {
+        ...data,
+        id: canonicalId,
+        slug: cleanSlug,
+        createdAt: data.createdAt || Date.now()
+      };
+
+      const existing = slugMap.get(cleanSlug);
+      if (!existing || (normalized.createdAt || 0) >= (existing.createdAt || 0)) {
+        slugMap.set(cleanSlug, normalized);
+      }
+    });
+
+    if (slugMap.size > 0) {
+      const posts = Array.from(slugMap.values());
+      posts.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+
+      if (typeof window !== 'undefined') {
+        try {
+          localStorage.setItem(ADMIN_CACHE_KEY, JSON.stringify(posts));
+        } catch {}
+      }
+      return posts;
+    }
+  } catch (error) {
+    console.error('Failed to fetch blog posts from Firestore:', error);
+    handleFirestoreError(error, OperationType.LIST, 'blogPosts');
+  }
+
+  return INITIAL_BLOG_POSTS;
 }
 
 export function extractFirstImageAndAlt(
@@ -92,70 +220,79 @@ export function extractFirstImageAndAlt(
   };
 }
 
-// Save post instantly to Firebase Firestore AND sync to posts.json / cache
-export async function saveBlogPostToFirestore(post: BlogPost): Promise<void> {
+// Save post directly to Firebase Firestore
+export async function saveBlogPostToFirestore(post: BlogPost): Promise<BlogPost> {
   const { image, imageAlt } = extractFirstImageAndAlt(post.content, post.image, post.imageAlt, post.title);
+  
+  const rawSlug = (post.slug || post.title).trim();
+  const cleanSlug = rawSlug.toLowerCase().replace(/[^a-z0-9\-]+/g, '-').replace(/^-+|-+$/g, '') || ('post-' + Date.now());
+  const canonicalId = 'blog-' + cleanSlug;
+
   const postWithTime: BlogPost = {
     ...post,
+    id: canonicalId,
+    slug: cleanSlug,
     image,
     imageAlt,
-    id: post.id || ('blog-' + (post.slug || Date.now())),
     createdAt: post.createdAt || Date.now()
   };
 
-  // 1. Sync to Firebase Firestore INSTANTLY and await (Requirement 2)
+  // 1. Save directly to Firebase Firestore
   try {
-    if (db) {
-      await setDoc(doc(db, 'blogPosts', postWithTime.id), postWithTime);
-      // Clean up legacy duplicate document if slug was previously used as document id
-      if (postWithTime.slug && postWithTime.slug !== postWithTime.id) {
-        await deleteDoc(doc(db, 'blogPosts', postWithTime.slug)).catch(() => {});
-      }
+    if (!db) throw new Error('Firebase Firestore DB is not initialized');
+    await setDoc(doc(db, 'blogPosts', canonicalId), postWithTime);
+
+    // Clean up any legacy or duplicate document with old ID or bare slug
+    const oldIdsToClean = new Set<string>();
+    if (post.id && post.id !== canonicalId) oldIdsToClean.add(post.id);
+    if (cleanSlug !== canonicalId) oldIdsToClean.add(cleanSlug);
+    if (post.slug && post.slug !== cleanSlug) {
+      oldIdsToClean.add(post.slug);
+      oldIdsToClean.add('blog-' + post.slug);
     }
-  } catch (e) {
-    console.warn('Firestore save warning:', e);
+
+    for (const oldId of oldIdsToClean) {
+      try {
+        await deleteDoc(doc(db, 'blogPosts', oldId));
+      } catch {}
+    }
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, `blogPosts/${canonicalId}`);
   }
 
-  // 2. Update localStorage cache instantly
-  let allPosts: BlogPost[] = [];
+  // 2. Update Admin localStorage cache so admin panel updates immediately
   if (typeof window !== 'undefined') {
     try {
-      const cached = localStorage.getItem(CACHE_KEY);
-      let posts: BlogPost[] = cached ? JSON.parse(cached) : INITIAL_BLOG_POSTS;
-      const index = posts.findIndex(p => p.id === postWithTime.id || p.slug === postWithTime.slug);
+      const cached = localStorage.getItem(ADMIN_CACHE_KEY);
+      let adminPosts: BlogPost[] = cached ? JSON.parse(cached) : [];
+      const index = adminPosts.findIndex(p => p.id === canonicalId || p.slug === cleanSlug);
       if (index >= 0) {
-        posts[index] = postWithTime;
+        adminPosts[index] = postWithTime;
       } else {
-        posts.unshift(postWithTime);
+        adminPosts.unshift(postWithTime);
       }
-      posts.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-      localStorage.setItem(CACHE_KEY, JSON.stringify(posts));
-      allPosts = posts;
+      adminPosts.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+      localStorage.setItem(ADMIN_CACHE_KEY, JSON.stringify(adminPosts));
     } catch {}
   }
 
-  // 3. Instantly update posts.json on server disk
-  try {
-    await fetch('/api/articles', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(allPosts.length > 0 ? allPosts : postWithTime)
-    });
-  } catch (apiErr) {
-    console.warn('Server disk backup update error:', apiErr);
-  }
+  return postWithTime;
 }
 
-// Restore backup posts instantly to posts.json / cache AND sync to Firebase
+// Restore backup posts to Firebase Firestore
 export async function restoreBackupPosts(
   importedPosts: any[],
   onProgress?: (current: number, total: number) => void
 ): Promise<number> {
   const validPosts: BlogPost[] = importedPosts.map((p, idx) => {
     const { image, imageAlt } = extractFirstImageAndAlt(p.content, p.image, p.imageAlt, p.title);
+    const rawSlug = (p.slug || (p.title ? p.title.toLowerCase().replace(/[^a-z0-9\-]+/g, '-').replace(/^-+|-+$/g, '') : ('imported-post-' + idx))).trim();
+    const cleanSlug = rawSlug.toLowerCase().replace(/[^a-z0-9\-]+/g, '-').replace(/^-+|-+$/g, '');
+    const canonicalId = 'blog-' + cleanSlug;
+
     return {
-      id: p.id || ('blog-' + (p.slug || idx)),
-      slug: p.slug || (p.title ? p.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') : ('imported-post-' + idx)),
+      id: canonicalId,
+      slug: cleanSlug,
       title: p.title || 'Untitled',
       excerpt: p.excerpt || '',
       metaDescription: p.metaDescription || '',
@@ -175,23 +312,17 @@ export async function restoreBackupPosts(
 
   if (typeof window !== 'undefined') {
     try {
-      localStorage.setItem(CACHE_KEY, JSON.stringify(validPosts));
+      localStorage.setItem(ADMIN_CACHE_KEY, JSON.stringify(validPosts));
     } catch {}
-  }
-
-  try {
-    await fetch('/api/articles', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(validPosts)
-    });
-  } catch (e) {
-    console.warn('Server disk backup update error during restore:', e);
   }
 
   let completed = 0;
   for (const post of validPosts) {
-    await setDoc(doc(db, 'blogPosts', post.id), post).catch(() => {});
+    try {
+      await setDoc(doc(db, 'blogPosts', post.id), post);
+    } catch (e) {
+      console.warn('Restore doc notice:', post.id, e);
+    }
     completed++;
     if (onProgress) {
       onProgress(completed, validPosts.length);
@@ -201,143 +332,102 @@ export async function restoreBackupPosts(
   return validPosts.length;
 }
 
-// Delete post permanently from cache, disk posts.json AND Firebase Firestore
-export async function deleteBlogPostFromFirestore(id: string): Promise<void> {
-  let targetSlug = '';
-  if (typeof window !== 'undefined') {
-    try {
-      const cached = localStorage.getItem(CACHE_KEY);
-      if (cached) {
-        let posts: BlogPost[] = JSON.parse(cached);
-        const target = posts.find(p => p.id === id || p.slug === id);
-        if (target && target.slug) {
-          targetSlug = target.slug;
-        }
-        posts = posts.filter(p => p.id !== id && p.slug !== id && p.id !== decodeURIComponent(id) && p.slug !== decodeURIComponent(id));
-        if (targetSlug) {
-          posts = posts.filter(p => p.id !== targetSlug && p.slug !== targetSlug);
-        }
-        localStorage.setItem(CACHE_KEY, JSON.stringify(posts));
-      }
-    } catch {}
-  }
-
-  // 1. Delete from Server Disk (data/posts.json and public/posts.json)
-  try {
-    await fetch(`/api/articles?id=${encodeURIComponent(id)}&slug=${encodeURIComponent(targetSlug)}`, {
-      method: 'DELETE',
-      cache: 'no-store'
-    });
-  } catch (e) {
-    console.warn('Server disk backup delete error:', e);
-  }
-
-  // 2. Delete permanently from Firebase Firestore (all potential doc IDs & duplicates)
+// Delete post permanently from Firebase Firestore
+export async function deleteBlogPostFromFirestore(id: string, targetSlug?: string): Promise<void> {
   const cleanId = (id || '').trim();
-  const decodedId = cleanId ? decodeURIComponent(cleanId) : '';
-  const withoutBlogId = cleanId.replace(/^blog-/, '');
-  const withBlogId = cleanId.startsWith('blog-') ? cleanId : ('blog-' + cleanId);
-
-  const cleanSlug = (targetSlug || '').trim();
-  const decodedSlug = cleanSlug ? decodeURIComponent(cleanSlug) : '';
-  const withoutBlogSlug = cleanSlug.replace(/^blog-/, '');
-  const withBlogSlug = cleanSlug.startsWith('blog-') ? cleanSlug : ('blog-' + cleanSlug);
+  const slugFromId = cleanId.replace(/^blog-/, '');
+  const cleanSlug = (targetSlug || slugFromId || '').trim();
 
   const keysToDelete = new Set([
-    cleanId, decodedId, withoutBlogId, withBlogId,
-    cleanSlug, decodedSlug, withoutBlogSlug, withBlogSlug
+    cleanId,
+    cleanSlug,
+    'blog-' + cleanSlug,
+    cleanId.startsWith('blog-') ? cleanId : ('blog-' + cleanId),
+    cleanId.replace(/^blog-/, '')
   ].filter(Boolean));
 
-  for (const docKey of keysToDelete) {
-    try {
-      await deleteDoc(doc(db, 'blogPosts', docKey));
-    } catch (e) {
-      console.warn('Firestore doc delete warning:', docKey, e);
-    }
-  }
-
-  // Query Firestore collection to purge any matching documents by field value
+  // 1. Delete from Firebase Firestore
   try {
-    const snap = await getDocs(collection(db, 'blogPosts'));
-    const deletePromises: Promise<void>[] = [];
-    snap.forEach((docSnap) => {
-      const data = docSnap.data() as BlogPost;
-      const dId = (data?.id || docSnap.id || '').trim();
-      const dSlug = (data?.slug || '').trim();
-      if (keysToDelete.has(docSnap.id) || keysToDelete.has(dId) || keysToDelete.has(dSlug)) {
-        deletePromises.push(deleteDoc(doc(db, 'blogPosts', docSnap.id)));
-      }
-    });
-    await Promise.all(deletePromises);
-  } catch (e) {
-    console.warn('Firestore collection purge warning:', e);
-  }
-}
+    if (!db) throw new Error('Firebase Firestore DB is not initialized');
+    for (const docKey of keysToDelete) {
+      try {
+        await deleteDoc(doc(db, 'blogPosts', docKey));
+      } catch {}
+    }
 
-export function getStoredBlogPostsSync(): BlogPost[] {
+    // Scan Firestore collection to purge any matching documents
+    const snap = await getDocs(collection(db, 'blogPosts'));
+    for (const docSnap of snap.docs) {
+      const d = docSnap.data() as BlogPost;
+      const dSlug = (d?.slug || '').trim().toLowerCase();
+      if (dSlug === cleanSlug.toLowerCase() || keysToDelete.has(docSnap.id)) {
+        await deleteDoc(doc(db, 'blogPosts', docSnap.id)).catch(() => {});
+      }
+    }
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, `blogPosts/${cleanId}`);
+  }
+
+  // 2. Remove from Admin localStorage cache
   if (typeof window !== 'undefined') {
     try {
-      const cached = localStorage.getItem(CACHE_KEY);
+      const cached = localStorage.getItem(ADMIN_CACHE_KEY);
       if (cached) {
-        const posts: BlogPost[] = JSON.parse(cached);
-        if (posts.length > 0) return posts;
+        let adminPosts: BlogPost[] = JSON.parse(cached);
+        adminPosts = adminPosts.filter(p => {
+          const pId = (p.id || '').trim();
+          const pSlug = (p.slug || '').trim();
+          return !keysToDelete.has(pId) && !keysToDelete.has(pSlug) && pSlug !== cleanSlug;
+        });
+        localStorage.setItem(ADMIN_CACHE_KEY, JSON.stringify(adminPosts));
       }
     } catch {}
   }
-  return INITIAL_BLOG_POSTS;
 }
 
-export async function downloadPostsJsonFile(): Promise<void> {
+// Export / Download posts.json directly from Firebase Firestore with latest updates
+export async function downloadPostsJsonFile(): Promise<number> {
   try {
-    let posts: BlogPost[] = [];
+    if (!db) throw new Error('Firebase Firestore DB is not initialized');
+    const querySnapshot = await getDocs(collection(db, 'blogPosts'));
+    const slugMap = new Map<string, BlogPost>();
 
-    // Connect directly to Firebase Firestore to download latest updates (Requirement 2)
-    try {
-      if (db) {
-        const querySnapshot = await getDocs(collection(db, 'blogPosts'));
-        const firestorePostsMap = new Map<string, BlogPost>();
-        querySnapshot.forEach((docSnap) => {
-          const data = docSnap.data() as BlogPost;
-          if (data && (data.id || data.slug || docSnap.id)) {
-            const key = data.id || ('blog-' + data.slug) || docSnap.id;
-            const normalized: BlogPost = {
-              ...data,
-              id: data.id || docSnap.id,
-              slug: data.slug || docSnap.id.replace(/^blog-/, '')
-            };
-            firestorePostsMap.set(key, normalized);
-          }
-        });
-        if (firestorePostsMap.size > 0) {
-          posts = Array.from(firestorePostsMap.values());
-        }
+    querySnapshot.forEach((docSnap) => {
+      const data = docSnap.data() as BlogPost;
+      const rawSlug = (data.slug || docSnap.id.replace(/^blog-/, '')).trim();
+      if (!rawSlug) return;
+      const cleanSlug = rawSlug.toLowerCase().replace(/[^a-z0-9\-]+/g, '-').replace(/^-+|-+$/g, '');
+      const canonicalId = 'blog-' + cleanSlug;
+
+      const normalized: BlogPost = {
+        ...data,
+        id: canonicalId,
+        slug: cleanSlug,
+        createdAt: data.createdAt || Date.now()
+      };
+
+      const existing = slugMap.get(cleanSlug);
+      if (!existing || (normalized.createdAt || 0) >= (existing.createdAt || 0)) {
+        slugMap.set(cleanSlug, normalized);
       }
-    } catch (e) {
-      console.warn('Firestore download fetch warning:', e);
-    }
+    });
 
+    let posts = Array.from(slugMap.values());
     if (posts.length === 0) {
-      posts = getStoredBlogPostsSync();
+      posts = INITIAL_BLOG_POSTS;
     }
 
     posts.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
 
-    // Update local cache and server disk with latest Firebase data
+    // Update Admin cache with verified Firestore state
     if (typeof window !== 'undefined') {
       try {
-        localStorage.setItem(CACHE_KEY, JSON.stringify(posts));
+        localStorage.setItem(ADMIN_CACHE_KEY, JSON.stringify(posts));
       } catch {}
     }
 
-    try {
-      await fetch('/api/articles', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(posts)
-      });
-    } catch {}
-
-    const blob = new Blob([JSON.stringify(posts, null, 2)], { type: 'application/json' });
+    const jsonStr = JSON.stringify(posts, null, 2);
+    const blob = new Blob([jsonStr], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -346,17 +436,22 @@ export async function downloadPostsJsonFile(): Promise<void> {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-  } catch (e) {
-    console.error('Error downloading posts.json from Firebase:', e);
+
+    return posts.length;
+  } catch (error) {
+    console.error('Error downloading posts.json from Firebase:', error);
+    handleFirestoreError(error, OperationType.GET, 'blogPosts');
   }
 }
 
 export function clearClientCache(): void {
   if (typeof window !== 'undefined') {
-    localStorage.removeItem(CACHE_KEY);
+    localStorage.removeItem(ADMIN_CACHE_KEY);
+    localStorage.removeItem(PUBLIC_CACHE_KEY);
   }
 }
 
+// Media storage helpers
 const videoCache = new Map<string, string>();
 
 export async function saveMediaVideoToFirestore(mediaId: string, base64Data: string): Promise<void> {

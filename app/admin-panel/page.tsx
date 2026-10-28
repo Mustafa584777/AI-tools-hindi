@@ -12,7 +12,7 @@ import {
   Video, Search, AlertCircle 
 } from 'lucide-react';
 import { 
-  fetchBlogPostsFromFirestore, 
+  fetchAdminBlogPostsFromFirestore, 
   saveBlogPostToFirestore, 
   deleteBlogPostFromFirestore,
   getStoredBlogPostsSync,
@@ -63,7 +63,18 @@ interface AIAnalysis {
 const CATEGORIES_KEY = 'aitoolhindi_categories_v1';
 
 export default function AdminPanelPage() {
-  const [posts, setPosts] = useState<BlogPost[]>(() => getStoredBlogPostsSync());
+  const [posts, setPosts] = useState<BlogPost[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = localStorage.getItem('aitoolhindi_admin_posts_cache_v5');
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        }
+      } catch {}
+    }
+    return getStoredBlogPostsSync();
+  });
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<'tutorials' | 'categories'>('tutorials');
   const [tutorialSubTab, setTutorialSubTab] = useState<'published' | 'draft'>('published');
@@ -176,8 +187,9 @@ export default function AdminPanelPage() {
   };
 
   const loadData = async (force = false) => {
+    setLoading(true);
     try {
-      const data = await fetchBlogPostsFromFirestore(force);
+      const data = await fetchAdminBlogPostsFromFirestore(force);
       setPosts(data);
 
       if (typeof window !== 'undefined') {
@@ -190,9 +202,10 @@ export default function AdminPanelPage() {
           setCustomCategories(Array.from(new Set(['AI Guides', 'Image Tutorials', 'Video Tutorials', ...derivedCats])));
         }
       }
-    } catch {
-      const fallback = getStoredBlogPostsSync();
-      setPosts(fallback);
+    } catch (err) {
+      console.error('Error loading Firestore data in admin:', err);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -1220,6 +1233,16 @@ export default function AdminPanelPage() {
     showNotify('All site articles backup exported successfully!');
   };
 
+  const handleDownloadPostsJson = async () => {
+    try {
+      showNotify('Connecting to Firebase and preparing posts.json...');
+      const count = await downloadPostsJsonFile();
+      showNotify(`✓ Downloaded posts.json with ${count} articles from Firebase! Replace this in GitHub to update live site.`);
+    } catch (err) {
+      alert('Error downloading from Firebase: ' + (err as Error).message);
+    }
+  };
+
   const handleImportBackup = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -1464,9 +1487,18 @@ export default function AdminPanelPage() {
         noIndex: blogNoIndex
       };
 
-      await saveBlogPostToFirestore(postToSave);
+      const savedPost = await saveBlogPostToFirestore(postToSave);
+      setPosts(prev => {
+        const index = prev.findIndex(p => p.id === savedPost.id || p.slug === savedPost.slug);
+        if (index >= 0) {
+          const updated = [...prev];
+          updated[index] = savedPost;
+          return updated;
+        }
+        return [savedPost, ...prev];
+      });
       await loadData(true);
-      showNotify(editingBlogId ? 'Tutorial updated & synced with Firebase!' : 'New tutorial published to Firebase!');
+      showNotify(editingBlogId ? 'Tutorial updated in Firebase! Click "Download posts.json" to export for GitHub.' : 'New tutorial saved in Firebase! Click "Download posts.json" to export for GitHub.');
       setIsEditingBlog(false);
     } catch (err) {
       alert('Error saving to Firebase: ' + (err as Error).message);
@@ -1476,15 +1508,15 @@ export default function AdminPanelPage() {
   };
 
   const handleDeleteBlog = async (id: string) => {
-    if (confirm('Are you sure you want to delete this tutorial post?')) {
+    if (confirm('Are you sure you want to delete this tutorial post from Firebase?')) {
       try {
         const postTarget = posts.find(p => p.id === id || p.slug === id);
         const targetSlug = postTarget?.slug || '';
         // Immediate UI update
         setPosts(prev => prev.filter(p => p.id !== id && p.slug !== id && (targetSlug ? p.slug !== targetSlug : true)));
-        await deleteBlogPostFromFirestore(id);
+        await deleteBlogPostFromFirestore(id, targetSlug);
         await loadData(true);
-        showNotify('Tutorial deleted permanently from Firebase and disk.');
+        showNotify('Tutorial deleted permanently from Firebase! Click Download posts.json to export updated list.');
       } catch (err) {
         alert('Error deleting: ' + (err as Error).message);
         await loadData(true);
