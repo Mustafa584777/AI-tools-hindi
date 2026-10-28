@@ -1478,11 +1478,16 @@ export default function AdminPanelPage() {
   const handleDeleteBlog = async (id: string) => {
     if (confirm('Are you sure you want to delete this tutorial post?')) {
       try {
+        const postTarget = posts.find(p => p.id === id || p.slug === id);
+        const targetSlug = postTarget?.slug || '';
+        // Immediate UI update
+        setPosts(prev => prev.filter(p => p.id !== id && p.slug !== id && (targetSlug ? p.slug !== targetSlug : true)));
         await deleteBlogPostFromFirestore(id);
         await loadData(true);
-        showNotify('Tutorial deleted.');
+        showNotify('Tutorial deleted permanently from Firebase and disk.');
       } catch (err) {
         alert('Error deleting: ' + (err as Error).message);
+        await loadData(true);
       }
     }
   };

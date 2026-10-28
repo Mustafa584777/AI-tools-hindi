@@ -122,12 +122,13 @@ export async function POST(req: NextRequest) {
     }
 
     if (Array.isArray(body)) {
-      // Bulk restore / update
+      // Full replacement / bulk update - DO NOT merge with old disk posts to prevent resurrecting deleted posts!
       const postMap = new Map<string, BlogPost>();
-      posts.forEach(p => postMap.set(p.slug || p.id, p));
       body.forEach(p => {
+        if (!p) return;
+        const key = p.id || p.slug || ('blog-' + Date.now());
         const { image, imageAlt } = extractFirstImageAndAlt(p.content, p.image, p.imageAlt, p.title);
-        postMap.set(p.slug || p.id, { ...p, image, imageAlt });
+        postMap.set(key, { ...p, image, imageAlt });
       });
       posts = Array.from(postMap.values());
     } else {
@@ -135,7 +136,12 @@ export async function POST(req: NextRequest) {
       const { image, imageAlt } = extractFirstImageAndAlt(p.content, p.image, p.imageAlt, p.title);
       const sanitizedPost = { ...p, image, imageAlt };
 
-      const index = posts.findIndex(existing => existing.id === sanitizedPost.id || existing.slug === sanitizedPost.slug);
+      const index = posts.findIndex(existing => 
+        existing.id === sanitizedPost.id || 
+        existing.slug === sanitizedPost.slug ||
+        (sanitizedPost.slug && existing.id === `blog-${sanitizedPost.slug}`) ||
+        (existing.slug && sanitizedPost.id === `blog-${existing.slug}`)
+      );
       if (index >= 0) {
         posts[index] = sanitizedPost;
       } else {
@@ -162,8 +168,9 @@ export async function DELETE(req: NextRequest) {
     ensureDataFile();
     const { searchParams } = new URL(req.url);
     const id = searchParams.get('id');
-    if (!id) {
-      return NextResponse.json({ success: false, error: 'Missing id parameter' }, {
+    const slug = searchParams.get('slug');
+    if (!id && !slug) {
+      return NextResponse.json({ success: false, error: 'Missing id or slug parameter' }, {
         status: 400,
         headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0' }
       });
@@ -178,11 +185,33 @@ export async function DELETE(req: NextRequest) {
       } catch {}
     }
 
-    const decodedId = decodeURIComponent(id);
-    posts = posts.filter(p => p.id !== id && p.slug !== id && p.id !== decodedId && p.slug !== decodedId);
+    const cleanId = (id || '').trim();
+    const decodedId = cleanId ? decodeURIComponent(cleanId) : '';
+    const withoutBlogId = cleanId.replace(/^blog-/, '');
+    const withBlogId = cleanId.startsWith('blog-') ? cleanId : ('blog-' + cleanId);
+
+    const cleanSlug = (slug || '').trim();
+    const decodedSlug = cleanSlug ? decodeURIComponent(cleanSlug) : '';
+    const withoutBlogSlug = cleanSlug.replace(/^blog-/, '');
+    const withBlogSlug = cleanSlug.startsWith('blog-') ? cleanSlug : ('blog-' + cleanSlug);
+
+    const removeTargets = new Set([
+      cleanId, decodedId, withoutBlogId, withBlogId,
+      cleanSlug, decodedSlug, withoutBlogSlug, withBlogSlug
+    ].filter(Boolean));
+
+    posts = posts.filter(p => {
+      const pId = (p.id || '').trim();
+      const pSlug = (p.slug || '').trim();
+      if (removeTargets.has(pId) || removeTargets.has(pSlug)) return false;
+      if (cleanId && (pId.toLowerCase() === cleanId.toLowerCase() || pSlug.toLowerCase() === cleanId.toLowerCase())) return false;
+      if (cleanSlug && (pId.toLowerCase() === cleanSlug.toLowerCase() || pSlug.toLowerCase() === cleanSlug.toLowerCase())) return false;
+      return true;
+    });
+
     saveToDisk(posts);
 
-    return NextResponse.json({ success: true }, {
+    return NextResponse.json({ success: true, remaining: posts.length }, {
       headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0' }
     });
   } catch (error) {
