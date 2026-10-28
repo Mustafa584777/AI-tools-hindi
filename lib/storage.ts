@@ -8,30 +8,8 @@ export const INITIAL_BLOG_POSTS: BlogPost[] = (articlesBackup as unknown as Blog
 const CACHE_KEY = 'aitoolhindi_posts_cache_v4';
 
 // Instant load for both Admin and Main Site using posts.json & localStorage (0 network wait for Firestore)
+// Main site loader: loads from posts.json (API / Disk / Cache), NOT from Firebase
 export async function fetchBlogPostsFromFirestore(_forceRefresh = false): Promise<BlogPost[]> {
-  try {
-    if (db) {
-      const querySnapshot = await getDocs(collection(db, 'blogPosts'));
-      const firestorePostsMap = new Map<string, BlogPost>();
-      querySnapshot.forEach((docSnap) => {
-        const data = docSnap.data() as BlogPost;
-        if (data && (data.id || data.slug)) {
-          firestorePostsMap.set(data.id || data.slug, data);
-        }
-      });
-      if (firestorePostsMap.size > 0) {
-        const posts = Array.from(firestorePostsMap.values());
-        posts.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-        if (typeof window !== 'undefined') {
-          localStorage.setItem(CACHE_KEY, JSON.stringify(posts));
-        }
-        return posts;
-      }
-    }
-  } catch (e) {
-    console.warn('Firestore fetch warning:', e);
-  }
-
   if (typeof window !== 'undefined' && !_forceRefresh) {
     try {
       const cached = localStorage.getItem(CACHE_KEY);
@@ -114,7 +92,7 @@ export function extractFirstImageAndAlt(
   };
 }
 
-// Save post instantly to posts.json / cache AND sync to Firebase in the background
+// Save post instantly to posts.json / cache AND sync to Firebase
 export async function saveBlogPostToFirestore(post: BlogPost): Promise<void> {
   const { image, imageAlt } = extractFirstImageAndAlt(post.content, post.image, post.imageAlt, post.title);
   const postWithTime: BlogPost = {
@@ -154,10 +132,14 @@ export async function saveBlogPostToFirestore(post: BlogPost): Promise<void> {
     console.warn('Server disk backup update error:', apiErr);
   }
 
-  // 3. Background Firebase sync
-  setDoc(doc(db, 'blogPosts', postWithTime.id), postWithTime).catch(() => {});
-  if (postWithTime.slug && postWithTime.slug !== postWithTime.id) {
-    setDoc(doc(db, 'blogPosts', postWithTime.slug), postWithTime).catch(() => {});
+  // 3. Sync to Firebase Firestore instantly and await
+  try {
+    await setDoc(doc(db, 'blogPosts', postWithTime.id), postWithTime);
+    if (postWithTime.slug && postWithTime.slug !== postWithTime.id) {
+      await setDoc(doc(db, 'blogPosts', postWithTime.slug), postWithTime);
+    }
+  } catch (e) {
+    console.warn('Firestore save warning:', e);
   }
 }
 
@@ -206,7 +188,7 @@ export async function restoreBackupPosts(
 
   let completed = 0;
   for (const post of validPosts) {
-    setDoc(doc(db, 'blogPosts', post.id), post).catch(() => {});
+    await setDoc(doc(db, 'blogPosts', post.id), post).catch(() => {});
     completed++;
     if (onProgress) {
       onProgress(completed, validPosts.length);
@@ -223,8 +205,13 @@ export async function deleteBlogPostFromFirestore(id: string): Promise<void> {
       const cached = localStorage.getItem(CACHE_KEY);
       if (cached) {
         let posts: BlogPost[] = JSON.parse(cached);
-        posts = posts.filter(p => p.id !== id && p.slug !== id);
+        const target = posts.find(p => p.id === id || p.slug === id);
+        posts = posts.filter(p => p.id !== id && p.slug !== id && p.id !== decodeURIComponent(id) && p.slug !== decodeURIComponent(id));
         localStorage.setItem(CACHE_KEY, JSON.stringify(posts));
+
+        if (target && target.slug && target.slug !== id) {
+          deleteDoc(doc(db, 'blogPosts', target.slug)).catch(() => {});
+        }
       }
     } catch {}
   }
@@ -238,7 +225,20 @@ export async function deleteBlogPostFromFirestore(id: string): Promise<void> {
     console.warn('Server disk backup delete error:', e);
   }
 
-  deleteDoc(doc(db, 'blogPosts', id)).catch(() => {});
+  try {
+    await deleteDoc(doc(db, 'blogPosts', id));
+  } catch (e) {
+    console.warn('Firestore delete error 1:', e);
+  }
+
+  const decoded = decodeURIComponent(id);
+  if (decoded !== id) {
+    try {
+      await deleteDoc(doc(db, 'blogPosts', decoded));
+    } catch (e) {
+      console.warn('Firestore delete error 2:', e);
+    }
+  }
 }
 
 export function getStoredBlogPostsSync(): BlogPost[] {
@@ -258,7 +258,7 @@ export async function downloadPostsJsonFile(): Promise<void> {
   try {
     let posts: BlogPost[] = [];
 
-    // 1. Fetch directly from Firebase Firestore as primary source of truth
+    // Connect to Firebase Firestore to download latest updates
     try {
       if (db) {
         const querySnapshot = await getDocs(collection(db, 'blogPosts'));
@@ -274,17 +274,15 @@ export async function downloadPostsJsonFile(): Promise<void> {
         }
       }
     } catch (e) {
-      console.warn('Firestore fetch for download warning:', e);
+      console.warn('Firestore download fetch warning:', e);
     }
 
-    // 2. Fallback to localStorage / local sync if Firestore returned empty
     if (posts.length === 0) {
       posts = getStoredBlogPostsSync();
     }
 
     posts.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
 
-    // 3. Sync to server disk before downloading
     try {
       await fetch('/api/articles', {
         method: 'POST',
