@@ -1,70 +1,92 @@
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
+import Link from 'next/link';
+import { Metadata } from 'next';
+
+export const metadata: Metadata = {
+  title: 'Privacy Policy – Aitoolhindi.online',
+  description: 'Privacy Policy for Aitoolhindi.online. Learn how we collect, use, and protect your personal information.',
+  alternates: {
+    canonical: 'https://aitoolhindi.online/privacy-policy',
+  },
+};
 
 export default function PrivacyPolicyPage() {
   return (
     <>
       <Navbar />
-      <main className="flex-1 max-w-4xl mx-auto px-6 py-12 space-y-6">
-        <h1 className="text-3xl font-extrabold text-black">Privacy Policy - Aitoolhindi.online</h1>
+      <main className="flex-1 max-w-4xl mx-auto px-4 sm:px-6 py-10 sm:py-16 space-y-6">
+        <h1 className="text-3xl sm:text-4xl font-extrabold text-black tracking-tight">Privacy Policy</h1>
         <p className="text-sm text-slate-500 font-medium">Last updated: October 2026</p>
-        
-        <div className="prose prose-slate max-w-none text-black font-medium leading-relaxed space-y-6 text-base">
+
+        <div className="prose prose-slate max-w-none text-black font-medium leading-relaxed space-y-6 text-base sm:text-lg">
           <p>
-            Welcome to <strong>Aitoolhindi.online</strong>. At Aitoolhindi.online, accessible from https://aitoolhindi.online/, one of our main priorities is the privacy of our visitors. This Privacy Policy document contains types of information that is collected and recorded by Aitoolhindi.online and how we use it.
-          </p>
-          <p>
-            यदि आपके कोई अतिरिक्त प्रश्न हैं या हमारी गोपनीयता नीति के बारे में अधिक जानकारी चाहते हैं, तो बेझिझक हमसे संपर्क करें।
+            This Privacy Policy outlines how aitoolhindi.online collects, uses, and protects the personal information you provide while using our website. We are committed to ensuring the privacy and security of your personal information. By using aitoolhindi.online, you agree to the terms and practices described in this policy.
           </p>
 
-          <h2 className="text-xl font-bold text-black pt-4">1. Information We Collect (हम जो जानकारी एकत्र करते हैं)</h2>
+          <h2 className="text-2xl font-bold text-black pt-4">Information We Collect</h2>
           <p>
-            Aitoolhindi.online follows a standard procedure of using log files. These files log visitors when they visit websites. The information collected by log files include internet protocol (IP) addresses, browser type, Internet Service Provider (ISP), date and time stamp, referring/exit pages, and possibly the number of clicks. These are not linked to any information that is personally identifiable. The purpose of the information is for analyzing trends, administering the site, tracking users&apos; movement on the website, and gathering demographic information.
-          </p>
-
-          <h2 className="text-xl font-bold text-black pt-4">2. Cookies and Web Beacons (कुकीज़ और वेब बीacons)</h2>
-          <p>
-            Like any other website, Aitoolhindi.online uses &apos;cookies&apos;. These cookies are used to store information including visitors&apos; preferences, and the pages on the website that the visitor accessed or visited. The information is used to optimize the users&apos; experience by customizing our web page content based on visitors&apos; browser type and/or other information.
-          </p>
-
-          <h2 className="text-xl font-bold text-black pt-4">3. Google DoubleClick DART Cookie</h2>
-          <p>
-            Google is one of a third-party vendor on our site. It also uses cookies, known as DART cookies, to serve ads to our site visitors based upon their visit to www.aitoolhindi.online and other sites on the internet. However, visitors may choose to decline the use of DART cookies by visiting the Google ad and content network Privacy Policy at the following URL – <a href="https://policies.google.com/technologies/ads" target="_blank" rel="noopener noreferrer" className="text-orange-600 underline">https://policies.google.com/technologies/ads</a>
-          </p>
-
-          <h2 className="text-xl font-bold text-black pt-4">4. Our Advertising Partners (हमारे विज्ञापन भागीदार)</h2>
-          <p>
-            Some of advertisers on our site may use cookies and web beacons. Our advertising partners are listed below. Each of our advertising partners has their own Privacy Policy for their policies on user data. For easier access, we hyperlinked to their Privacy Policies below:
+            When you visit aitoolhindi.online, we may collect certain personally identifiable information, including but not limited to:
           </p>
           <ul className="list-disc pl-6 space-y-2">
-            <li>
-              <strong>Google</strong>: <a href="https://policies.google.com/technologies/ads" target="_blank" rel="noopener noreferrer" className="text-orange-600 underline">https://policies.google.com/technologies/ads</a>
-            </li>
+            <li><strong>Name</strong>: We may collect your name when you voluntarily provide it, such as when submitting comments or contacting us through our website.</li>
+            <li><strong>Email Address</strong>: We may collect your email address when you subscribe to our newsletter or contact us through our website.</li>
+            <li><strong>IP Address</strong>: We automatically collect your IP address and related information, such as your approximate location, for analytical and security purposes.</li>
+            <li><strong>Cookies</strong>: We use cookies to enhance your browsing experience and track usage information. You can control and manage cookies through your browser settings.</li>
           </ul>
 
-          <h2 className="text-xl font-bold text-black pt-4">5. Privacy Policies of Third Parties</h2>
+          <h2 className="text-2xl font-bold text-black pt-4">Use of Information</h2>
           <p>
-            Aitoolhindi.online&apos;s Privacy Policy does not apply to other advertisers or websites. Thus, we are advising you to consult the respective Privacy Policies of these third-party ad servers for more detailed information. It may include their practices and instructions about how to opt-out of certain options.
+            The information we collect is used for the following purposes:
+          </p>
+          <ul className="list-disc pl-6 space-y-2">
+            <li>To provide and personalize our services to you.</li>
+            <li>To communicate with you, respond to your inquiries, and provide customer support.</li>
+            <li>To send you newsletters, updates, and promotional materials if you have subscribed to our mailing list.</li>
+            <li>To analyze website usage and improve our content and services.</li>
+            <li>To prevent fraud, protect the security of our website, and comply with legal obligations.</li>
+          </ul>
+
+          <h2 className="text-2xl font-bold text-black pt-4">Data Sharing and Disclosure</h2>
+          <p>
+            We do not sell, trade, or transfer your personally identifiable information to third parties without your consent, except in the following cases:
+          </p>
+          <ul className="list-disc pl-6 space-y-2">
+            <li><strong>Service Providers</strong>: We may engage trusted third-party service providers to assist us in operating our website and providing services to you. These providers have access to your personal information only to perform specific tasks on our behalf and are obligated to maintain its confidentiality.</li>
+            <li><strong>Legal Requirements</strong>: We may disclose your personal information if required by law or in response to valid legal processes, such as a court order or government request.</li>
+            <li><strong>Consent</strong>: We may share your information with your consent or as otherwise disclosed at the time of collection.</li>
+          </ul>
+
+          <h2 className="text-2xl font-bold text-black pt-4">Data Retention</h2>
+          <p>
+            We retain your personal information for as long as necessary to fulfill the purposes outlined in this Privacy Policy, unless a longer retention period is required or permitted by law.
           </p>
 
-          <h2 className="text-xl font-bold text-black pt-4">6. Children&apos;s Information (बच्चों की जानकारी)</h2>
+          <h2 className="text-2xl font-bold text-black pt-4">Security</h2>
           <p>
-            Another part of our priority is adding protection for children while using the internet. We encourage parents and guardians to observe, participate in, and/or monitor and guide their online activity. Aitoolhindi.online does not knowingly collect any Personal Identifiable Information from children under the age of 13.
+            We take reasonable measures to protect the security of your personal information and prevent unauthorized access, disclosure, or alteration. However, please note that no method of transmission over the internet or electronic storage is 100% secure, and we cannot guarantee absolute security.
           </p>
 
-          <h2 className="text-xl font-bold text-black pt-4">7. Online Privacy Policy Only</h2>
+          <h2 className="text-2xl font-bold text-black pt-4">Your Rights</h2>
           <p>
-            This Privacy Policy applies only to our online activities and is valid for visitors to our website with regards to the information that they shared and/or collect in Aitoolhindi.online. This policy is not applicable to any information collected offline or via channels other than this website.
+            You have the right to access, update, correct, and delete your personal information. You may also unsubscribe from our mailing list or opt-out of receiving promotional communications at any time. To exercise these rights or for any privacy-related inquiries, please contact us using the information provided below.
           </p>
 
-          <h2 className="text-xl font-bold text-black pt-4">8. Consent (सहमति)</h2>
+          <h2 className="text-2xl font-bold text-black pt-4">Changes to This Privacy Policy</h2>
           <p>
-            By using our website, you hereby consent to our Privacy Policy and agree to its Terms and Conditions.
+            We reserve the right to update or modify this Privacy Policy at any time. Any changes will be posted on this page with a revised “Last Updated” date. We encourage you to review this Privacy Policy periodically to stay informed about how we collect, use, and protect your information.
           </p>
+
+          <h2 className="text-2xl font-bold text-black pt-4">Contact Us</h2>
+          <p>
+            If you have any questions, concerns, or requests regarding this Privacy Policy or our privacy practices, please <Link href="/contact-us" className="text-orange-600 underline font-bold hover:text-orange-700">contact us</Link> at:
+          </p>
+          <ul className="list-disc pl-6 space-y-2">
+            <li><strong>Email</strong>: <a href="mailto:support@aitoolhindi.online" className="text-orange-600 underline font-bold hover:text-orange-700">support@aitoolhindi.online</a></li>
+          </ul>
         </div>
       </main>
       <Footer />
     </>
   );
 }
-
