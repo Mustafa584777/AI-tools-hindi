@@ -12,62 +12,30 @@ const publicPostsPath = path.join(process.cwd(), 'public', 'posts.json');
 
 export async function GET() {
   try {
-    let postsFromData: BlogPost[] = [];
-    let postsFromPublic: BlogPost[] = [];
+    let rawPosts: any[] = [];
 
     if (fs.existsSync(dataFilePath)) {
       try {
         const content = fs.readFileSync(dataFilePath, 'utf-8');
         const parsed = JSON.parse(content);
-        if (Array.isArray(parsed)) postsFromData = parsed;
+        if (Array.isArray(parsed)) rawPosts = parsed;
       } catch {}
     }
 
-    if (fs.existsSync(publicPostsPath)) {
+    if (rawPosts.length === 0 && fs.existsSync(publicPostsPath)) {
       try {
         const content = fs.readFileSync(publicPostsPath, 'utf-8');
         const parsed = JSON.parse(content);
-        if (Array.isArray(parsed)) postsFromPublic = parsed;
+        if (Array.isArray(parsed)) rawPosts = parsed;
       } catch {}
     }
 
-    const slugMap = new Map<string, BlogPost>();
-
-    // Seed with postsBackup first
-    if (Array.isArray(postsBackup)) {
-      postsBackup.forEach((p: any) => {
-        const slug = (p.slug || '').trim().toLowerCase();
-        if (slug) slugMap.set(slug, p as BlogPost);
-      });
+    if (rawPosts.length === 0 && Array.isArray(postsBackup)) {
+      rawPosts = postsBackup;
     }
 
-    // Overlay postsFromPublic
-    postsFromPublic.forEach(p => {
-      const slug = (p.slug || '').trim().toLowerCase();
-      if (!slug) return;
-      const existing = slugMap.get(slug);
-      if (!existing || (p.createdAt || 0) >= (existing.createdAt || 0)) {
-        slugMap.set(slug, p);
-      }
-    });
-
-    // Overlay postsFromData (user uploaded to GitHub data/posts.json)
-    postsFromData.forEach(p => {
-      const slug = (p.slug || '').trim().toLowerCase();
-      if (!slug) return;
-      const existing = slugMap.get(slug);
-      if (!existing || (p.createdAt || 0) >= (existing.createdAt || 0)) {
-        slugMap.set(slug, p);
-      }
-    });
-
-    let posts = Array.from(slugMap.values());
-    if (posts.length === 0) {
-      posts = (postsBackup as unknown as BlogPost[]) || [];
-    }
-
-    // Ensure all posts are cleaned for export (no base64 except wp/cloudinary, correct featured image & slug)
-    posts = posts.map(cleanPostForExport);
+    // Strictly load and clean posts from posts.json
+    let posts = rawPosts.map((p: any) => cleanPostForExport(p as BlogPost));
 
     posts.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
 

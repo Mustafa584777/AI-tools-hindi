@@ -62,7 +62,6 @@ const ADMIN_CACHE_KEY = 'aitoolhindi_admin_posts_cache_v5';
 // NEVER touches Firebase, ensuring zero latency, zero quota, and pure posts.json delivery.
 // =========================================================================
 export async function fetchBlogPostsFromDisk(): Promise<BlogPost[]> {
-  // Always fetch fresh from API first to avoid stale localStorage returning old posts
   try {
     const res = await fetch('/api/articles?t=' + Date.now(), { cache: 'no-store' });
     if (res.ok) {
@@ -80,19 +79,6 @@ export async function fetchBlogPostsFromDisk(): Promise<BlogPost[]> {
     console.warn('API fetch warning:', err);
   }
 
-  // Fallback to client localStorage cache if offline or API unreachable
-  if (typeof window !== 'undefined') {
-    try {
-      const cached = localStorage.getItem(PUBLIC_CACHE_KEY);
-      if (cached) {
-        const parsed: BlogPost[] = JSON.parse(cached);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed;
-        }
-      }
-    } catch {}
-  }
-
   return INITIAL_BLOG_POSTS;
 }
 
@@ -102,12 +88,16 @@ export async function fetchBlogPostsFromFirestore(): Promise<BlogPost[]> {
 }
 
 export function getStoredBlogPostsSync(): BlogPost[] {
+  const validSlugs = new Set(INITIAL_BLOG_POSTS.map(p => p.slug));
   if (typeof window !== 'undefined') {
     try {
       const cached = localStorage.getItem(PUBLIC_CACHE_KEY);
       if (cached) {
         const posts: BlogPost[] = JSON.parse(cached);
-        if (posts.length > 0) return posts;
+        if (Array.isArray(posts) && posts.length > 0) {
+          const filtered = posts.filter(p => validSlugs.has(p.slug));
+          if (filtered.length > 0) return filtered;
+        }
       }
     } catch {}
   }

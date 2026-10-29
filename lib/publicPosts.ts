@@ -32,29 +32,21 @@ export async function fetchBlogPostsFromDisk(): Promise<BlogPost[]> {
     console.warn('API fetch warning:', err);
   }
 
-  // Fallback to client localStorage cache if offline or API unreachable
-  if (typeof window !== 'undefined') {
-    try {
-      const cached = localStorage.getItem(PUBLIC_CACHE_KEY);
-      if (cached) {
-        const parsed: BlogPost[] = JSON.parse(cached);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed;
-        }
-      }
-    } catch {}
-  }
-
+  // Fallback strictly to INITIAL_BLOG_POSTS (posts.json) if offline or API unreachable
   return INITIAL_BLOG_POSTS;
 }
 
 export function getStoredBlogPostsSync(): BlogPost[] {
+  const validSlugs = new Set(INITIAL_BLOG_POSTS.map(p => p.slug));
   if (typeof window !== 'undefined') {
     try {
       const cached = localStorage.getItem(PUBLIC_CACHE_KEY);
       if (cached) {
         const posts: BlogPost[] = JSON.parse(cached);
-        if (posts.length > 0) return posts;
+        if (Array.isArray(posts) && posts.length > 0) {
+          const filtered = posts.filter(p => validSlugs.has(p.slug));
+          if (filtered.length > 0) return filtered;
+        }
       }
     } catch {}
   }
