@@ -1,18 +1,9 @@
-'use client';
-
-import { useState, useEffect } from 'react';
-import { useParams } from 'next/navigation';
-import Link from 'next/link';
-import Image from 'next/image';
-import { ArrowLeft, Clock, Calendar, Share2, Folder } from 'lucide-react';
-import Navbar from '@/components/Navbar';
-import Footer from '@/components/Footer';
-import { fetchBlogPostsFromDisk, getStoredBlogPostsSync } from '@/lib/publicPosts';
+import fs from 'fs';
+import path from 'path';
+import { Metadata } from 'next';
 import { BlogPost } from '@/lib/types';
-import ArticleContent from '@/components/ArticleContent';
-import TableOfContents from '@/components/TableOfContents';
-import { resolveDisplayImageUrl, extractTocFromHtml } from '@/lib/utils';
-import BlogImage from '@/components/BlogImage';
+import { cleanPostForExport } from '@/lib/storage';
+import ArticleViewClient from '@/components/ArticleViewClient';
 
 export const dynamic = 'force-dynamic';
 
@@ -36,41 +27,24 @@ function extractFaqsFromHtml(html: string): { question: string; answer: string }
   return faqs;
 }
 
-export default function SlugPage() {
-  const params = useParams();
-  const rawSlug = Array.isArray(params?.slug) ? params.slug[0] : (params?.slug as string) || '';
-  const cleanSlug = typeof rawSlug === 'string'
-    ? decodeURIComponent(rawSlug).replace(/\/+$/, '').trim().toLowerCase()
-    : '';
-
-  const [posts, setPosts] = useState<BlogPost[]>(() => getStoredBlogPostsSync());
-  const [loading, setLoading] = useState<boolean>(() => {
-    const initialPosts = getStoredBlogPostsSync();
-    const hasInitialMatch = initialPosts.some(p => {
-      const pSlug = (p.slug || '').replace(/\/+$/, '').trim().toLowerCase();
-      const pId = (p.id || '').replace(/^blog-/, '').trim().toLowerCase();
-      const catSlug = p.category ? p.category.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '') : '';
-      return pSlug === cleanSlug || pId === cleanSlug || catSlug === cleanSlug;
-    });
-    return !hasInitialMatch;
-  });
-  const [copied, setCopied] = useState(false);
-
-  useEffect(() => {
-    let isMounted = true;
-    async function loadData() {
-      try {
-        const allPosts = await fetchBlogPostsFromDisk();
-        if (isMounted) setPosts(allPosts);
-      } catch {
-        if (isMounted) setPosts(getStoredBlogPostsSync());
-      } finally {
-        if (isMounted) setLoading(false);
+async function getPostsServer(): Promise<BlogPost[]> {
+  try {
+    const dataFilePath = path.join(process.cwd(), 'data', 'posts.json');
+    if (fs.existsSync(dataFilePath)) {
+      const content = fs.readFileSync(dataFilePath, 'utf-8');
+      const parsed = JSON.parse(content);
+      if (Array.isArray(parsed)) {
+        return parsed.map(p => cleanPostForExport(p as BlogPost));
       }
     }
-    loadData();
-    return () => { isMounted = false; };
-  }, []);
+  } catch {}
+  return [];
+}
+
+export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
+  const { slug } = await params;
+  const cleanSlug = decodeURIComponent(slug).replace(/\/+$/, '').trim().toLowerCase();
+  const posts = await getPostsServer();
 
   const post = posts.find(p => {
     const pSlug = (p.slug || '').replace(/\/+$/, '').trim().toLowerCase();
@@ -78,152 +52,115 @@ export default function SlugPage() {
     return pSlug === cleanSlug || pId === cleanSlug || p.id === cleanSlug || p.id === `blog-${cleanSlug}`;
   });
 
-  // Check if this slug is a category archive slug
-  const matchedCategory = posts.find(p => 
+  const matchedCategory = posts.find(p =>
     p.category && p.category.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '') === cleanSlug
   )?.category;
 
-  // Second-chance safety fetch: if post not found in initial cache, immediately re-fetch fresh from serverless API
-  useEffect(() => {
-    if (!loading && !post && !matchedCategory && cleanSlug) {
-      fetch(`/api/articles?t=${Date.now()}&fresh=1`, { cache: 'no-store' })
-        .then(res => res.json())
-        .then(data => {
-          if (data?.posts && Array.isArray(data.posts) && data.posts.length > 0) {
-            setPosts(data.posts);
-            if (typeof window !== 'undefined') {
-              try {
-                localStorage.setItem('aitoolhindi_public_posts_v5', JSON.stringify(data.posts));
-              } catch {}
-            }
-          }
-        })
-        .catch(() => {});
-    }
-  }, [loading, post, matchedCategory, cleanSlug]);
+  if (post) {
+    const imageUrl = post.image.startsWith('http') ? post.image : `https://aitoolhindi.online${post.image}`;
+    const pageUrl = `https://aitoolhindi.online/${post.slug}`;
+    const description = post.metaDescription || post.excerpt || 'AI tutorial in Hindi';
 
-  useEffect(() => {
-    if (post) {
-      document.title = `${post.title} | AI Tool Hindi`;
-    } else if (matchedCategory) {
-      document.title = `${matchedCategory} Archives | AI Tool Hindi`;
-    }
-  }, [post, matchedCategory]);
-
-  const tocItems = post ? extractTocFromHtml(post.content) : [];
-
-  if (loading) {
-    return (
-      <>
-        <Navbar />
-        <main className="flex-1 max-w-4xl mx-auto px-4 sm:px-6 py-24 text-center text-black font-medium">
-          Loading tutorial...
-        </main>
-        <Footer />
-      </>
-    );
+    return {
+      title: `${post.title} | AI Tool Hindi`,
+      description,
+      robots: {
+        index: !post.noIndex,
+        follow: true,
+        googleBot: {
+          index: !post.noIndex,
+          follow: true,
+          'max-snippet': -1,
+          'max-video-preview': -1,
+          'max-image-preview': 'large',
+        },
+      },
+      alternates: {
+        canonical: pageUrl,
+      },
+      openGraph: {
+        locale: 'en_US',
+        type: 'article',
+        title: post.title,
+        description,
+        url: pageUrl,
+        siteName: 'AI Tool Hindi',
+        section: post.category,
+        publishedTime: new Date(post.createdAt || Date.now()).toISOString(),
+        modifiedTime: new Date(post.createdAt || Date.now()).toISOString(),
+        images: [
+          {
+            url: imageUrl,
+            width: 1068,
+            height: 600,
+            alt: post.imageAlt || post.title,
+            type: 'image/webp',
+          },
+        ],
+      },
+      twitter: {
+        card: 'summary_large_image',
+        title: post.title,
+        description,
+        site: '@aitool_hindi',
+        creator: '@aitool_hindi',
+        images: [imageUrl],
+      },
+      other: {
+        'twitter:label1': 'Written by',
+        'twitter:data1': post.author || 'Anwar',
+        'twitter:label2': 'Time to read',
+        'twitter:data2': post.readTime || '5 min read',
+      },
+    };
   }
 
   if (matchedCategory) {
-    const categoryPosts = posts.filter(p => 
-      p.category && p.category.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '') === cleanSlug && p.status !== 'draft'
-    );
-
-    return (
-      <>
-        <Navbar />
-        <main className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 py-12 space-y-8">
-          <div className="space-y-3">
-            <Link href="/" className="inline-flex items-center gap-2 text-sm font-bold text-black hover:text-orange-600 transition-colors">
-              <ArrowLeft className="w-4 h-4" />
-              <span>Back to Home</span>
-            </Link>
-            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-orange-50 border border-orange-200 text-orange-700 text-xs font-bold">
-              <Folder className="w-3.5 h-3.5 text-orange-600" />
-              <span>Category Archive</span>
-            </div>
-            <h1 className="text-3xl md:text-4xl font-extrabold text-black tracking-tight">
-              {matchedCategory} (Category Archive)
-            </h1>
-            <p className="text-black text-sm max-w-2xl font-medium">
-              Explore all Hindi AI tutorials and guides filed under &ldquo;{matchedCategory}&rdquo;.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {categoryPosts.length === 0 ? (
-              <div className="col-span-3 py-16 text-center text-black font-medium">No articles found in this category yet.</div>
-            ) : (
-              categoryPosts.map((p) => (
-                <Link
-                  key={p.id}
-                  href={`/${p.slug}`}
-                  className="bg-white rounded-2xl border border-slate-200/80 overflow-hidden shadow-sm hover:shadow-md transition-all flex flex-col group"
-                >
-                  <div className="h-48 relative w-full bg-slate-200">
-                    <BlogImage
-                      src={p.image}
-                      alt={p.imageAlt || p.title}
-                      fill
-                      sizes="(max-width: 768px) 100vw, 33vw"
-                      className="object-cover group-hover:scale-105 transition-transform duration-300"
-                    />
-                  </div>
-                  <div className="p-6 flex flex-col justify-between flex-1 space-y-4">
-                    <div className="space-y-2">
-                      <div className="flex items-center gap-2 text-xs text-black/75 font-medium">
-                        <span>{p.category}</span>
-                        <span aria-hidden="true">·</span>
-                        <span>{p.date}</span>
-                      </div>
-                      <h3 className="font-bold text-black text-lg group-hover:text-orange-600 transition-colors line-clamp-2">
-                        {p.title}
-                      </h3>
-                      <p className="text-black text-sm leading-relaxed line-clamp-2 font-medium">
-                        {p.metaDescription || p.excerpt}
-                      </p>
-                    </div>
-
-                    <div className="pt-4 border-t border-slate-100 flex items-center justify-between text-xs font-bold text-orange-600">
-                      <span>Read Article</span>
-                      <ArrowLeft className="w-4 h-4 rotate-180 group-hover:translate-x-1 transition-transform" />
-                    </div>
-                  </div>
-                </Link>
-              ))
-            )}
-          </div>
-        </main>
-        <Footer />
-      </>
-    );
+    const pageUrl = `https://aitoolhindi.online/${cleanSlug}`;
+    const description = `Explore all Hindi AI tutorials and guides filed under ${matchedCategory}.`;
+    return {
+      title: `${matchedCategory} Archives | AI Tool Hindi`,
+      description,
+      alternates: {
+        canonical: pageUrl,
+      },
+      openGraph: {
+        title: `${matchedCategory} Archives | AI Tool Hindi`,
+        description,
+        url: pageUrl,
+        siteName: 'AI Tool Hindi',
+        type: 'website',
+      },
+      twitter: {
+        card: 'summary_large_image',
+        title: `${matchedCategory} Archives | AI Tool Hindi`,
+        description,
+      },
+    };
   }
 
-  if (!post) {
-    return (
-      <>
-        <Navbar />
-        <main className="flex-1 max-w-4xl mx-auto px-4 sm:px-6 py-24 text-center space-y-4">
-          <h1 className="text-2xl font-bold text-black">Page or Category Not Found (404)</h1>
-          <p className="text-black font-medium">This exact URL slug does not exist or was deleted.</p>
-          <Link href="/" className="inline-block px-5 py-2.5 bg-orange-600 text-white rounded-xl text-sm font-bold shadow-sm">
-            Back to Home
-          </Link>
-        </main>
-        <Footer />
-      </>
-    );
-  }
-
-  const handleShare = () => {
-    if (typeof window !== 'undefined') {
-      navigator.clipboard.writeText(window.location.href);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 3000);
-    }
+  return {
+    title: 'Page Not Found | AI Tool Hindi',
+    description: 'This exact URL slug does not exist or was deleted.',
   };
+}
 
-  const blogPostingSchema = {
+export default async function SlugPage({ params }: { params: Promise<{ slug: string }> }) {
+  const { slug } = await params;
+  const cleanSlug = decodeURIComponent(slug).replace(/\/+$/, '').trim().toLowerCase();
+  const posts = await getPostsServer();
+
+  const post = posts.find(p => {
+    const pSlug = (p.slug || '').replace(/\/+$/, '').trim().toLowerCase();
+    const pId = (p.id || '').replace(/^blog-/, '').trim().toLowerCase();
+    return pSlug === cleanSlug || pId === cleanSlug || p.id === cleanSlug || p.id === `blog-${cleanSlug}`;
+  });
+
+  const matchedCategory = posts.find(p =>
+    p.category && p.category.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '') === cleanSlug
+  )?.category;
+
+  const blogPostingSchema = post ? {
     '@context': 'https://schema.org',
     '@type': 'BlogPosting',
     mainEntityOfPage: {
@@ -232,7 +169,7 @@ export default function SlugPage() {
     },
     headline: post.title,
     description: post.metaDescription || post.excerpt,
-    image: post.image,
+    image: post.image.startsWith('http') ? post.image : `https://aitoolhindi.online${post.image}`,
     datePublished: post.date,
     dateModified: post.date,
     author: {
@@ -247,9 +184,9 @@ export default function SlugPage() {
         url: 'https://aitoolhindi.online/logo.png',
       },
     },
-  };
+  } : null;
 
-  const extractedFaqs = extractFaqsFromHtml(post.content);
+  const extractedFaqs = post ? extractFaqsFromHtml(post.content) : [];
   const faqSchema = extractedFaqs.length > 0 ? {
     '@context': 'https://schema.org',
     '@type': 'FAQPage',
@@ -265,81 +202,24 @@ export default function SlugPage() {
 
   return (
     <>
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(blogPostingSchema) }}
-      />
+      {blogPostingSchema && (
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(blogPostingSchema) }}
+        />
+      )}
       {faqSchema && (
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(faqSchema) }}
         />
       )}
-
-      <Navbar />
-
-      <main className="flex-1 max-w-4xl mx-auto px-3 sm:px-6 py-6 sm:py-10 md:py-12 space-y-6 sm:space-y-8 w-full max-w-full overflow-hidden">
-        <Link href="/" className="inline-flex items-center gap-2 text-sm font-bold text-black hover:text-orange-600 transition-colors">
-          <ArrowLeft className="w-4 h-4" />
-          <span>Back to Home</span>
-        </Link>
-
-        {/* Article Header */}
-        <article className="bg-white rounded-2xl sm:rounded-3xl border border-slate-200 overflow-hidden shadow-sm w-full max-w-full">
-          <div className="min-h-[220px] h-60 sm:h-80 md:h-96 relative w-full bg-slate-900 overflow-hidden">
-            <BlogImage
-              src={post.image}
-              alt={post.imageAlt || post.title}
-              fill
-              sizes="(max-width: 1024px) 100vw, 800px"
-              className="object-cover"
-              priority
-              fallbackSrc="https://picsum.photos/seed/articlefeatured/1200/675"
-            />
-            <div className="absolute inset-0 bg-gradient-to-t from-slate-950/90 via-slate-950/45 to-transparent"></div>
-            <div className="absolute bottom-4 sm:bottom-6 left-4 sm:left-6 right-4 sm:right-6 text-white space-y-2 sm:space-y-3">
-              <span className="inline-block px-3 py-1 bg-orange-600 text-white font-bold text-xs rounded-full shadow-sm">
-                {post.category}
-              </span>
-              <h1 className="text-xl sm:text-2xl md:text-4xl font-extrabold tracking-tight leading-snug sm:leading-tight text-white break-words">
-                {post.title}
-              </h1>
-            </div>
-          </div>
-
-          <div className="p-4 sm:p-6 md:p-10 space-y-6 sm:space-y-8">
-            {/* Metadata bar */}
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4 py-3 sm:py-4 border-y border-slate-100 text-xs text-black font-medium">
-              <div className="flex items-center gap-4 sm:gap-6">
-                <span className="flex items-center gap-1.5">
-                  <Calendar className="w-4 h-4 text-orange-600 shrink-0" />
-                  {post.date}
-                </span>
-                <span className="flex items-center gap-1.5">
-                  <Clock className="w-4 h-4 text-orange-600 shrink-0" />
-                  {post.readTime}
-                </span>
-              </div>
-
-              <button
-                onClick={handleShare}
-                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-black rounded-lg font-bold transition-colors text-xs"
-              >
-                <Share2 className="w-3.5 h-3.5" />
-                <span>{copied ? 'Link Copied!' : 'Share Article'}</span>
-              </button>
-            </div>
-
-            {/* Dynamic Table of Contents (Automatically generated for all articles with 2+ headings) */}
-            <TableOfContents items={tocItems} />
-
-            {/* WordPress HTML Content Renderer */}
-            <ArticleContent content={post.content} />
-          </div>
-        </article>
-      </main>
-
-      <Footer />
+      <ArticleViewClient
+        initialPost={post || null}
+        initialMatchedCategory={matchedCategory || null}
+        initialPosts={posts}
+        cleanSlug={cleanSlug}
+      />
     </>
   );
 }
