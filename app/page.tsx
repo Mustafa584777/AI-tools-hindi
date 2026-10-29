@@ -6,15 +6,19 @@ import Image from 'next/image';
 import { Search, Sparkles, ArrowRight, BookOpen, CheckCircle } from 'lucide-react';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
-import { fetchBlogPostsFromDisk, getStoredBlogPostsSync } from '@/lib/storage';
+import { fetchBlogPostsFromDisk, getStoredBlogPostsSync } from '@/lib/publicPosts';
 import { BlogPost } from '@/lib/types';
 import { resolveDisplayImageUrl } from '@/lib/utils';
 import BlogImage from '@/components/BlogImage';
 
 export default function HomePage() {
-  const [posts, setPosts] = useState<BlogPost[]>([]);
+  const [posts, setPosts] = useState<BlogPost[]>(() => {
+    return getStoredBlogPostsSync().filter(p => p.status !== 'draft');
+  });
   const [searchQuery, setSearchQuery] = useState('');
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState<boolean>(() => {
+    return getStoredBlogPostsSync().filter(p => p.status !== 'draft').length === 0;
+  });
 
   useEffect(() => {
     async function loadPosts() {

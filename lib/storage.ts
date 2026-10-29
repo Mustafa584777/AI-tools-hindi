@@ -2,6 +2,7 @@ import { BlogPost } from './types';
 import { db, auth } from './firebase';
 import { doc, setDoc, deleteDoc, getDoc, collection, getDocs } from 'firebase/firestore';
 import articlesBackup from '../data/posts.json';
+import { stripTableOfContents } from './utils';
 
 export enum OperationType {
   CREATE = 'create',
@@ -61,6 +62,25 @@ const ADMIN_CACHE_KEY = 'aitoolhindi_admin_posts_cache_v5';
 // NEVER touches Firebase, ensuring zero latency, zero quota, and pure posts.json delivery.
 // =========================================================================
 export async function fetchBlogPostsFromDisk(): Promise<BlogPost[]> {
+  // Always fetch fresh from API first to avoid stale localStorage returning old posts
+  try {
+    const res = await fetch('/api/articles?t=' + Date.now(), { cache: 'no-store' });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.posts && Array.isArray(data.posts) && data.posts.length > 0) {
+        if (typeof window !== 'undefined') {
+          try {
+            localStorage.setItem(PUBLIC_CACHE_KEY, JSON.stringify(data.posts));
+          } catch {}
+        }
+        return data.posts;
+      }
+    }
+  } catch (err) {
+    console.warn('API fetch warning:', err);
+  }
+
+  // Fallback to client localStorage cache if offline or API unreachable
   if (typeof window !== 'undefined') {
     try {
       const cached = localStorage.getItem(PUBLIC_CACHE_KEY);
@@ -71,21 +91,6 @@ export async function fetchBlogPostsFromDisk(): Promise<BlogPost[]> {
         }
       }
     } catch {}
-  }
-
-  try {
-    const res = await fetch('/api/articles?t=' + Date.now(), { cache: 'no-store' });
-    if (res.ok) {
-      const data = await res.json();
-      if (data.posts && Array.isArray(data.posts) && data.posts.length > 0) {
-        if (typeof window !== 'undefined') {
-          localStorage.setItem(PUBLIC_CACHE_KEY, JSON.stringify(data.posts));
-        }
-        return data.posts;
-      }
-    }
-  } catch (err) {
-    console.warn('API fetch warning:', err);
   }
 
   return INITIAL_BLOG_POSTS;
@@ -222,7 +227,8 @@ export function extractFirstImageAndAlt(
 
 // Save post directly to Firebase Firestore
 export async function saveBlogPostToFirestore(post: BlogPost): Promise<BlogPost> {
-  const { image, imageAlt } = extractFirstImageAndAlt(post.content, post.image, post.imageAlt, post.title);
+  const cleanContent = stripTableOfContents(post.content);
+  const { image, imageAlt } = extractFirstImageAndAlt(cleanContent, post.image, post.imageAlt, post.title);
   
   const rawSlug = (post.slug || post.title).trim();
   const cleanSlug = rawSlug.toLowerCase().replace(/[^a-z0-9\-]+/g, '-').replace(/^-+|-+$/g, '') || ('post-' + Date.now());
@@ -232,6 +238,7 @@ export async function saveBlogPostToFirestore(post: BlogPost): Promise<BlogPost>
     ...post,
     id: canonicalId,
     slug: cleanSlug,
+    content: cleanContent,
     image,
     imageAlt,
     createdAt: post.createdAt || Date.now()
@@ -285,7 +292,8 @@ export async function restoreBackupPosts(
   onProgress?: (current: number, total: number) => void
 ): Promise<number> {
   const validPosts: BlogPost[] = importedPosts.map((p, idx) => {
-    const { image, imageAlt } = extractFirstImageAndAlt(p.content, p.image, p.imageAlt, p.title);
+    const cleanContent = stripTableOfContents(p.content);
+    const { image, imageAlt } = extractFirstImageAndAlt(cleanContent, p.image, p.imageAlt, p.title);
     const rawSlug = (p.slug || (p.title ? p.title.toLowerCase().replace(/[^a-z0-9\-]+/g, '-').replace(/^-+|-+$/g, '') : ('imported-post-' + idx))).trim();
     const cleanSlug = rawSlug.toLowerCase().replace(/[^a-z0-9\-]+/g, '-').replace(/^-+|-+$/g, '');
     const canonicalId = 'blog-' + cleanSlug;
@@ -296,7 +304,7 @@ export async function restoreBackupPosts(
       title: p.title || 'Untitled',
       excerpt: p.excerpt || '',
       metaDescription: p.metaDescription || '',
-      content: p.content || '',
+      content: cleanContent,
       category: p.category || 'AI Guides',
       author: p.author || 'Anwar',
       date: p.date || new Date().toLocaleDateString('hi-IN'),
@@ -416,6 +424,12 @@ export async function downloadPostsJsonFile(): Promise<number> {
     if (posts.length === 0) {
       posts = INITIAL_BLOG_POSTS;
     }
+
+    // Strip any hardcoded TOC markup so downloaded posts.json is completely pure and lean
+    posts = posts.map(p => ({
+      ...p,
+      content: stripTableOfContents(p.content)
+    }));
 
     posts.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
 

@@ -7,10 +7,11 @@ import Image from 'next/image';
 import { ArrowLeft, Clock, Calendar, Share2, Folder } from 'lucide-react';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
-import { fetchBlogPostsFromDisk, getStoredBlogPostsSync } from '@/lib/storage';
+import { fetchBlogPostsFromDisk, getStoredBlogPostsSync } from '@/lib/publicPosts';
 import { BlogPost } from '@/lib/types';
 import ArticleContent from '@/components/ArticleContent';
-import { resolveDisplayImageUrl } from '@/lib/utils';
+import TableOfContents from '@/components/TableOfContents';
+import { resolveDisplayImageUrl, extractTocFromHtml } from '@/lib/utils';
 import BlogImage from '@/components/BlogImage';
 
 export const dynamic = 'force-dynamic';
@@ -37,31 +38,69 @@ function extractFaqsFromHtml(html: string): { question: string; answer: string }
 
 export default function SlugPage() {
   const params = useParams();
-  const slug = params?.slug as string;
-  const [posts, setPosts] = useState<BlogPost[]>([]);
-  const [loading, setLoading] = useState(true);
+  const rawSlug = Array.isArray(params?.slug) ? params.slug[0] : (params?.slug as string) || '';
+  const cleanSlug = typeof rawSlug === 'string'
+    ? decodeURIComponent(rawSlug).replace(/\/+$/, '').trim().toLowerCase()
+    : '';
+
+  const [posts, setPosts] = useState<BlogPost[]>(() => getStoredBlogPostsSync());
+  const [loading, setLoading] = useState<boolean>(() => {
+    const initialPosts = getStoredBlogPostsSync();
+    const hasInitialMatch = initialPosts.some(p => {
+      const pSlug = (p.slug || '').replace(/\/+$/, '').trim().toLowerCase();
+      const pId = (p.id || '').replace(/^blog-/, '').trim().toLowerCase();
+      const catSlug = p.category ? p.category.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '') : '';
+      return pSlug === cleanSlug || pId === cleanSlug || catSlug === cleanSlug;
+    });
+    return !hasInitialMatch;
+  });
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
+    let isMounted = true;
     async function loadData() {
       try {
         const allPosts = await fetchBlogPostsFromDisk();
-        setPosts(allPosts);
+        if (isMounted) setPosts(allPosts);
       } catch {
-        setPosts(getStoredBlogPostsSync());
+        if (isMounted) setPosts(getStoredBlogPostsSync());
       } finally {
-        setLoading(false);
+        if (isMounted) setLoading(false);
       }
     }
     loadData();
+    return () => { isMounted = false; };
   }, []);
 
-  const post = posts.find(p => p.slug === slug);
+  const post = posts.find(p => {
+    const pSlug = (p.slug || '').replace(/\/+$/, '').trim().toLowerCase();
+    const pId = (p.id || '').replace(/^blog-/, '').trim().toLowerCase();
+    return pSlug === cleanSlug || pId === cleanSlug || p.id === cleanSlug || p.id === `blog-${cleanSlug}`;
+  });
 
   // Check if this slug is a category archive slug
   const matchedCategory = posts.find(p => 
-    p.category && p.category.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '') === slug
+    p.category && p.category.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '') === cleanSlug
   )?.category;
+
+  // Second-chance safety fetch: if post not found in initial cache, immediately re-fetch fresh from serverless API
+  useEffect(() => {
+    if (!loading && !post && !matchedCategory && cleanSlug) {
+      fetch(`/api/articles?t=${Date.now()}&fresh=1`, { cache: 'no-store' })
+        .then(res => res.json())
+        .then(data => {
+          if (data?.posts && Array.isArray(data.posts) && data.posts.length > 0) {
+            setPosts(data.posts);
+            if (typeof window !== 'undefined') {
+              try {
+                localStorage.setItem('aitoolhindi_public_posts_v5', JSON.stringify(data.posts));
+              } catch {}
+            }
+          }
+        })
+        .catch(() => {});
+    }
+  }, [loading, post, matchedCategory, cleanSlug]);
 
   useEffect(() => {
     if (post) {
@@ -70,6 +109,8 @@ export default function SlugPage() {
       document.title = `${matchedCategory} Archives | AI Tool Hindi`;
     }
   }, [post, matchedCategory]);
+
+  const tocItems = post ? extractTocFromHtml(post.content) : [];
 
   if (loading) {
     return (
@@ -85,7 +126,7 @@ export default function SlugPage() {
 
   if (matchedCategory) {
     const categoryPosts = posts.filter(p => 
-      p.category && p.category.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '') === slug && p.status !== 'draft'
+      p.category && p.category.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '') === cleanSlug && p.status !== 'draft'
     );
 
     return (
@@ -289,7 +330,10 @@ export default function SlugPage() {
               </button>
             </div>
 
-            {/* WordPress HTML Content Renderer with TOC */}
+            {/* Dynamic Table of Contents (Automatically generated for all articles with 2+ headings) */}
+            <TableOfContents items={tocItems} />
+
+            {/* WordPress HTML Content Renderer */}
             <ArticleContent content={post.content} />
           </div>
         </article>

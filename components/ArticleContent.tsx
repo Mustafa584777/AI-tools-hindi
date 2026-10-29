@@ -1,111 +1,28 @@
 'use client';
 
 import { useMemo, useRef, useEffect } from 'react';
-import { fetchMediaVideoFromFirestore, fetchMediaImageFromFirestore } from '@/lib/storage';
+import { stripTableOfContents, injectHeadingIdsForToc } from '@/lib/utils';
 
-function removeManualTOC(doc: Document) {
-  const tocSelectors = [
-    '.ez-toc',
-    '[class*="toc-container"]',
-    '[class*="table-of-contents"]',
-    '[class*="ez-toc"]',
-    '[id*="toc"]',
-    '.su-table-of-contents',
-    '#ez-toc-container',
-    '.toc'
-  ];
-  tocSelectors.forEach(sel => {
-    doc.querySelectorAll(sel).forEach(el => el.remove());
-  });
+function getProcessedContent(html: string): string {
+  if (!html) return '';
 
-  const potentialTocs = Array.from(doc.querySelectorAll('div, section, aside, p, h2, h3, h4'));
-  potentialTocs.forEach(el => {
-    const text = (el.textContent || '').trim().toLowerCase();
-    const isTocTitle = 
-      text === 'table of contents' ||
-      text === 'विषय सूची' ||
-      text === 'table of content' ||
-      text === 'विषय-सूची' ||
-      text === 'in this article' ||
-      text === 'इस लेख में' ||
-      text === 'कुंजी बिंदु' ||
-      text.startsWith('table of contents') ||
-      text.startsWith('विषय सूची');
+  // 1. Strip any hardcoded TOC elements from legacy or WordPress content
+  let cleaned = stripTableOfContents(html);
 
-    if (isTocTitle) {
-      const hasLinks = el.querySelector('a[href^="#"]') || (el.nextElementSibling && el.nextElementSibling.querySelectorAll('a[href^="#"]').length > 0);
-      if (hasLinks) {
-        if (el.tagName === 'DIV' || el.tagName === 'SECTION' || el.tagName === 'ASIDE') {
-          el.remove();
-        } else {
-          const next = el.nextElementSibling;
-          if (next && (next.tagName === 'UL' || next.tagName === 'OL')) {
-            next.remove();
-          }
-          el.remove();
-        }
-      }
-    }
-  });
-}
+  // 2. Ensure all aitoolhindi.online wp-content images and videos resolve to local static path
+  cleaned = cleaned.replace(/https?:\/\/(?:www\.)?aitoolhindi\.online(\/wp-content\/[^\s"'>]+)/gi, '$1');
 
-function getProcessedContentWithTOC(html: string) {
-  if (typeof window === 'undefined') return html;
+  // 3. Inject matching heading IDs with scroll offset for smooth Table of Contents navigation
+  cleaned = injectHeadingIdsForToc(cleaned);
 
-  // Ensure all aitoolhindi.online wp-content images and videos resolve to the local static path
-  const normalizedHtml = html.replace(/https?:\/\/(?:www\.)?aitoolhindi\.online(\/wp-content\/[^\s"'>]+)/gi, '$1');
-
-  const parser = new DOMParser();
-  const doc = parser.parseFromString(normalizedHtml, 'text/html');
-
-  // Remove any existing manual TOC first to avoid duplication
-  removeManualTOC(doc);
-
-  // Find h2 and h3 headings for Table of Contents without modifying the author's tags
-  const headings = Array.from(doc.querySelectorAll('h2, h3'));
-  if (headings.length === 0) return doc.body.innerHTML;
-
-  const tocHeadings: { id: string; text: string; tag: string }[] = [];
-  headings.forEach((h, idx) => {
-    const id = `toc-heading-${idx}-${h.textContent?.toLowerCase().replace(/[^a-z0-9]+/g, '-') || idx}`;
-    h.id = id;
-    tocHeadings.push({ id, text: h.textContent || '', tag: h.tagName.toLowerCase() });
-  });
-
-  if (doc.querySelector('.auto-toc-box')) return doc.body.innerHTML;
-
-  const paragraphs = Array.from(doc.querySelectorAll('p'));
-  const tocHtml = `
-    <div class="auto-toc-box my-6 sm:my-8 p-4 sm:p-6 bg-orange-50/70 border border-orange-200 rounded-2xl shadow-sm space-y-3">
-      <div class="flex items-center gap-2 font-extrabold text-black text-base">
-        <svg class="w-5 h-5 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h7"/></svg>
-        <span>Table of Contents (विषय सूची)</span>
-      </div>
-      <ul class="space-y-1.5 pl-5 list-disc text-sm font-bold text-orange-600">
-        ${tocHeadings.map(h => `<li class="${h.tag === 'h3' ? 'ml-4' : ''}"><a href="#${h.id}" class="no-underline hover:text-orange-800 text-orange-600">${h.text}</a></li>`).join('')}
-      </ul>
-    </div>
-  `;
-
-  if (paragraphs.length >= 3) {
-    const thirdP = paragraphs[2];
-    const tempContainer = doc.createElement('div');
-    tempContainer.innerHTML = tocHtml;
-    thirdP.after(tempContainer.firstElementChild!);
-  } else if (doc.body.firstChild) {
-    const tempContainer = doc.createElement('div');
-    tempContainer.innerHTML = tocHtml;
-    doc.body.insertBefore(tempContainer.firstElementChild!, doc.body.firstChild);
-  }
-
-  return doc.body.innerHTML;
+  return cleaned;
 }
 
 export default function ArticleContent({ content }: { content: string }) {
   const containerRef = useRef<HTMLDivElement>(null);
 
   const processedContent = useMemo(() => {
-    return getProcessedContentWithTOC(content);
+    return getProcessedContent(content);
   }, [content]);
 
   useEffect(() => {
@@ -146,6 +63,7 @@ export default function ArticleContent({ content }: { content: string }) {
 
       if (!currentSrc || !currentSrc.startsWith('data:video/')) {
         try {
+          const { fetchMediaVideoFromFirestore } = await import('@/lib/storage');
           const base64 = await fetchMediaVideoFromFirestore(mediaId);
           if (base64) {
             if (sourceEl) {
@@ -254,6 +172,7 @@ export default function ArticleContent({ content }: { content: string }) {
       const currentSrc = imgEl.getAttribute('src');
       if (!currentSrc || !currentSrc.startsWith('data:image/')) {
         try {
+          const { fetchMediaImageFromFirestore } = await import('@/lib/storage');
           const base64 = await fetchMediaImageFromFirestore(mediaId);
           if (base64) {
             imgEl.setAttribute('src', base64);
