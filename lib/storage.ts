@@ -182,34 +182,72 @@ export function extractFirstImageAndAlt(
   fallbackImage?: string, 
   fallbackAlt?: string,
   fallbackTitle?: string
-): { image: string; imageAlt: string } {
+): { image: string; imageAlt: string; imageSlug: string } {
+  const defaultImg = (fallbackImage && !fallbackImage.startsWith('data:')) ? fallbackImage : 'https://picsum.photos/seed/aitoolhindi/800/450';
+  const defaultAlt = fallbackAlt || fallbackTitle || 'AI tutorial featured image';
+  const defaultSlug = 'ai-tutorial';
+
   if (!content) {
     return {
-      image: fallbackImage || 'https://picsum.photos/seed/default/800/450',
-      imageAlt: fallbackAlt || fallbackTitle || 'AI tutorial featured image'
+      image: defaultImg,
+      imageAlt: defaultAlt,
+      imageSlug: defaultSlug
     };
   }
 
   const imgRegex = /<img[^>]+src=["']([^"']+)["'][^>]*>/gi;
   let match;
-  let firstValidImage: { image: string; imageAlt: string } | null = null;
-  let firstAnyImage: { image: string; imageAlt: string } | null = null;
+  let firstValidImage: { image: string; imageAlt: string; imageSlug: string } | null = null;
+  let firstAnyImage: { image: string; imageAlt: string; imageSlug: string } | null = null;
 
   while ((match = imgRegex.exec(content)) !== null) {
     const rawSrc = match[1];
     const imgTag = match[0];
     const altMatch = imgTag.match(/alt=["']([^"']*)["']/i);
-    const cleanSrc = rawSrc.trim().replace(/[\\\"\']+$/, '');
+    const slugMatch = imgTag.match(/data-img-slug=["']([^"']*)["']/i);
+    
+    let cleanSrc = rawSrc.trim().replace(/[\\\"\']+$/, '');
+    if (cleanSrc.startsWith('data:') && !cleanSrc.includes('wp-content') && !cleanSrc.includes('cloudinary.com')) {
+      cleanSrc = 'https://picsum.photos/seed/aitoolhindi/800/450';
+    }
+
     const cleanAlt = altMatch && altMatch[1] && altMatch[1].trim()
       ? altMatch[1].trim()
       : (fallbackAlt || fallbackTitle || 'AI tutorial featured image');
 
+    let rawSlug = '';
+    if (slugMatch && slugMatch[1]) {
+      rawSlug = slugMatch[1];
+    } else {
+      try {
+        const urlParts = cleanSrc.split('/');
+        const filename = urlParts[urlParts.length - 1].split('?')[0];
+        const nameWithoutExt = filename.substring(0, filename.lastIndexOf('.')) || filename;
+        rawSlug = nameWithoutExt;
+      } catch {
+        rawSlug = cleanAlt;
+      }
+    }
+
+    let cleanSlug = rawSlug
+      .replace(/-featured$/i, '')
+      .replace(/%[0-9a-fA-F]{2}/g, '-')
+      .toLowerCase()
+      .replace(/[^a-z0-9\-]+/g, '-')
+      .replace(/^-+|-+$/g, '');
+
+    if (!cleanSlug) {
+      cleanSlug = 'ai-tutorial';
+    }
+
+    const item = { image: cleanSrc, imageAlt: cleanAlt, imageSlug: cleanSlug };
+
     if (!firstAnyImage && cleanSrc) {
-      firstAnyImage = { image: cleanSrc, imageAlt: cleanAlt };
+      firstAnyImage = item;
     }
 
     if (!firstValidImage && cleanSrc && !cleanSrc.includes('img.youtube.com') && !cleanSrc.includes('i.ytimg.com')) {
-      firstValidImage = { image: cleanSrc, imageAlt: cleanAlt };
+      firstValidImage = item;
       break;
     }
   }
@@ -220,27 +258,48 @@ export function extractFirstImageAndAlt(
   }
 
   return {
-    image: fallbackImage || 'https://picsum.photos/seed/default/800/450',
-    imageAlt: fallbackAlt || fallbackTitle || 'AI tutorial featured image'
+    image: defaultImg,
+    imageAlt: defaultAlt,
+    imageSlug: defaultSlug
+  };
+}
+
+export function cleanPostForExport(post: BlogPost): BlogPost {
+  let img = post.image || '';
+  if (img.startsWith('data:') && !img.includes('wp-content') && !img.includes('cloudinary.com')) {
+    img = 'https://picsum.photos/seed/aitoolhindi/800/450';
+  }
+
+  let content = stripTableOfContents(post.content || '');
+  content = content.replace(/<img([^>]+)src=["'](data:[^"']+)["']([^>]*)>/gi, (match, p1, srcVal, p3) => {
+    if (!srcVal.includes('wp-content') && !srcVal.includes('cloudinary.com')) {
+      return `<img${p1}src="https://picsum.photos/seed/aitoolhindi/800/450"${p3}>`;
+    }
+    return match;
+  });
+
+  const { image, imageAlt, imageSlug } = extractFirstImageAndAlt(content, img, post.imageAlt, post.title);
+
+  return {
+    ...post,
+    image,
+    imageAlt,
+    imageSlug,
+    content
   };
 }
 
 // Save post directly to Firebase Firestore
 export async function saveBlogPostToFirestore(post: BlogPost): Promise<BlogPost> {
-  const cleanContent = stripTableOfContents(post.content);
-  const { image, imageAlt } = extractFirstImageAndAlt(cleanContent, post.image, post.imageAlt, post.title);
-  
-  const rawSlug = (post.slug || post.title).trim();
+  const cleaned = cleanPostForExport(post);
+  const rawSlug = (cleaned.slug || cleaned.title).trim();
   const cleanSlug = rawSlug.toLowerCase().replace(/[^a-z0-9\-]+/g, '-').replace(/^-+|-+$/g, '') || ('post-' + Date.now());
   const canonicalId = 'blog-' + cleanSlug;
 
   const postWithTime: BlogPost = {
-    ...post,
+    ...cleaned,
     id: canonicalId,
     slug: cleanSlug,
-    content: cleanContent,
-    image,
-    imageAlt,
     createdAt: post.createdAt || Date.now()
   };
 
@@ -292,30 +351,30 @@ export async function restoreBackupPosts(
   onProgress?: (current: number, total: number) => void
 ): Promise<number> {
   const validPosts: BlogPost[] = importedPosts.map((p, idx) => {
-    const cleanContent = stripTableOfContents(p.content);
-    const { image, imageAlt } = extractFirstImageAndAlt(cleanContent, p.image, p.imageAlt, p.title);
     const rawSlug = (p.slug || (p.title ? p.title.toLowerCase().replace(/[^a-z0-9\-]+/g, '-').replace(/^-+|-+$/g, '') : ('imported-post-' + idx))).trim();
     const cleanSlug = rawSlug.toLowerCase().replace(/[^a-z0-9\-]+/g, '-').replace(/^-+|-+$/g, '');
     const canonicalId = 'blog-' + cleanSlug;
 
-    return {
+    const basePost: BlogPost = {
       id: canonicalId,
       slug: cleanSlug,
       title: p.title || 'Untitled',
       excerpt: p.excerpt || '',
       metaDescription: p.metaDescription || '',
-      content: cleanContent,
+      content: p.content || '',
       category: p.category || 'AI Guides',
       author: p.author || 'Anwar',
       date: p.date || new Date().toLocaleDateString('hi-IN'),
       readTime: p.readTime || '5 min read',
-      image,
-      imageAlt,
-      imageSlug: p.imageSlug || 'ai-tutorial-featured',
+      image: p.image || '',
+      imageAlt: p.imageAlt || '',
+      imageSlug: p.imageSlug || '',
       status: p.status || 'published',
       noIndex: p.noIndex || false,
       createdAt: p.createdAt || Date.now()
     };
+
+    return cleanPostForExport(basePost);
   });
 
   if (typeof window !== 'undefined') {

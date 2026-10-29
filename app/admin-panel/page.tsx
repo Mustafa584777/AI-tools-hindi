@@ -1329,7 +1329,7 @@ export default function AdminPanelPage() {
     const extracted = extractFirstImageAndAlt(b.content, b.image, b.imageAlt, b.title);
     setBlogImage(extracted.image);
     setBlogImageAlt(extracted.imageAlt);
-    setBlogImageSlug(b.imageSlug || '');
+    setBlogImageSlug(extracted.imageSlug);
     setFailedImageSrc(null);
     setBlogStatus(b.status || 'published');
     setBlogNoIndex(!!b.noIndex);
@@ -1482,7 +1482,7 @@ export default function AdminPanelPage() {
         readTime: '5 min read',
         image: finalBlogImage,
         imageAlt: finalBlogImageAlt,
-        imageSlug: blogImageSlug,
+        imageSlug: extracted.imageSlug,
         status: blogStatus,
         noIndex: blogNoIndex
       };

@@ -3,7 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { BlogPost } from '@/lib/types';
 import postsBackup from '@/data/posts.json';
-import { stripTableOfContents } from '@/lib/utils';
+import { cleanPostForExport } from '@/lib/storage';
 
 export const dynamic = 'force-dynamic';
 
@@ -66,11 +66,8 @@ export async function GET() {
       posts = (postsBackup as unknown as BlogPost[]) || [];
     }
 
-    // Ensure all posts have pure, TOC-free content
-    posts = posts.map(p => ({
-      ...p,
-      content: stripTableOfContents(p.content)
-    }));
+    // Ensure all posts are cleaned for export (no base64 except wp/cloudinary, correct featured image & slug)
+    posts = posts.map(cleanPostForExport);
 
     posts.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
 
@@ -82,10 +79,7 @@ export async function GET() {
       }
     });
   } catch {
-    const fallback = ((postsBackup as unknown as BlogPost[]) || []).map(p => ({
-      ...p,
-      content: stripTableOfContents(p.content)
-    }));
+    const fallback = ((postsBackup as unknown as BlogPost[]) || []).map(cleanPostForExport);
 
     return NextResponse.json({ posts: fallback }, {
       headers: {
