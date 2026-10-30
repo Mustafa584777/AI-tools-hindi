@@ -19,7 +19,7 @@ export default function Footer() {
             <span>Aitoolhindi.online</span>
           </div>
           <p className="text-sm leading-relaxed text-slate-300">
-            भारत का नंबर 1 हिंदी AI ट्यूटोरियल और ब्लॉग पोर्टल। WordPress से Next.js पर माइग्रेटेड और Firebase से कनेक्टेड।
+            भारत का नंबर 1 हिंदी AI ट्यूटोरियल और ब्लॉग पोर्टल।
           </p>
         </div>
 
