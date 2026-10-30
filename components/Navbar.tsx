@@ -3,10 +3,20 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { Menu, X, Home } from 'lucide-react';
+import { Menu, X, Home, Folder } from 'lucide-react';
+import { getStoredBlogPostsSync } from '@/lib/storage';
 
 export default function Navbar() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [categories] = useState<string[]>(() => {
+    try {
+      const posts = getStoredBlogPostsSync();
+      const derived = Array.from(new Set(posts.map(p => p.category).filter(Boolean))) as string[];
+      return Array.from(new Set(['AI Guides', 'Image Tutorials', 'Video Tutorials', 'ChatGPT Guides', ...derived]));
+    } catch {
+      return ['AI Guides', 'Image Tutorials', 'Video Tutorials', 'ChatGPT Guides'];
+    }
+  });
 
   return (
     <header className="sticky top-0 z-50 bg-white/90 backdrop-blur-md border-b border-slate-200">
@@ -50,17 +60,36 @@ export default function Navbar() {
         </div>
       </div>
 
-      {/* Mobile Dropdown / Toggle Menu - Only Homepage */}
+      {/* Mobile Dropdown / Toggle Menu - Home + All Categories in English */}
       {mobileMenuOpen && (
-        <div className="md:hidden bg-white border-b border-slate-200 px-6 py-4 space-y-3 shadow-lg">
+        <div className="md:hidden bg-white border-b border-slate-200 px-6 py-4 space-y-2 shadow-lg max-h-[75vh] overflow-y-auto">
           <Link
             href="/"
             onClick={() => setMobileMenuOpen(false)}
             className="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-bold text-black hover:bg-orange-50 hover:text-orange-600 transition-colors"
           >
             <Home className="w-4 h-4 text-orange-600" />
-            <span>Home (होमपेज)</span>
+            <span>Home</span>
           </Link>
+
+          <div className="pt-2 pb-1 px-4 text-[11px] font-extrabold uppercase tracking-wider text-slate-400">
+            Categories
+          </div>
+
+          {categories.map((cat) => {
+            const catSlug = cat.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+            return (
+              <Link
+                key={cat}
+                href={`/${catSlug}`}
+                onClick={() => setMobileMenuOpen(false)}
+                className="flex items-center gap-3 px-4 py-2 rounded-xl text-sm font-medium text-slate-800 hover:bg-orange-50 hover:text-orange-600 transition-colors"
+              >
+                <Folder className="w-4 h-4 text-orange-600 shrink-0" />
+                <span>{cat}</span>
+              </Link>
+            );
+          })}
         </div>
       )}
     </header>
