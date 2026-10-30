@@ -189,32 +189,20 @@ export default function ArticleViewClient({
           <span>Back to Home</span>
         </Link>
 
-        {/* Article Header */}
+        {/* Article Header (Featured Image removed per user request) */}
         <article className="bg-white rounded-2xl sm:rounded-3xl border border-slate-200 overflow-hidden shadow-sm w-full max-w-full">
-          <div className="min-h-[220px] h-60 sm:h-80 md:h-96 relative w-full bg-slate-900 overflow-hidden">
-            <BlogImage
-              src={post.image}
-              alt={post.imageAlt || post.title}
-              fill
-              sizes="(max-width: 1024px) 100vw, 800px"
-              className="object-cover"
-              priority
-              fallbackSrc="https://picsum.photos/seed/articlefeatured/1200/675"
-            />
-            <div className="absolute inset-0 bg-gradient-to-t from-slate-950/90 via-slate-950/45 to-transparent"></div>
-            <div className="absolute bottom-4 sm:bottom-6 left-4 sm:left-6 right-4 sm:right-6 text-white space-y-2 sm:space-y-3">
-              <span className="inline-block px-3 py-1 bg-orange-600 text-white font-bold text-xs rounded-full shadow-sm">
-                {post.category}
-              </span>
-              <h1 className="text-xl sm:text-2xl md:text-4xl font-extrabold tracking-tight leading-snug sm:leading-tight text-white break-words">
-                {post.title}
-              </h1>
-            </div>
+          <div className="p-6 sm:p-8 md:p-10 space-y-4 border-b border-slate-100">
+            <span className="inline-block px-3.5 py-1 bg-orange-50 text-orange-700 font-bold text-xs rounded-full border border-orange-200">
+              {post.category}
+            </span>
+            <h1 className="text-2xl sm:text-3xl md:text-4xl font-extrabold tracking-tight leading-snug sm:leading-tight text-black break-words">
+              {post.title}
+            </h1>
           </div>
 
           <div className="p-4 sm:p-6 md:p-10 space-y-6 sm:space-y-8">
             {/* Metadata bar */}
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4 py-3 sm:py-4 border-y border-slate-100 text-xs text-black font-medium">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4 py-3 sm:py-4 border-b border-slate-100 text-xs text-black font-medium">
               <div className="flex items-center gap-4 sm:gap-6">
                 <span className="flex items-center gap-1.5">
                   <Calendar className="w-4 h-4 text-orange-600 shrink-0" />
@@ -235,10 +223,7 @@ export default function ArticleViewClient({
               </button>
             </div>
 
-            {/* Dynamic Table of Contents */}
-            <TableOfContents items={tocItems} />
-
-            {/* WordPress HTML Content Renderer */}
+            {/* WordPress HTML Content Renderer (TOC is automatically injected after 3rd paragraph inside ArticleContent) */}
             <ArticleContent content={post.content} />
           </div>
         </article>

@@ -1,7 +1,8 @@
 'use client';
 
 import { useMemo, useRef, useEffect } from 'react';
-import { stripTableOfContents, injectHeadingIdsForToc } from '@/lib/utils';
+import { stripTableOfContents, injectHeadingIdsForToc, extractTocFromHtml } from '@/lib/utils';
+import TableOfContents from '@/components/TableOfContents';
 
 function getProcessedContent(html: string): string {
   if (!html) return '';
@@ -21,9 +22,52 @@ function getProcessedContent(html: string): string {
 export default function ArticleContent({ content }: { content: string }) {
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const processedContent = useMemo(() => {
-    return getProcessedContent(content);
+  const tocItems = useMemo(() => extractTocFromHtml(content), [content]);
+
+  const { firstPart, secondPart } = useMemo(() => {
+    const html = getProcessedContent(content);
+    if (!html) return { firstPart: '', secondPart: '' };
+
+    const pCloseRegex = /<\/p>/gi;
+    let match;
+    let pCount = 0;
+    let splitIndex = -1;
+
+    while ((match = pCloseRegex.exec(html)) !== null) {
+      pCount++;
+      if (pCount === 3) {
+        splitIndex = pCloseRegex.lastIndex;
+        break;
+      }
+    }
+
+    if (splitIndex !== -1) {
+      return {
+        firstPart: html.substring(0, splitIndex),
+        secondPart: html.substring(splitIndex),
+      };
+    }
+
+    // Fallback if fewer than 3 paragraphs
+    pCloseRegex.lastIndex = 0;
+    let lastPIndex = -1;
+    while ((match = pCloseRegex.exec(html)) !== null) {
+      lastPIndex = pCloseRegex.lastIndex;
+    }
+
+    if (lastPIndex !== -1) {
+      return {
+        firstPart: html.substring(0, lastPIndex),
+        secondPart: html.substring(lastPIndex),
+      };
+    }
+
+    return { firstPart: html, secondPart: '' };
   }, [content]);
+
+  const processedContentForEffect = useMemo(() => {
+    return firstPart + (secondPart ? '\n' + secondPart : '');
+  }, [firstPart, secondPart]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -111,14 +155,13 @@ export default function ArticleContent({ content }: { content: string }) {
         }
 
         if (attempts === 2 && currentSrc.startsWith('http')) {
-          // Try proxying via fetch-image API
           fetch(`/api/fetch-image?url=${encodeURIComponent(currentSrc)}`)
             .then(res => res.json())
             .then(data => {
               if (data.dataUrl) {
                 imgEl.src = data.dataUrl;
               } else {
-                imgEl.src = `https://picsum.photos/seed/${encodeURIComponent(imgEl.alt || 'aitoolhindi')} /800/450`;
+                imgEl.src = `https://picsum.photos/seed/${encodeURIComponent(imgEl.alt || 'aitoolhindi')}/800/450`;
               }
             })
             .catch(() => {
@@ -127,7 +170,6 @@ export default function ArticleContent({ content }: { content: string }) {
           return;
         }
 
-        // Final fallback
         if (!imgEl.src.includes('picsum.photos')) {
           imgEl.src = `https://picsum.photos/seed/${encodeURIComponent(imgEl.alt || 'aitoolhindi')}/800/450`;
           imgEl.classList.add('opacity-90');
@@ -135,7 +177,6 @@ export default function ArticleContent({ content }: { content: string }) {
       };
     });
 
-    // Fix all iframes and embedded players for responsive mobile display
     const iframes = container.querySelectorAll('iframe');
     iframes.forEach((iframe) => {
       iframe.style.maxWidth = '100%';
@@ -148,7 +189,6 @@ export default function ArticleContent({ content }: { content: string }) {
       }
     });
 
-    // Wrap tables in responsive horizontal-scroll container
     const tables = container.querySelectorAll('table');
     tables.forEach((table) => {
       if (!table.parentElement?.classList.contains('table-responsive-wrapper')) {
@@ -159,7 +199,6 @@ export default function ArticleContent({ content }: { content: string }) {
       }
     });
 
-    // Constrain pre/code blocks
     const pres = container.querySelectorAll('pre');
     pres.forEach((pre) => {
       pre.classList.add('max-w-full', 'overflow-x-auto', 'whitespace-pre-wrap', 'break-words');
@@ -188,13 +227,16 @@ export default function ArticleContent({ content }: { content: string }) {
         el.removeEventListener('click', handler);
       });
     };
-  }, [processedContent]);
+  }, [processedContentForEffect]);
 
   return (
     <div 
       ref={containerRef}
       className="prose prose-slate max-w-none text-black leading-relaxed space-y-4 text-base md:text-lg font-medium w-full max-w-full break-words [overflow-wrap:anywhere] overflow-hidden [&>h1]:text-2xl [&>h1]:md:text-3xl [&>h1]:font-extrabold [&>h1]:text-black [&>h1]:pt-4 [&>h2]:text-xl [&>h2]:md:text-2xl [&>h2]:font-bold [&>h2]:text-black [&>h2]:pt-3 [&>h3]:text-lg [&>h3]:font-bold [&>h3]:text-black [&_ul]:list-disc [&_ul]:pl-6 [&_ul]:space-y-2 [&_ul]:my-4 [&_ol]:list-decimal [&_ol]:pl-6 [&_ol]:space-y-2 [&_ol]:my-4 [&_li]:my-1 [&>blockquote]:border-l-4 [&>blockquote]:border-orange-600 [&>blockquote]:pl-4 [&>blockquote]:italic [&>blockquote]:text-black [&>blockquote]:my-4 [&>blockquote]:bg-orange-50/50 [&>blockquote]:py-3 [&>blockquote]:rounded-r-xl"
-      dangerouslySetInnerHTML={{ __html: processedContent }}
-    />
+    >
+      <div dangerouslySetInnerHTML={{ __html: firstPart }} />
+      <TableOfContents items={tocItems} />
+      {secondPart && <div dangerouslySetInnerHTML={{ __html: secondPart }} />}
+    </div>
   );
 }
