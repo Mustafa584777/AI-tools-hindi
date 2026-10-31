@@ -121,6 +121,35 @@ Return ONLY a valid JSON object with:
       return NextResponse.json(json);
     }
 
+    if (action === 'summarize') {
+      const prompt = `You are an expert AI content summarizer for Aitoolhindi.online.
+Summarize the following Hindi article concisely in Hindi using 3-4 bullet points and a brief overview paragraph.
+Title: ${keywordOrTitle}
+Content: ${content}
+
+Return ONLY a valid JSON object with:
+- summary: HTML or text formatted concise summary in Hindi.
+`;
+
+      const response = await ai.models.generateContent({
+        model: "gemini-3.8-flash",
+        contents: prompt,
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              summary: { type: Type.STRING }
+            },
+            required: ["summary"]
+          }
+        }
+      });
+
+      const json = JSON.parse(response.text || '{}');
+      return NextResponse.json(json);
+    }
+
     return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
   } catch (error) {
     console.error('AI Supervisor error:', error);
