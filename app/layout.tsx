@@ -1,4 +1,4 @@
-import type {Metadata} from 'next';
+import type {Metadata, Viewport} from 'next';
 import Script from 'next/script';
 import './globals.css'; // Global styles
 
@@ -15,6 +15,13 @@ export const metadata: Metadata = {
     title: 'Aitoolhindi.online – भारत का नंबर 1 हिंदी AI ट्यूटोरियल और टूल्स गाइड',
     description: 'हिंदी में सीखें आर्टिफिशियल इंटेलिजेंस, ChatGPT, Midjourney, AI टूल्स और प्रॉम्प्ट इंजीनियरिंग की पूरी जानकारी।',
   },
+};
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 0.7,
+  maximumScale: 2.0,
+  userScalable: true,
 };
 
 export default function RootLayout({children}: {children: React.ReactNode}) {
