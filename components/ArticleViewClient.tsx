@@ -19,6 +19,13 @@ interface ArticleViewClientProps {
   cleanSlug: string;
 }
 
+const placeholders = [
+  "क्या आप बेस्ट इमेज जनरेशन टूल जानना चाहेंगे?",
+  "क्या आपको AI इमेज जनरेशन के लिए टिप्स चाहिए?",
+  "क्या ChatGPT और Claude में अंतर जानना चाहते हैं?",
+  "क्या आप प्रॉम्प्ट इंजीनियरिंग सीखना चाहते हैं?"
+];
+
 export default function ArticleViewClient({
   initialPost,
   initialMatchedCategory,
@@ -31,10 +38,22 @@ export default function ArticleViewClient({
   const [loading, setLoading] = useState<boolean>(!initialPost && !initialMatchedCategory);
   const [copied, setCopied] = useState(false);
 
-  // AI Summarizer states
+  // AI Summarizer inline states
   const [isSummarizing, setIsSummarizing] = useState(false);
-  const [aiSummaryText, setAiSummaryText] = useState<string | null>(null);
-  const [showSummaryModal, setShowSummaryModal] = useState(false);
+  const [aiSummaryHtml, setAiSummaryHtml] = useState<string | null>(null);
+
+  // Follow-up Question Bar states
+  const [userQuestion, setUserQuestion] = useState('');
+  const [isAskingQuestion, setIsAskingQuestion] = useState(false);
+  const [questionAnswer, setQuestionAnswer] = useState<string | null>(null);
+  const [placeholderIndex, setPlaceholderIndex] = useState(0);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setPlaceholderIndex(prev => (prev + 1) % placeholders.length);
+    }, 4000);
+    return () => clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
@@ -199,15 +218,42 @@ export default function ArticleViewClient({
       });
       const data = await res.json();
       if (data.summary) {
-        setAiSummaryText(data.summary);
-        setShowSummaryModal(true);
+        setAiSummaryHtml(data.summary);
       } else {
-        alert('Failed to generate summary.');
+        setAiSummaryHtml('<p>सारांश उत्पन्न करने में विफल। कृपया पुनः प्रयास करें।</p>');
       }
     } catch (e) {
-      alert('Error: ' + (e as Error).message);
+      setAiSummaryHtml('<p>त्रुटि: ' + (e as Error).message + '</p>');
     } finally {
       setIsSummarizing(false);
+    }
+  };
+
+  const handleAskQuestion = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!userQuestion.trim() || !post) return;
+    setIsAskingQuestion(true);
+    setQuestionAnswer(null);
+    try {
+      const res = await fetch('/api/ai-supervisor', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'question',
+          keywordOrTitle: post.title,
+          question: userQuestion.trim()
+        })
+      });
+      const data = await res.json();
+      if (data.answer) {
+        setQuestionAnswer(data.answer);
+      } else {
+        setQuestionAnswer('<p>क्षमा करें, उत्तर प्राप्त करने में समस्या आई।</p>');
+      }
+    } catch (err) {
+      setQuestionAnswer('<p>त्रुटि: ' + (err as Error).message + '</p>');
+    } finally {
+      setIsAskingQuestion(false);
     }
   };
 
@@ -236,7 +282,7 @@ export default function ArticleViewClient({
               </div>
 
               <div className="p-4 sm:p-6 md:p-10 space-y-6 sm:space-y-8">
-                {/* Metadata bar (Share button right after read time) */}
+                {/* Metadata bar */}
                 <div className="flex flex-row items-center justify-between gap-3 py-3 sm:py-4 border-b border-slate-100 text-xs text-black font-medium">
                   <div className="flex items-center gap-3 sm:gap-6 flex-wrap">
                     <span className="flex items-center gap-1.5">
@@ -257,9 +303,9 @@ export default function ArticleViewClient({
                     <button
                       onClick={handleSummarize}
                       disabled={isSummarizing}
-                      className="inline-flex items-center gap-1 px-3 py-1.5 bg-orange-50 hover:bg-orange-100 text-orange-700 border border-orange-200 rounded-lg font-bold transition-colors text-xs disabled:opacity-50 shadow-sm cursor-pointer"
+                      className="inline-flex items-center gap-1 px-3.5 py-1.5 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white rounded-lg font-bold transition-all text-xs disabled:opacity-50 shadow-md cursor-pointer"
                     >
-                      {isSummarizing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3 text-orange-600" />}
+                      {isSummarizing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3 text-white" />}
                       <span>{isSummarizing ? 'Summarising...' : 'Summarise with AI'}</span>
                     </button>
 
@@ -271,6 +317,93 @@ export default function ArticleViewClient({
                       <span>{copied ? 'Copied!' : 'Share'}</span>
                     </button>
                   </div>
+                </div>
+
+                {/* Inline AI Summary Section (Appears right at the top of article content when clicked) */}
+                {aiSummaryHtml && (
+                  <div className="p-6 sm:p-8 bg-gradient-to-br from-blue-50/70 via-indigo-50/40 to-purple-50/50 rounded-3xl border border-blue-200/80 shadow-md space-y-4">
+                    <div className="flex items-center justify-between border-b border-blue-200/60 pb-3">
+                      <div className="flex items-center gap-2.5">
+                        <div className="p-2 rounded-xl bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-xs">
+                          <Sparkles className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <h3 className="font-extrabold text-black text-lg">AI Summarised Version (एआई सारांश)</h3>
+                          <p className="text-xs text-slate-600 font-medium">Detailed summary with lists & tables in easy Hindi</p>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => setAiSummaryHtml(null)}
+                        className="p-1.5 hover:bg-white/80 rounded-xl text-slate-500 transition-colors cursor-pointer"
+                        title="Close Summary"
+                      >
+                        <X className="w-5 h-5" />
+                      </button>
+                    </div>
+                    <div className="prose prose-slate max-w-none text-black leading-relaxed font-medium text-base space-y-4">
+                      <div dangerouslySetInnerHTML={{ __html: aiSummaryHtml }} />
+                    </div>
+                  </div>
+                )}
+
+                {/* Interactive Question Bar */}
+                <div className="p-6 bg-orange-50/80 border border-orange-200 rounded-3xl shadow-sm space-y-4">
+                  <div className="flex items-center gap-2.5 text-black font-extrabold text-base">
+                    <div className="p-1.5 rounded-xl bg-orange-600 text-white">
+                      <User className="w-4 h-4" />
+                    </div>
+                    <span>और क्या जानना चाहते हैं? (Ask AI Follow-up)</span>
+                  </div>
+
+                  <form onSubmit={handleAskQuestion} className="flex flex-col sm:flex-row gap-3">
+                    <input
+                      type="text"
+                      value={userQuestion}
+                      onChange={(e) => setUserQuestion(e.target.value)}
+                      placeholder={placeholders[placeholderIndex] || "क्या आप बेस्ट इमेज जनरेशन टूल जानना चाहेंगे?"}
+                      className="flex-1 px-4 py-3 bg-white border border-orange-200 rounded-xl text-xs sm:text-sm text-black font-medium focus:ring-2 focus:ring-orange-600/20"
+                    />
+                    <button
+                      type="submit"
+                      disabled={isAskingQuestion || !userQuestion.trim()}
+                      className="px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-bold rounded-xl text-xs sm:text-sm shadow-md inline-flex items-center justify-center gap-2 disabled:opacity-50 transition-all cursor-pointer"
+                    >
+                      {isAskingQuestion ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                      <span>Ask AI</span>
+                    </button>
+                  </form>
+
+                  <div className="flex flex-wrap items-center gap-2 pt-1">
+                    <span className="text-[11px] font-bold text-slate-500">सुझाव (Suggestions):</span>
+                    {placeholders.map((q, idx) => (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => setUserQuestion(q)}
+                        className="text-[11px] px-3 py-1 bg-white hover:bg-orange-100 text-orange-800 rounded-lg border border-orange-200 font-medium transition-colors cursor-pointer"
+                      >
+                        {q}
+                      </button>
+                    ))}
+                  </div>
+
+                  {questionAnswer && (
+                    <div className="mt-4 p-5 bg-white border border-orange-200 rounded-2xl space-y-3">
+                      <div className="flex items-center justify-between border-b border-orange-100 pb-2">
+                        <span className="text-xs font-extrabold text-orange-600">AI Answer (उत्तर):</span>
+                        <button
+                          type="button"
+                          onClick={() => setQuestionAnswer(null)}
+                          className="text-slate-400 hover:text-slate-600 text-xs font-bold cursor-pointer"
+                        >
+                          Clear
+                        </button>
+                      </div>
+                      <div className="prose prose-slate max-w-none text-black text-sm leading-relaxed font-medium">
+                        <div dangerouslySetInnerHTML={{ __html: questionAnswer }} />
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* WordPress HTML Content Renderer */}
@@ -342,41 +475,6 @@ export default function ArticleViewClient({
           </aside>
         </div>
       </main>
-
-      {/* AI Summary Modal */}
-      {showSummaryModal && aiSummaryText && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-2xl w-full p-6 sm:p-8 space-y-6 shadow-2xl border border-orange-200 max-h-[85vh] overflow-y-auto">
-            <div className="flex items-center justify-between border-b border-orange-100 pb-4">
-              <div className="flex items-center gap-2.5 font-extrabold text-black text-lg">
-                <div className="p-2 rounded-xl bg-orange-100 text-orange-600">
-                  <Sparkles className="w-5 h-5" />
-                </div>
-                <span>AI Summarised Version (एआई सारांश)</span>
-              </div>
-              <button
-                onClick={() => setShowSummaryModal(false)}
-                className="p-2 hover:bg-slate-100 rounded-xl text-slate-500 transition-colors cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="prose prose-slate max-w-none text-black leading-relaxed font-medium text-base space-y-4">
-              <div dangerouslySetInnerHTML={{ __html: aiSummaryText }} />
-            </div>
-
-            <div className="flex items-center justify-end pt-4 border-t border-orange-100">
-              <button
-                onClick={() => setShowSummaryModal(false)}
-                className="px-6 py-2.5 bg-orange-600 hover:bg-orange-700 text-white font-bold rounded-xl text-xs shadow-sm cursor-pointer"
-              >
-                Close Summary
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       <Footer />
     </>

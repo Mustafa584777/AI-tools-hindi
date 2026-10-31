@@ -125,12 +125,17 @@ Return ONLY a valid JSON object with:
       try {
         const truncatedContent = (content || '').substring(0, 8000);
         const prompt = `You are an expert AI content summarizer for Aitoolhindi.online.
-Summarize the following Hindi article concisely in Hindi using 3-4 bullet points and a brief overview paragraph.
+Provide a detailed comprehensive summary of the following Hindi article in easy, simple Hindi language. 
+Requirements:
+- Minimum 250 words.
+- Include structured bullet points (<ul><li>).
+- Include a simple comparison or data table (<table><tr><th>...</th></tr><tr><td>...</td></tr></table>).
+- Cover key takeaways, benefits, and step-by-step overview.
 Title: ${keywordOrTitle}
 Content: ${truncatedContent}
 
 Return ONLY a valid JSON object with:
-- summary: HTML formatted concise summary in Hindi.
+- summary: HTML formatted comprehensive summary (minimum 250 words, including lists and tables) in Hindi.
 `;
 
         const response = await ai.models.generateContent({
@@ -156,8 +161,43 @@ Return ONLY a valid JSON object with:
         console.warn('Primary summarize failed, falling back:', err);
       }
 
-      const fallbackSummary = `<p><strong>${keywordOrTitle}</strong> का मुख्य सारांश:</p><ul><li>यह ट्यूटोरियल हिंदी में स्टेप-बाय-स्टेप गाइड प्रदान करता है।</li><li>आप इसे आसानी से समझकर प्रैक्टिकल रूप से लागू कर सकते हैं।</li><li>अधिक जानकारी के लिए पूरा लेख पढ़ें।</li></ul>`;
+      const fallbackSummary = `<p><strong>${keywordOrTitle}</strong> के बारे में विस्तृत सारांश:</p><p>यह लेख आपको आर्टिफिशियल इंटेलिजेंस और आधुनिक तकनीक को बहुत ही सरल हिंदी में सिखाने के लिए तैयार किया गया है।</p><ul><li><strong>मुख्य बिंदु 1:</strong> स्टेप-बाय-स्टेप प्रैक्टिकल गाइड।</li><li><strong>मुख्य बिंदु 2:</strong> फ्री और पेड टूल्स की जानकारी।</li><li><strong>मुख्य बिंदु 3:</strong> रियल-लाइफ उदाहरण और उपयोग।</li></ul><div class="overflow-x-auto my-4"><table class="w-full border-collapse border border-slate-300 text-xs"><thead><tr class="bg-orange-50"><th class="border border-slate-300 p-2 text-left">फीचर</th><th class="border border-slate-300 p-2 text-left">विवरण</th></tr></thead><tbody><tr><td class="border border-slate-300 p-2">उपयोग</td><td class="border border-slate-300 p-2">आसान और तेज</td></tr><tr><td class="border border-slate-300 p-2">भाषा</td><td class="border border-slate-300 p-2">सरल हिंदी</td></tr></tbody></table></div>`;
       return NextResponse.json({ summary: fallbackSummary });
+    }
+
+    if (action === 'question') {
+      const { question } = await req.json();
+      try {
+        const prompt = `You are an expert AI assistant for Aitoolhindi.online.
+Article Title: ${keywordOrTitle}
+User's Question: "${question}"
+
+Answer the user's question clearly, helpfully, and in easy simple Hindi language.
+Return ONLY a valid JSON object with:
+- answer: HTML formatted answer in Hindi.
+`;
+        const response = await ai.models.generateContent({
+          model: "gemini-2.5-flash",
+          contents: prompt,
+          config: {
+            responseMimeType: "application/json",
+            responseSchema: {
+              type: Type.OBJECT,
+              properties: {
+                answer: { type: Type.STRING }
+              },
+              required: ["answer"]
+            }
+          }
+        });
+        const json = JSON.parse(response.text || '{}');
+        if (json.answer) {
+          return NextResponse.json(json);
+        }
+      } catch (e) {
+        console.warn('Question AI error:', e);
+      }
+      return NextResponse.json({ answer: `<p>आपके प्रश्न "<strong>${question}</strong>" के अनुसार, यह तकनीक बहुत आसान है और आप इसे हमारे लेख में बताए गए चरणों का पालन करके आसानी से सीख सकते हैं।</p>` });
     }
 
     return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
