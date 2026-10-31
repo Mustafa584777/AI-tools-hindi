@@ -272,7 +272,7 @@ export default function ArticleViewClient({
           {/* Main Article Column */}
           <div className="md:col-span-8 space-y-6 w-full max-w-full overflow-hidden">
             <article className="bg-white rounded-2xl sm:rounded-3xl border border-slate-200 overflow-hidden shadow-sm w-full max-w-full">
-              <div className="p-6 sm:p-8 md:p-10 space-y-4 border-b border-slate-100">
+              <div className="p-4 sm:p-6 md:p-8 space-y-2">
                 <span className="inline-block px-3.5 py-1 bg-orange-50 text-orange-700 font-bold text-xs rounded-full border border-orange-200">
                   {post.category}
                 </span>
@@ -414,7 +414,7 @@ export default function ArticleViewClient({
                   <div className="p-6 sm:p-8 bg-gradient-to-br from-orange-50/60 to-amber-50/30 rounded-2xl border border-orange-200/60 flex flex-col sm:flex-row items-center sm:items-start gap-4 sm:gap-6 shadow-sm">
                     <div className="w-16 h-16 rounded-full overflow-hidden bg-orange-100 shrink-0 shadow-md border border-orange-200 relative">
                       <Image
-                        src="/logo.png"
+                        src="/author.png"
                         alt={post.author || 'Anwar'}
                         fill
                         className="object-cover"
