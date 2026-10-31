@@ -49,16 +49,11 @@ export default function Footer() {
             <li><Link href="/dmca-policy" className="hover:text-white transition-colors">DMCA Policy</Link></li>
             <li><Link href="/dnpa-code-of-ethics" className="hover:text-white transition-colors">DNPA Code of Ethics</Link></li>
           </ul>
-          <div className="pt-2">
-            <p className="text-xs text-slate-400 leading-relaxed">
-              All original WordPress tutorial URLs are preserved 100% to protect search engine rankings.
-            </p>
-          </div>
         </div>
       </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 border-t border-slate-800 text-center text-xs text-slate-400">
-        &copy; {new Date().getFullYear()} Aitoolhindi.online. All rights reserved. Powered by Next.js & Firebase.
+        &copy; {new Date().getFullYear()} Aitoolhindi.online. All rights reserved.
       </div>
     </footer>
   );

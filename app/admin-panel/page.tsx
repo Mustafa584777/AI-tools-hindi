@@ -2835,7 +2835,26 @@ export default function AdminPanelPage() {
                             <div className="text-orange-600 font-mono text-[11px]">/{p.slug}</div>
                           </td>
                           <td className="p-4 font-semibold text-black">
-                            <span className="px-2.5 py-1 bg-orange-50 text-orange-700 rounded-lg">{p.category || 'AI Guides'}</span>
+                            <select
+                              value={p.category || 'AI Guides'}
+                              onChange={async (e) => {
+                                const newCat = e.target.value;
+                                const updated = posts.map(item => item.id === p.id ? { ...item, category: newCat } : item);
+                                setPosts(updated);
+                                try {
+                                  await saveBlogPostToFirestore({ ...p, category: newCat });
+                                  showNotify(`Category updated to "${newCat}" for "${p.title}"!`);
+                                } catch (err) {
+                                  console.error(err);
+                                  alert('Failed to update category.');
+                                }
+                              }}
+                              className="px-3 py-1.5 bg-orange-50 hover:bg-orange-100 text-orange-700 font-bold rounded-xl border border-orange-200 text-xs focus:ring-2 focus:ring-orange-600/20 cursor-pointer"
+                            >
+                              {customCategories.map(cat => (
+                                <option key={cat} value={cat}>{cat}</option>
+                              ))}
+                            </select>
                           </td>
                           <td className="p-4 font-bold">
                             <span className={`px-2.5 py-1 rounded-lg ${p.status === 'draft' ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'}`}>

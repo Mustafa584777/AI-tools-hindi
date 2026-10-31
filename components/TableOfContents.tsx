@@ -58,7 +58,7 @@ export default function TableOfContents({ items }: { items: TocItem[] }) {
                     className="group inline-flex items-start gap-2 text-slate-800 hover:text-orange-600 transition-colors py-0.5"
                   >
                     <span className="text-orange-600 font-bold shrink-0 text-xs mt-0.5">
-                      {isH3 ? '↳' : `${idx + 1}.`}
+                      {isH3 ? '↳' : '•'}
                     </span>
                     <span className="group-hover:underline underline-offset-2">
                       {item.text}
