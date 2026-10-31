@@ -10,9 +10,26 @@ const ai = new GoogleGenAI({
   }
 });
 
+function parseJsonSafe(text: string, fallback: any) {
+  if (!text) return fallback;
+  try {
+    let clean = text.trim();
+    if (clean.startsWith('```json')) {
+      clean = clean.replace(/^```json/, '').replace(/```$/, '').trim();
+    } else if (clean.startsWith('```')) {
+      clean = clean.replace(/^```/, '').replace(/```$/, '').trim();
+    }
+    return JSON.parse(clean);
+  } catch (e) {
+    console.warn('JSON parse failed for text:', text, e);
+    return fallback;
+  }
+}
+
 export async function POST(req: NextRequest) {
   try {
-    const { action, keywordOrTitle, content } = await req.json();
+    const body = await req.json();
+    const { action, keywordOrTitle, content, question } = body;
 
     if (action === 'generate') {
       const prompt = `You are a professional Hindi AI content writer and SEO expert for Aitoolhindi.online. 
@@ -26,7 +43,7 @@ Return ONLY a valid JSON object with the following properties:
 `;
 
       const response = await ai.models.generateContent({
-        model: "gemini-3.8-flash",
+        model: "gemini-2.5-flash",
         contents: prompt,
         config: {
           responseMimeType: "application/json",
@@ -44,7 +61,7 @@ Return ONLY a valid JSON object with the following properties:
         }
       });
 
-      const json = JSON.parse(response.text || '{}');
+      const json = parseJsonSafe(response.text || '', {});
       return NextResponse.json(json);
     }
 
@@ -63,7 +80,7 @@ Provide a detailed SEO and quality analysis in JSON format with:
 `;
 
       const response = await ai.models.generateContent({
-        model: "gemini-3.8-flash",
+        model: "gemini-2.5-flash",
         contents: prompt,
         config: {
           responseMimeType: "application/json",
@@ -84,7 +101,7 @@ Provide a detailed SEO and quality analysis in JSON format with:
         }
       });
 
-      const json = JSON.parse(response.text || '{}');
+      const json = parseJsonSafe(response.text || '', {});
       return NextResponse.json(json);
     }
 
@@ -101,7 +118,7 @@ Return ONLY a valid JSON object with:
 `;
 
       const response = await ai.models.generateContent({
-        model: "gemini-3.8-flash",
+        model: "gemini-2.5-flash",
         contents: prompt,
         config: {
           responseMimeType: "application/json",
@@ -117,7 +134,7 @@ Return ONLY a valid JSON object with:
         }
       });
 
-      const json = JSON.parse(response.text || '{}');
+      const json = parseJsonSafe(response.text || '', {});
       return NextResponse.json(json);
     }
 
@@ -153,9 +170,9 @@ Return ONLY a valid JSON object with:
           }
         });
 
-        const json = JSON.parse(response.text || '{}');
+        const json = parseJsonSafe(response.text || '', {});
         if (json.summary) {
-          return NextResponse.json(json);
+          return NextResponse.json({ summary: json.summary });
         }
       } catch (err) {
         console.warn('Primary summarize failed, falling back:', err);
@@ -166,11 +183,10 @@ Return ONLY a valid JSON object with:
     }
 
     if (action === 'question') {
-      const { question } = await req.json();
       try {
         const prompt = `You are an expert AI assistant for Aitoolhindi.online.
 Article Title: ${keywordOrTitle}
-User's Question: "${question}"
+User's Question: "${question || ''}"
 
 Answer the user's question clearly, helpfully, and in easy simple Hindi language.
 Return ONLY a valid JSON object with:
@@ -190,14 +206,14 @@ Return ONLY a valid JSON object with:
             }
           }
         });
-        const json = JSON.parse(response.text || '{}');
+        const json = parseJsonSafe(response.text || '', {});
         if (json.answer) {
-          return NextResponse.json(json);
+          return NextResponse.json({ answer: json.answer });
         }
       } catch (e) {
         console.warn('Question AI error:', e);
       }
-      return NextResponse.json({ answer: `<p>आपके प्रश्न "<strong>${question}</strong>" के अनुसार, यह तकनीक बहुत आसान है और आप इसे हमारे लेख में बताए गए चरणों का पालन करके आसानी से सीख सकते हैं।</p>` });
+      return NextResponse.json({ answer: `<p>आपके प्रश्न "<strong>${question || ''}</strong>" के अनुसार, यह तकनीक बहुत आसान है और आप इसे हमारे लेख में बताए गए चरणों का पालन करके आसानी से सीख सकते हैं।</p>` });
     }
 
     return NextResponse.json({ error: 'Invalid action' }, { status: 400 });

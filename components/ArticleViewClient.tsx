@@ -272,7 +272,7 @@ export default function ArticleViewClient({
           {/* Main Article Column */}
           <div className="md:col-span-8 space-y-6 w-full max-w-full overflow-hidden">
             <article className="bg-white rounded-2xl sm:rounded-3xl border border-slate-200 overflow-hidden shadow-sm w-full max-w-full">
-              <div className="p-4 sm:p-6 md:p-8 space-y-2">
+              <div className="px-4 sm:px-6 md:px-8 pt-4 sm:pt-6 pb-2 space-y-2">
                 <span className="inline-block px-3.5 py-1 bg-orange-50 text-orange-700 font-bold text-xs rounded-full border border-orange-200">
                   {post.category}
                 </span>
@@ -281,9 +281,9 @@ export default function ArticleViewClient({
                 </h1>
               </div>
 
-              <div className="p-4 sm:p-6 md:p-10 space-y-6 sm:space-y-8">
+              <div className="px-4 sm:px-6 md:px-8 pb-6 sm:pb-8 pt-0 space-y-6 sm:space-y-8">
                 {/* Metadata bar */}
-                <div className="flex flex-row items-center justify-between gap-3 py-3 sm:py-4 border-b border-slate-100 text-xs text-black font-medium">
+                <div className="flex flex-row items-center justify-between gap-3 py-2 sm:py-3 text-xs text-black font-medium">
                   <div className="flex items-center gap-3 sm:gap-6 flex-wrap">
                     <span className="flex items-center gap-1.5">
                       <Calendar className="w-4 h-4 text-orange-600 shrink-0" />

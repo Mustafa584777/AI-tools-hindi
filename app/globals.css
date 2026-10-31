@@ -97,6 +97,16 @@ tr:hover {
   color: #c2410c !important; /* orange-700 */
 }
 
+/* Table of Contents link overrides (no underlines) */
+article nav[aria-label="Table of Contents"] a,
+article nav[aria-label="Table of Contents"] a:hover {
+  text-decoration: none !important;
+  color: #1e293b !important;
+}
+article nav[aria-label="Table of Contents"] a:hover {
+  color: #ea580c !important;
+}
+
 /* Robust list styling for all articles and prose content */
 .prose ul, .editor-content ul, article ul {
   list-style-type: disc !important;
