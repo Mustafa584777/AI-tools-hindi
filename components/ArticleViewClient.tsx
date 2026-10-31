@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { ArrowLeft, Clock, Calendar, Share2, Folder } from 'lucide-react';
+import { ArrowLeft, Clock, Calendar, Share2, Folder, User } from 'lucide-react';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import { BlogPost } from '@/lib/types';
@@ -203,10 +203,14 @@ export default function ArticleViewClient({
           <div className="p-4 sm:p-6 md:p-10 space-y-6 sm:space-y-8">
             {/* Metadata bar */}
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4 py-3 sm:py-4 border-b border-slate-100 text-xs text-black font-medium">
-              <div className="flex items-center gap-4 sm:gap-6">
+              <div className="flex items-center gap-4 sm:gap-6 flex-wrap">
                 <span className="flex items-center gap-1.5">
                   <Calendar className="w-4 h-4 text-orange-600 shrink-0" />
                   {post.date}
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <User className="w-4 h-4 text-orange-600 shrink-0" />
+                  {post.author || 'Anwar'}
                 </span>
                 <span className="flex items-center gap-1.5">
                   <Clock className="w-4 h-4 text-orange-600 shrink-0" />
@@ -225,6 +229,26 @@ export default function ArticleViewClient({
 
             {/* WordPress HTML Content Renderer (TOC is automatically injected after 3rd paragraph inside ArticleContent) */}
             <ArticleContent content={post.content} />
+
+            {/* Author Box */}
+            <div className="mt-8 pt-8 border-t border-slate-100">
+              <div className="p-6 sm:p-8 bg-gradient-to-br from-orange-50/60 to-amber-50/30 rounded-2xl border border-orange-200/60 flex flex-col sm:flex-row items-center sm:items-start gap-4 sm:gap-6 shadow-sm">
+                <div className="w-16 h-16 rounded-full bg-orange-600 text-white flex items-center justify-center font-extrabold text-2xl shrink-0 shadow-md">
+                  {post.author ? post.author.charAt(0) : 'A'}
+                </div>
+                <div className="space-y-2 text-center sm:text-left flex-1">
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
+                    <h3 className="font-extrabold text-black text-lg">{post.author || 'Anwar'}</h3>
+                    <span className="text-xs px-2.5 py-0.5 bg-orange-100 text-orange-800 rounded-full font-bold inline-block w-fit mx-auto sm:mx-0">
+                      Senior AI Content Expert & Tech Writer
+                    </span>
+                  </div>
+                  <p className="text-black text-sm font-medium leading-relaxed">
+                    Anwar is the founder and lead editor at aitoolhindi.online. Dedicated to making artificial intelligence, prompt engineering, and cutting-edge tech simple and practical in Hindi for millions across India.
+                  </p>
+                </div>
+              </div>
+            </div>
           </div>
         </article>
       </main>

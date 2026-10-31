@@ -111,6 +111,9 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
         'twitter:data1': post.author || 'Anwar',
         'twitter:label2': 'Time to read',
         'twitter:data2': post.readTime || '5 min read',
+        'author': post.author || 'Anwar',
+        'article:author': 'https://aitoolhindi.online/about-us',
+        'article:publisher': 'https://aitoolhindi.online',
       },
     };
   }
@@ -175,10 +178,21 @@ export default async function SlugPage({ params }: { params: Promise<{ slug: str
     author: {
       '@type': 'Person',
       name: post.author || 'Anwar',
+      url: 'https://aitoolhindi.online/about-us',
+      jobTitle: 'Senior AI Content Expert & Tech Writer',
+      worksFor: {
+        '@type': 'Organization',
+        name: 'AI Tool Hindi',
+        url: 'https://aitoolhindi.online',
+      },
+      sameAs: [
+        'https://aitoolhindi.online/about-us',
+      ],
     },
     publisher: {
       '@type': 'Organization',
       name: 'AI Tool Hindi',
+      url: 'https://aitoolhindi.online',
       logo: {
         '@type': 'ImageObject',
         url: 'https://aitoolhindi.online/logo.png',
