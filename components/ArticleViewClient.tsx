@@ -276,18 +276,24 @@ export default function ArticleViewClient({
             {/* Author Box */}
             <div className="mt-8 pt-8 border-t border-slate-100">
               <div className="p-6 sm:p-8 bg-gradient-to-br from-orange-50/60 to-amber-50/30 rounded-2xl border border-orange-200/60 flex flex-col sm:flex-row items-center sm:items-start gap-4 sm:gap-6 shadow-sm">
-                <div className="w-16 h-16 rounded-full bg-orange-600 text-white flex items-center justify-center font-extrabold text-2xl shrink-0 shadow-md">
-                  {post.author ? post.author.charAt(0) : 'A'}
+                <div className="w-16 h-16 rounded-full overflow-hidden bg-orange-100 shrink-0 shadow-md border border-orange-200 relative">
+                  <Image
+                    src="/logo.png"
+                    alt={post.author || 'Anwar'}
+                    fill
+                    className="object-cover"
+                    referrerPolicy="no-referrer"
+                  />
                 </div>
                 <div className="space-y-2 text-center sm:text-left flex-1">
                   <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
                     <h3 className="font-extrabold text-black text-lg">{post.author || 'Anwar'}</h3>
                     <span className="text-xs px-2.5 py-0.5 bg-orange-100 text-orange-800 rounded-full font-bold inline-block w-fit mx-auto sm:mx-0">
-                      Senior AI Content Expert & Tech Writer
+                      AI Tools Analyst
                     </span>
                   </div>
                   <p className="text-black text-sm font-medium leading-relaxed">
-                    Anwar is the founder and lead editor at aitoolhindi.online. Dedicated to making artificial intelligence, prompt engineering, and cutting-edge tech simple and practical in Hindi for millions across India.
+                    Anwar is the founder and lead editor at aitoolhindi.online. Dedicated to making artificial intelligence, prompt engineering, and cutting-edge tech simple and practical in Hindi for millions across India. He has analysed over 1000+ AI tools till date.
                   </p>
                 </div>
               </div>
