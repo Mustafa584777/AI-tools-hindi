@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useRef, useEffect } from 'react';
-import { stripTableOfContents, injectHeadingIdsForToc, extractTocFromHtml } from '@/lib/utils';
+import { stripTableOfContents, injectHeadingIdsForToc, extractTocFromHtml, sanitizeExternalLinks } from '@/lib/utils';
 import TableOfContents from '@/components/TableOfContents';
 
 function getProcessedContent(html: string): string {
@@ -10,10 +10,13 @@ function getProcessedContent(html: string): string {
   // 1. Strip any hardcoded TOC elements from legacy or WordPress content
   let cleaned = stripTableOfContents(html);
 
-  // 2. Ensure all aitoolhindi.online wp-content images and videos resolve to local static path
+  // 2. Sanitize external links missing protocol
+  cleaned = sanitizeExternalLinks(cleaned);
+
+  // 3. Ensure all aitoolhindi.online wp-content images and videos resolve to local static path
   cleaned = cleaned.replace(/https?:\/\/(?:www\.)?aitoolhindi\.online(\/wp-content\/[^\s"'>]+)/gi, '$1');
 
-  // 3. Inject matching heading IDs with scroll offset for smooth Table of Contents navigation
+  // 4. Inject matching heading IDs with scroll offset for smooth Table of Contents navigation
   cleaned = injectHeadingIdsForToc(cleaned);
 
   return cleaned;

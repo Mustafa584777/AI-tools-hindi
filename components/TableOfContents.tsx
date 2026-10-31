@@ -28,7 +28,7 @@ export default function TableOfContents({ items }: { items: TocItem[] }) {
             <ListOrdered className="w-4 h-4" />
           </div>
           <span className="font-extrabold text-black text-base sm:text-lg tracking-tight">
-            विषय सूची (Table of Contents)
+            Table of Contents
           </span>
         </div>
         <button
@@ -55,7 +55,7 @@ export default function TableOfContents({ items }: { items: TocItem[] }) {
                   <a
                     href={`#${item.id}`}
                     onClick={(e) => scrollToHeading(item.id, e)}
-                    className="text-slate-800 hover:text-orange-600 transition-colors py-0.5 no-underline hover:no-underline"
+                    className="text-slate-800 hover:text-orange-600 transition-colors py-0.5 no-underline hover:no-underline font-semibold"
                   >
                     {item.text}
                   </a>

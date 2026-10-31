@@ -2,7 +2,7 @@ import { BlogPost } from './types';
 import { db, auth } from './firebase';
 import { doc, setDoc, deleteDoc, getDoc, collection, getDocs } from 'firebase/firestore';
 import articlesBackup from '../data/posts.json';
-import { stripTableOfContents } from './utils';
+import { stripTableOfContents, sanitizeExternalLinks } from './utils';
 
 export enum OperationType {
   CREATE = 'create',
@@ -261,6 +261,7 @@ export function cleanPostForExport(post: BlogPost): BlogPost {
   }
 
   let content = stripTableOfContents(post.content || '');
+  content = sanitizeExternalLinks(content);
   content = content.replace(/<img([^>]+)src=["'](data:[^"']+)["']([^>]*)>/gi, (match, p1, srcVal, p3) => {
     if (!srcVal.includes('wp-content') && !srcVal.includes('cloudinary.com')) {
       return `<img${p1}src="https://picsum.photos/seed/aitoolhindi/800/450"${p3}>`;

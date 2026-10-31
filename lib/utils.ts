@@ -159,3 +159,29 @@ export function injectHeadingIdsForToc(html: string | undefined | null): string 
     return `<h${tag} id="${id}" ${cleanAttrs}>${inner}</h${tag}>`;
   });
 }
+
+/**
+ * Sanitizes external links in article HTML content.
+ * Ensures URLs missing http:// or https:// (like example.com or www.example.com)
+ * are prefixed with https:// so they don't become relative internal links.
+ */
+export function sanitizeExternalLinks(html: string | undefined | null): string {
+  if (!html || typeof html !== 'string') return '';
+  return html.replace(/href=["']([^"']+)["']/gi, (match, hrefVal) => {
+    let cleanHref = hrefVal.trim();
+    if (
+      cleanHref && 
+      !cleanHref.startsWith('http://') && 
+      !cleanHref.startsWith('https://') && 
+      !cleanHref.startsWith('/') && 
+      !cleanHref.startsWith('#') && 
+      !cleanHref.startsWith('mailto:') && 
+      !cleanHref.startsWith('tel:') &&
+      !cleanHref.startsWith('javascript:')
+    ) {
+      cleanHref = 'https://' + cleanHref;
+    }
+    return `href="${cleanHref}"`;
+  });
+}
+

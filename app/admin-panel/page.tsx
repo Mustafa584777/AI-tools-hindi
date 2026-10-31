@@ -28,6 +28,7 @@ import {
 } from '@/lib/storage';
 import { BlogPost } from '@/lib/types';
 import { resolveDisplayImageUrl } from '@/lib/utils';
+import { db } from '@/lib/firebase';
 
 export interface UnmigratedMediaItem {
   id: string;
@@ -194,13 +195,41 @@ export default function AdminPanelPage() {
 
       if (typeof window !== 'undefined') {
         const storedCats = localStorage.getItem(CATEGORIES_KEY);
-        const derivedCats = Array.from(new Set(data.map(p => p.category).filter(Boolean)));
-        if (storedCats) {
-          const parsed = JSON.parse(storedCats);
-          setCustomCategories(Array.from(new Set([...parsed, ...derivedCats])));
-        } else {
-          setCustomCategories(Array.from(new Set(['AI Guides', 'Image Tutorials', 'Video Tutorials', ...derivedCats])));
+        const deletedRaw = localStorage.getItem('aitoolhindi_deleted_categories_v1');
+        let deletedList: string[] = deletedRaw ? JSON.parse(deletedRaw) : [];
+
+        try {
+          if (db) {
+            const { getDoc, doc } = await import('firebase/firestore');
+            const catDoc = await getDoc(doc(db, 'settings', 'categories'));
+            if (catDoc.exists()) {
+              const d = catDoc.data();
+              if (d.deletedCategories && Array.isArray(d.deletedCategories)) {
+                deletedList = Array.from(new Set([...deletedList, ...d.deletedCategories]));
+                localStorage.setItem('aitoolhindi_deleted_categories_v1', JSON.stringify(deletedList));
+              }
+              if (d.customCategories && Array.isArray(d.customCategories)) {
+                localStorage.setItem(CATEGORIES_KEY, JSON.stringify(d.customCategories));
+              }
+            }
+          }
+        } catch {}
+
+        const derivedCats = Array.from(new Set(data.map(p => p.category).filter(Boolean))).filter(c => !deletedList.includes(c));
+        let baseCats = ['AI Guides', 'Image Tutorials', 'Video Tutorials', 'ChatGPT Guides'].filter(c => !deletedList.includes(c));
+        const storedCurrent = localStorage.getItem(CATEGORIES_KEY);
+        if (storedCurrent) {
+          try {
+            const parsed = JSON.parse(storedCurrent);
+            if (Array.isArray(parsed)) {
+              baseCats = parsed.filter((c: string) => !deletedList.includes(c));
+            }
+          } catch {}
         }
+
+        const merged = Array.from(new Set([...baseCats, ...derivedCats])).filter(c => !deletedList.includes(c));
+        setCustomCategories(merged);
+        localStorage.setItem(CATEGORIES_KEY, JSON.stringify(merged));
       }
     } catch (err) {
       console.error('Error loading Firestore data in admin:', err);
@@ -368,7 +397,7 @@ export default function AdminPanelPage() {
     showNotify('24-hour cache cleared successfully! Fetched fresh data from Firebase.');
   };
 
-  const handleAddGlobalCategory = (e: React.FormEvent) => {
+  const handleAddGlobalCategory = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newCatInput.trim()) return;
     const trimmed = newCatInput.trim();
@@ -378,17 +407,48 @@ export default function AdminPanelPage() {
       if (typeof window !== 'undefined') {
         localStorage.setItem(CATEGORIES_KEY, JSON.stringify(updated));
       }
+      try {
+        if (db) {
+          const { setDoc, doc } = await import('firebase/firestore');
+          const deletedRaw = localStorage.getItem('aitoolhindi_deleted_categories_v1');
+          const deletedList = deletedRaw ? JSON.parse(deletedRaw) : [];
+          await setDoc(doc(db, 'settings', 'categories'), {
+            deletedCategories: deletedList,
+            customCategories: updated
+          }, { merge: true });
+        }
+      } catch (err) {
+        console.warn('Failed to sync added category to Firestore:', err);
+      }
       showNotify(`Category "${trimmed}" added successfully!`);
     }
     setNewCatInput('');
   };
 
-  const handleDeleteGlobalCategory = (catName: string) => {
+  const handleDeleteGlobalCategory = async (catName: string) => {
     if (confirm(`Are you sure you want to delete category "${catName}"?`)) {
       const updated = customCategories.filter(c => c !== catName);
       setCustomCategories(updated);
+      let deletedList: string[] = [];
       if (typeof window !== 'undefined') {
         localStorage.setItem(CATEGORIES_KEY, JSON.stringify(updated));
+        const deletedRaw = localStorage.getItem('aitoolhindi_deleted_categories_v1');
+        deletedList = deletedRaw ? JSON.parse(deletedRaw) : [];
+        if (!deletedList.includes(catName)) {
+          deletedList.push(catName);
+          localStorage.setItem('aitoolhindi_deleted_categories_v1', JSON.stringify(deletedList));
+        }
+      }
+      try {
+        if (db) {
+          const { setDoc, doc } = await import('firebase/firestore');
+          await setDoc(doc(db, 'settings', 'categories'), {
+            deletedCategories: deletedList,
+            customCategories: updated
+          }, { merge: true });
+        }
+      } catch (err) {
+        console.warn('Failed to sync deleted category to Firestore:', err);
       }
       showNotify(`Category "${catName}" removed.`);
     }
@@ -686,10 +746,24 @@ export default function AdminPanelPage() {
 
   const handleConfirmLinkModal = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!linkModalUrl.trim()) return;
+    let rawUrl = linkModalUrl.trim();
+    if (!rawUrl) return;
 
-    const anchorText = linkModalText.trim() || linkModalUrl;
-    const linkHtml = `<a href="${linkModalUrl}" target="_blank" rel="noopener noreferrer" class="text-orange-600 underline font-bold hover:text-orange-700 transition-colors">${anchorText}</a>`;
+    if (
+      rawUrl && 
+      !rawUrl.startsWith('http://') && 
+      !rawUrl.startsWith('https://') && 
+      !rawUrl.startsWith('/') && 
+      !rawUrl.startsWith('#') && 
+      !rawUrl.startsWith('mailto:') && 
+      !rawUrl.startsWith('tel:') &&
+      !rawUrl.startsWith('javascript:')
+    ) {
+      rawUrl = 'https://' + rawUrl;
+    }
+
+    const anchorText = linkModalText.trim() || rawUrl;
+    const linkHtml = `<a href="${rawUrl}" target="_blank" rel="noopener noreferrer" class="text-orange-600 underline font-bold hover:text-orange-700 transition-colors">${anchorText}</a>`;
     
     insertHtmlAtSavedRange(linkHtml);
     setShowLinkAddModal(false);

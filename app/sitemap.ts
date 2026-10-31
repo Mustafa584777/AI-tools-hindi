@@ -27,13 +27,38 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   }));
 
   let blogPosts: any[] = [];
+  let deletedCategories: string[] = [];
   try {
-    blogPosts = await fetchBlogPostsFromDisk();
-  } catch {
-    blogPosts = getStoredBlogPostsSync();
+    const { db } = await import('@/lib/firebase');
+    const { getDocs, collection, getDoc, doc } = await import('firebase/firestore');
+    if (db) {
+      const snap = await getDocs(collection(db, 'blogPosts'));
+      snap.forEach(d => {
+        blogPosts.push(d.data());
+      });
+      const catDoc = await getDoc(doc(db, 'settings', 'categories'));
+      if (catDoc.exists()) {
+        const data = catDoc.data();
+        if (data.deletedCategories && Array.isArray(data.deletedCategories)) {
+          deletedCategories = data.deletedCategories;
+        }
+      }
+    }
+  } catch {}
+
+  if (blogPosts.length === 0) {
+    try {
+      blogPosts = await fetchBlogPostsFromDisk();
+    } catch {
+      blogPosts = getStoredBlogPostsSync();
+    }
   }
 
-  const categories = Array.from(new Set(blogPosts.map(p => p.category).filter(Boolean)));
+  const activePosts = blogPosts.filter(p => p.status !== 'draft' && (!p.category || !deletedCategories.includes(p.category)));
+
+  const categories = Array.from(new Set(activePosts.map(p => p.category).filter(Boolean)))
+    .filter(cat => !deletedCategories.includes(cat));
+
   const categoryPages = categories.map((cat: any) => ({
     url: `${baseUrl}/${cat.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '')}/`,
     lastModified: new Date(),
@@ -41,9 +66,9 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     priority: 0.85,
   }));
 
-  const blogUrls = blogPosts.filter(p => p.status !== 'draft').map((post) => ({
+  const blogUrls = activePosts.map((post) => ({
     url: `${baseUrl}/${post.slug}/`,
-    lastModified: new Date(),
+    lastModified: new Date(post.createdAt || Date.now()),
     changeFrequency: 'weekly' as const,
     priority: 0.9,
   }));

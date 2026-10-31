@@ -12,7 +12,10 @@ export default function Navbar() {
     try {
       const posts = getStoredBlogPostsSync();
       const derived = Array.from(new Set(posts.map(p => p.category).filter(Boolean))) as string[];
-      return Array.from(new Set(['AI Guides', 'Image Tutorials', 'Video Tutorials', 'ChatGPT Guides', ...derived]));
+      const deletedRaw = typeof window !== 'undefined' ? localStorage.getItem('aitoolhindi_deleted_categories_v1') : null;
+      const deletedList: string[] = deletedRaw ? JSON.parse(deletedRaw) : [];
+      const base = ['AI Guides', 'Image Tutorials', 'Video Tutorials', 'ChatGPT Guides'];
+      return Array.from(new Set([...base, ...derived])).filter(c => !deletedList.includes(c));
     } catch {
       return ['AI Guides', 'Image Tutorials', 'Video Tutorials', 'ChatGPT Guides'];
     }
