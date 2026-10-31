@@ -10,6 +10,38 @@ const ai = new GoogleGenAI({
   }
 });
 
+// Most efficient, lowest cost model according to Google Gemini guidelines
+const PRIMARY_MODEL = "gemini-3.1-flash-lite";
+const FALLBACK_MODEL = "gemini-flash-latest";
+
+async function generateWithFallback(params: { prompt: string; schema?: any; isJson?: boolean }) {
+  const models = [PRIMARY_MODEL, FALLBACK_MODEL];
+  let lastError: any = null;
+
+  for (const model of models) {
+    try {
+      const config: any = {};
+      if (params.isJson && params.schema) {
+        config.responseMimeType = "application/json";
+        config.responseSchema = params.schema;
+      }
+      const response = await ai.models.generateContent({
+        model,
+        contents: params.prompt,
+        config: Object.keys(config).length > 0 ? config : undefined,
+      });
+      if (response && response.text) {
+        return response.text;
+      }
+    } catch (err: any) {
+      console.warn(`Model ${model} failed:`, err?.message || err);
+      lastError = err;
+    }
+  }
+
+  throw lastError || new Error("All AI models failed");
+}
+
 function parseJsonSafe(text: string, fallback: any) {
   if (!text) return fallback;
   try {
@@ -24,6 +56,21 @@ function parseJsonSafe(text: string, fallback: any) {
     console.warn('JSON parse failed for text:', text, e);
     return fallback;
   }
+}
+
+function cleanHtmlToText(html: string): string {
+  if (!html) return '';
+  return html
+    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+    .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '')
+    .replace(/<figcaption[^>]*>.*?<\/figcaption>/gi, '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 export async function POST(req: NextRequest) {
@@ -42,26 +89,20 @@ Return ONLY a valid JSON object with the following properties:
 - content: full HTML formatted article content in Hindi with headings (<h1>, <h2>, <h3>), paragraphs (<p>), bullet points (<ul><li>), and bold text (<strong>).
 `;
 
-      const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
-        contents: prompt,
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              title: { type: Type.STRING },
-              slug: { type: Type.STRING },
-              category: { type: Type.STRING },
-              excerpt: { type: Type.STRING },
-              content: { type: Type.STRING }
-            },
-            required: ["title", "slug", "category", "excerpt", "content"]
-          }
-        }
-      });
+      const schema = {
+        type: Type.OBJECT,
+        properties: {
+          title: { type: Type.STRING },
+          slug: { type: Type.STRING },
+          category: { type: Type.STRING },
+          excerpt: { type: Type.STRING },
+          content: { type: Type.STRING }
+        },
+        required: ["title", "slug", "category", "excerpt", "content"]
+      };
 
-      const json = parseJsonSafe(response.text || '', {});
+      const resultText = await generateWithFallback({ prompt, schema, isJson: true });
+      const json = parseJsonSafe(resultText, {});
       return NextResponse.json(json);
     }
 
@@ -79,29 +120,23 @@ Provide a detailed SEO and quality analysis in JSON format with:
 - competitorComparison: a brief comparison text explaining how this article compares to top competitors and how to outrank them.
 `;
 
-      const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
-        contents: prompt,
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              seoScore: { type: Type.INTEGER },
-              eeatScore: { type: Type.INTEGER },
-              rankingChances: { type: Type.STRING },
-              mistakes: {
-                type: Type.ARRAY,
-                items: { type: Type.STRING }
-              },
-              competitorComparison: { type: Type.STRING }
-            },
-            required: ["seoScore", "eeatScore", "rankingChances", "mistakes", "competitorComparison"]
-          }
-        }
-      });
+      const schema = {
+        type: Type.OBJECT,
+        properties: {
+          seoScore: { type: Type.INTEGER },
+          eeatScore: { type: Type.INTEGER },
+          rankingChances: { type: Type.STRING },
+          mistakes: {
+            type: Type.ARRAY,
+            items: { type: Type.STRING }
+          },
+          competitorComparison: { type: Type.STRING }
+        },
+        required: ["seoScore", "eeatScore", "rankingChances", "mistakes", "competitorComparison"]
+      };
 
-      const json = parseJsonSafe(response.text || '', {});
+      const resultText = await generateWithFallback({ prompt, schema, isJson: true });
+      const json = parseJsonSafe(resultText, {});
       return NextResponse.json(json);
     }
 
@@ -117,114 +152,112 @@ Return ONLY a valid JSON object with:
 - content: fully optimized HTML formatted article content in Hindi with proper headings (<h1>, <h2>, <h3>), paragraphs (<p> with proper spacing classes or clean HTML tags), and bold text (<strong>).
 `;
 
-      const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
-        contents: prompt,
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              title: { type: Type.STRING },
-              excerpt: { type: Type.STRING },
-              content: { type: Type.STRING }
-            },
-            required: ["title", "excerpt", "content"]
-          }
-        }
-      });
+      const schema = {
+        type: Type.OBJECT,
+        properties: {
+          title: { type: Type.STRING },
+          excerpt: { type: Type.STRING },
+          content: { type: Type.STRING }
+        },
+        required: ["title", "excerpt", "content"]
+      };
 
-      const json = parseJsonSafe(response.text || '', {});
+      const resultText = await generateWithFallback({ prompt, schema, isJson: true });
+      const json = parseJsonSafe(resultText, {});
       return NextResponse.json(json);
     }
 
     if (action === 'summarize') {
-      try {
-        const truncatedContent = (content || '').substring(0, 15000);
-        const prompt = `You are a master content writer and expert AI summarizer for Aitoolhindi.online.
-Analyze the following article title and full content carefully. 
+      const plainText = cleanHtmlToText(content).substring(0, 20000);
+      const prompt = `You are a master content writer for Aitoolhindi.online.
+Carefully read and analyze the following Hindi article:
 Article Title: ${keywordOrTitle}
-Article Content: ${truncatedContent}
+Full Article Text:
+${plainText}
 
-Generate a unique, insightful, and comprehensive summary of this specific article in natural, flowing, and engaging Hindi.
-CRITICAL GUIDELINES:
-- Capture and match the exact tone, style, and voice of the article (engaging, conversational yet expert, highly practical). Avoid any robotic, rigid, or machine-translated Hindi tone.
-- Synthesize the core value, key insights, benefits, and step-by-step takeaways.
-- Format cleanly with HTML tags (<p>, <ul><li>, <strong>, <table>) so it renders perfectly inside the article reader.
+TASK:
+Generate a thorough, practical, and highly engaging real-time summary of this specific article in natural Hindi.
+Analyze what the author is teaching, which tools/features are discussed, and what practical advice is provided.
+Structure your response strictly using clean HTML:
+1. <p class="mb-3 leading-relaxed text-slate-800"> (2-3 sentences introducing the article's core topic, why it matters, and the primary tool or solution discussed)</p>
+2. <h4 class="font-bold text-base mt-4 mb-2 text-slate-900">मुख्य बिंदु और टेकअवे (Key Takeaways):</h4>
+3. <ul class="list-disc pl-5 space-y-2 text-slate-800">
+   (Include 4 to 6 specific, actionable takeaways directly extracted from the article's real content with <strong>topics in bold</strong>)
+   </ul>
+4. <p class="mt-3 leading-relaxed text-slate-800"> (1-2 sentences concluding advice for the reader)</p>
 
-Return ONLY a valid JSON object with:
-- summary: HTML formatted summary in Hindi matching the article's tone.
-`;
+DO NOT output any markdown backticks like \`\`\`html. Return ONLY the HTML tags.`;
 
-        const response = await ai.models.generateContent({
-          model: "gemini-2.5-flash",
-          contents: prompt,
-          config: {
-            responseMimeType: "application/json",
-            responseSchema: {
-              type: Type.OBJECT,
-              properties: {
-                summary: { type: Type.STRING }
-              },
-              required: ["summary"]
-            }
-          }
-        });
-
-        const json = parseJsonSafe(response.text || '', {});
-        if (json.summary) {
-          return NextResponse.json({ summary: json.summary });
+      try {
+        const text = await generateWithFallback({ prompt });
+        let cleanHtml = (text || '').trim();
+        if (cleanHtml.startsWith('```html')) {
+          cleanHtml = cleanHtml.replace(/^```html/, '').replace(/```$/, '').trim();
+        } else if (cleanHtml.startsWith('```')) {
+          cleanHtml = cleanHtml.replace(/^```/, '').replace(/```$/, '').trim();
         }
-      } catch (err) {
-        console.warn('Primary summarize failed:', err);
+
+        if (cleanHtml) {
+          return NextResponse.json({ summary: cleanHtml });
+        }
+      } catch (err: any) {
+        console.error('Summarize error:', err);
       }
 
-      // Dynamic fallback based on title and content excerpt if AI call fails
-      const dynamicFallback = `<p><strong>${keywordOrTitle}</strong> के इस विशेष लेख में हमने आर्टिफिशियल इंटेलिजेंस और आधुनिक तकनीक के विभिन्न पहलुओं को बहुत ही सरल और व्यावहारिक भाषा में समझाया है।</p><ul><li><strong>मुख्य लाभ:</strong> इस तकनीक की मदद से आप अपने कार्य को तेजी से और अधिक कुशलता से पूरा कर सकते हैं।</li><li><strong>व्यावहारिक उपयोग:</strong> स्टेप-बाय-स्टेप गाइड के माध्यम से इसे कोई भी आसानी से सीख सकता है।</li></ul>`;
-      return NextResponse.json({ summary: dynamicFallback });
+      // If AI fails completely due to unexpected network issue, build a summary directly from the article's text
+      const articleSnippets = plainText.split(/[।.\n]/).filter(s => s.trim().length > 25).slice(0, 4);
+      const contextualSummary = `
+        <p class="mb-3 leading-relaxed text-slate-800"><strong>${keywordOrTitle}</strong> के इस विस्तृत लेख में लेखक ने मुख्य रूप से निम्नलिखित व्यावहारिक जानकारियों को साझा किया है:</p>
+        <h4 class="font-bold text-base mt-4 mb-2 text-slate-900">लेख से मुख्य बिंदु:</h4>
+        <ul class="list-disc pl-5 space-y-2 text-slate-800">
+          ${articleSnippets.map(s => `<li>${s.trim()}।</li>`).join('')}
+        </ul>
+        <p class="mt-3 leading-relaxed text-slate-800">इस तकनीक को अपने दैनिक कार्यों में अपनाकर आप अपनी कार्यक्षमता को कई गुना बढ़ा सकते हैं।</p>
+      `;
+      return NextResponse.json({ summary: contextualSummary });
     }
 
     if (action === 'question') {
-      try {
-        const prompt = `You are an expert AI assistant for Aitoolhindi.online.
+      const plainText = cleanHtmlToText(content).substring(0, 15000);
+      const prompt = `You are a helpful AI assistant for readers of Aitoolhindi.online.
+The user is reading the following article:
 Article Title: ${keywordOrTitle}
+Article Context:
+${plainText}
+
 User's Question: "${question || ''}"
 
-Answer the user's question clearly, helpfully, and in easy simple Hindi language.
-Return ONLY a valid JSON object with:
-- answer: HTML formatted answer in Hindi.
-`;
-        const response = await ai.models.generateContent({
-          model: "gemini-2.5-flash",
-          contents: prompt,
-          config: {
-            responseMimeType: "application/json",
-            responseSchema: {
-              type: Type.OBJECT,
-              properties: {
-                answer: { type: Type.STRING }
-              },
-              required: ["answer"]
-            }
-          }
-        });
-        const json = parseJsonSafe(response.text || '', {});
-        if (json.answer) {
-          return NextResponse.json({ answer: json.answer });
+Answer the user's question accurately, helpfully, and in easy natural Hindi based on the article's contents whenever relevant.
+Format cleanly with HTML tags like <p>, <strong>, and <ul><li>. Return ONLY the HTML snippet, no markdown code fences.`;
+
+      try {
+        const text = await generateWithFallback({ prompt });
+        let cleanHtml = (text || '').trim();
+        if (cleanHtml.startsWith('```html')) {
+          cleanHtml = cleanHtml.replace(/^```html/, '').replace(/```$/, '').trim();
+        } else if (cleanHtml.startsWith('```')) {
+          cleanHtml = cleanHtml.replace(/^```/, '').replace(/```$/, '').trim();
         }
-      } catch (e) {
-        console.warn('Question AI error:', e);
+
+        if (cleanHtml) {
+          return NextResponse.json({ answer: cleanHtml });
+        }
+      } catch (err: any) {
+        console.error('Question AI error:', err);
       }
-      return NextResponse.json({ answer: `<p>आपके प्रश्न "<strong>${question || ''}</strong>" के अनुसार, यह तकनीक बहुत आसान है और आप इसे हमारे लेख में बताए गए चरणों का पालन करके आसानी से सीख सकते हैं।</p>` });
+
+      return NextResponse.json({
+        answer: `<p>आपके प्रश्न "<strong>${question || ''}</strong>" के अनुसार, इस लेख में बताए गए सुझावों और तकनीकों का पालन करके आप इसे आसानी से सीख सकते हैं।</p>`
+      });
     }
 
     return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
-  } catch (error) {
+  } catch (error: any) {
     console.error('AI Supervisor error:', error);
     return NextResponse.json({ 
       summary: '<p>एआई सारांश उत्पन्न करने में समस्या आई। कृपया पुनः प्रयास करें।</p>',
       answer: '<p>क्षमा करें, उत्तर प्राप्त करने में समस्या आई।</p>',
-      error: (error as Error).message 
+      error: error?.message || 'Internal server error' 
     }, { status: 200 });
   }
 }

@@ -241,6 +241,7 @@ export default function ArticleViewClient({
         body: JSON.stringify({
           action: 'question',
           keywordOrTitle: post.title,
+          content: post.content,
           question: userQuestion.trim()
         })
       });
