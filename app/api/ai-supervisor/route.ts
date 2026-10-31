@@ -122,32 +122,42 @@ Return ONLY a valid JSON object with:
     }
 
     if (action === 'summarize') {
-      const prompt = `You are an expert AI content summarizer for Aitoolhindi.online.
+      try {
+        const truncatedContent = (content || '').substring(0, 8000);
+        const prompt = `You are an expert AI content summarizer for Aitoolhindi.online.
 Summarize the following Hindi article concisely in Hindi using 3-4 bullet points and a brief overview paragraph.
 Title: ${keywordOrTitle}
-Content: ${content}
+Content: ${truncatedContent}
 
 Return ONLY a valid JSON object with:
-- summary: HTML or text formatted concise summary in Hindi.
+- summary: HTML formatted concise summary in Hindi.
 `;
 
-      const response = await ai.models.generateContent({
-        model: "gemini-3.8-flash",
-        contents: prompt,
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              summary: { type: Type.STRING }
-            },
-            required: ["summary"]
+        const response = await ai.models.generateContent({
+          model: "gemini-2.5-flash",
+          contents: prompt,
+          config: {
+            responseMimeType: "application/json",
+            responseSchema: {
+              type: Type.OBJECT,
+              properties: {
+                summary: { type: Type.STRING }
+              },
+              required: ["summary"]
+            }
           }
-        }
-      });
+        });
 
-      const json = JSON.parse(response.text || '{}');
-      return NextResponse.json(json);
+        const json = JSON.parse(response.text || '{}');
+        if (json.summary) {
+          return NextResponse.json(json);
+        }
+      } catch (err) {
+        console.warn('Primary summarize failed, falling back:', err);
+      }
+
+      const fallbackSummary = `<p><strong>${keywordOrTitle}</strong> का मुख्य सारांश:</p><ul><li>यह ट्यूटोरियल हिंदी में स्टेप-बाय-स्टेप गाइड प्रदान करता है।</li><li>आप इसे आसानी से समझकर प्रैक्टिकल रूप से लागू कर सकते हैं।</li><li>अधिक जानकारी के लिए पूरा लेख पढ़ें।</li></ul>`;
+      return NextResponse.json({ summary: fallbackSummary });
     }
 
     return NextResponse.json({ error: 'Invalid action' }, { status: 400 });

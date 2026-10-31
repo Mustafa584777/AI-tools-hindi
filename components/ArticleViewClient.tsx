@@ -215,142 +215,132 @@ export default function ArticleViewClient({
     <>
       <Navbar />
 
-      <main className="flex-1 max-w-4xl mx-auto px-3 sm:px-6 py-6 sm:py-10 md:py-12 space-y-6 sm:space-y-8 w-full max-w-full overflow-hidden">
+      <main className="flex-1 max-w-7xl mx-auto px-3 sm:px-6 py-6 sm:py-10 md:py-12 space-y-6 sm:space-y-8 w-full max-w-full overflow-hidden">
         <Link href="/" className="inline-flex items-center gap-2 text-sm font-bold text-black hover:text-orange-600 transition-colors">
           <ArrowLeft className="w-4 h-4" />
           <span>Back to Home</span>
         </Link>
 
-        {/* Article Header */}
-        <article className="bg-white rounded-2xl sm:rounded-3xl border border-slate-200 overflow-hidden shadow-sm w-full max-w-full">
-          <div className="p-6 sm:p-8 md:p-10 space-y-4 border-b border-slate-100">
-            <span className="inline-block px-3.5 py-1 bg-orange-50 text-orange-700 font-bold text-xs rounded-full border border-orange-200">
-              {post.category}
-            </span>
-            <h1 className="text-2xl sm:text-3xl md:text-4xl font-extrabold tracking-tight leading-snug sm:leading-tight text-black break-words">
-              {post.title}
-            </h1>
-          </div>
-
-          <div className="p-4 sm:p-6 md:p-10 space-y-6 sm:space-y-8">
-            {/* Metadata bar */}
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4 py-3 sm:py-4 border-b border-slate-100 text-xs text-black font-medium">
-              <div className="flex items-center gap-4 sm:gap-6 flex-wrap">
-                <span className="flex items-center gap-1.5">
-                  <Calendar className="w-4 h-4 text-orange-600 shrink-0" />
-                  {post.date}
+        {/* 2-Column Desktop Layout (Article main + Right Sidebar for Related Articles) */}
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-8 items-start">
+          {/* Main Article Column */}
+          <div className="md:col-span-8 space-y-6 w-full max-w-full overflow-hidden">
+            <article className="bg-white rounded-2xl sm:rounded-3xl border border-slate-200 overflow-hidden shadow-sm w-full max-w-full">
+              <div className="p-6 sm:p-8 md:p-10 space-y-4 border-b border-slate-100">
+                <span className="inline-block px-3.5 py-1 bg-orange-50 text-orange-700 font-bold text-xs rounded-full border border-orange-200">
+                  {post.category}
                 </span>
-                <span className="flex items-center gap-1.5">
-                  <User className="w-4 h-4 text-orange-600 shrink-0" />
-                  {post.author || 'Anwar'}
-                </span>
-                <span className="flex items-center gap-1.5">
-                  <Clock className="w-4 h-4 text-orange-600 shrink-0" />
-                  {post.readTime}
-                </span>
+                <h1 className="text-2xl sm:text-3xl md:text-4xl font-extrabold tracking-tight leading-snug sm:leading-tight text-black break-words">
+                  {post.title}
+                </h1>
               </div>
 
-              <div className="flex items-center gap-2 flex-wrap">
-                <button
-                  onClick={handleSummarize}
-                  disabled={isSummarizing}
-                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-orange-50 hover:bg-orange-100 text-orange-700 border border-orange-200 rounded-lg font-bold transition-colors text-xs disabled:opacity-50 shadow-sm cursor-pointer"
-                >
-                  {isSummarizing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5 text-orange-600" />}
-                  <span>{isSummarizing ? 'Summarising...' : 'Summarise with AI'}</span>
-                </button>
-
-                <button
-                  onClick={handleShare}
-                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-black rounded-lg font-bold transition-colors text-xs cursor-pointer"
-                >
-                  <Share2 className="w-3.5 h-3.5" />
-                  <span>{copied ? 'Link Copied!' : 'Share Article'}</span>
-                </button>
-              </div>
-            </div>
-
-            {/* WordPress HTML Content Renderer */}
-            <ArticleContent content={post.content} />
-
-            {/* Author Box */}
-            <div className="mt-8 pt-8 border-t border-slate-100">
-              <div className="p-6 sm:p-8 bg-gradient-to-br from-orange-50/60 to-amber-50/30 rounded-2xl border border-orange-200/60 flex flex-col sm:flex-row items-center sm:items-start gap-4 sm:gap-6 shadow-sm">
-                <div className="w-16 h-16 rounded-full overflow-hidden bg-orange-100 shrink-0 shadow-md border border-orange-200 relative">
-                  <Image
-                    src="/logo.png"
-                    alt={post.author || 'Anwar'}
-                    fill
-                    className="object-cover"
-                    referrerPolicy="no-referrer"
-                  />
-                </div>
-                <div className="space-y-2 text-center sm:text-left flex-1">
-                  <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
-                    <h3 className="font-extrabold text-black text-lg">{post.author || 'Anwar'}</h3>
-                    <span className="text-xs px-2.5 py-0.5 bg-orange-100 text-orange-800 rounded-full font-bold inline-block w-fit mx-auto sm:mx-0">
-                      AI Tools Analyst
+              <div className="p-4 sm:p-6 md:p-10 space-y-6 sm:space-y-8">
+                {/* Metadata bar (Share button right after read time) */}
+                <div className="flex flex-row items-center justify-between gap-3 py-3 sm:py-4 border-b border-slate-100 text-xs text-black font-medium">
+                  <div className="flex items-center gap-3 sm:gap-6 flex-wrap">
+                    <span className="flex items-center gap-1.5">
+                      <Calendar className="w-4 h-4 text-orange-600 shrink-0" />
+                      {post.date}
+                    </span>
+                    <span className="flex items-center gap-1.5">
+                      <User className="w-4 h-4 text-orange-600 shrink-0" />
+                      {post.author || 'Anwar'}
+                    </span>
+                    <span className="flex items-center gap-1.5">
+                      <Clock className="w-4 h-4 text-orange-600 shrink-0" />
+                      {post.readTime}
                     </span>
                   </div>
-                  <p className="text-black text-sm font-medium leading-relaxed">
-                    Anwar is the founder and lead editor at aitoolhindi.online. Dedicated to making artificial intelligence, prompt engineering, and cutting-edge tech simple and practical in Hindi for millions across India. He has analysed over 1000+ AI tools till date.
-                  </p>
+
+                  <div className="flex items-center gap-2 flex-wrap shrink-0">
+                    <button
+                      onClick={handleSummarize}
+                      disabled={isSummarizing}
+                      className="inline-flex items-center gap-1 px-3 py-1.5 bg-orange-50 hover:bg-orange-100 text-orange-700 border border-orange-200 rounded-lg font-bold transition-colors text-xs disabled:opacity-50 shadow-sm cursor-pointer"
+                    >
+                      {isSummarizing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3 text-orange-600" />}
+                      <span>{isSummarizing ? 'Summarising...' : 'Summarise with AI'}</span>
+                    </button>
+
+                    <button
+                      onClick={handleShare}
+                      className="inline-flex items-center gap-1 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-black rounded-lg font-bold transition-colors text-xs cursor-pointer"
+                    >
+                      <Share2 className="w-3 h-3" />
+                      <span>{copied ? 'Copied!' : 'Share'}</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* WordPress HTML Content Renderer */}
+                <ArticleContent content={post.content} />
+
+                {/* Author Box */}
+                <div className="mt-8 pt-8 border-t border-slate-100">
+                  <div className="p-6 sm:p-8 bg-gradient-to-br from-orange-50/60 to-amber-50/30 rounded-2xl border border-orange-200/60 flex flex-col sm:flex-row items-center sm:items-start gap-4 sm:gap-6 shadow-sm">
+                    <div className="w-16 h-16 rounded-full overflow-hidden bg-orange-100 shrink-0 shadow-md border border-orange-200 relative">
+                      <Image
+                        src="/logo.png"
+                        alt={post.author || 'Anwar'}
+                        fill
+                        className="object-cover"
+                        referrerPolicy="no-referrer"
+                      />
+                    </div>
+                    <div className="space-y-2 text-center sm:text-left flex-1">
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
+                        <h3 className="font-extrabold text-black text-lg">{post.author || 'Anwar'}</h3>
+                        <span className="text-xs px-2.5 py-0.5 bg-orange-100 text-orange-800 rounded-full font-bold inline-block w-fit mx-auto sm:mx-0">
+                          AI Tools Analyst
+                        </span>
+                      </div>
+                      <p className="text-black text-sm font-medium leading-relaxed">
+                        Anwar is the founder and lead editor at aitoolhindi.online. Dedicated to making artificial intelligence, prompt engineering, and cutting-edge tech simple and practical in Hindi for millions across India. He has analysed over 1000+ AI tools till date.
+                      </p>
+                    </div>
+                  </div>
                 </div>
               </div>
-            </div>
-          </div>
-        </article>
-
-        {/* Related Articles Section (6 articles) */}
-        <section className="mt-12 space-y-6 pt-6">
-          <div className="flex items-center justify-between">
-            <h2 className="text-2xl font-extrabold text-black tracking-tight">
-              संबंधित आर्टिकल्स (Related Articles)
-            </h2>
-            <Link href="/" className="text-xs font-bold text-orange-600 hover:text-orange-700">
-              View All Guides →
-            </Link>
+            </article>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
-            {posts
-              .filter(p => p.id !== post.id && p.status !== 'draft')
-              .slice(0, 6)
-              .map((p) => (
-                <Link
-                  key={p.id}
-                  href={`/${p.slug}`}
-                  className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm hover:shadow-md transition-all flex flex-col group"
-                >
-                  <div className="h-40 relative w-full bg-slate-200">
-                    <BlogImage
-                      src={p.image}
-                      alt={p.imageAlt || p.title}
-                      fill
-                      sizes="(max-width: 768px) 100vw, 33vw"
-                      className="object-cover group-hover:scale-105 transition-transform duration-300"
-                    />
-                  </div>
-                  <div className="p-5 flex flex-col justify-between flex-1 space-y-3">
-                    <div className="space-y-1.5">
-                      <div className="flex items-center gap-2 text-xs text-slate-500 font-medium">
-                        <span className="text-orange-600 font-bold">{p.category}</span>
-                        <span>•</span>
-                        <span>{p.date}</span>
+          {/* Right Sidebar (Desktop aside tag containing 6 related articles) */}
+          <aside className="md:col-span-4 space-y-6 w-full">
+            <div className="bg-white rounded-3xl border border-slate-200 p-5 shadow-sm space-y-4">
+              <h3 className="font-extrabold text-black text-base border-b border-slate-100 pb-3">
+                Related Articles
+              </h3>
+              <div className="space-y-3.5">
+                {posts
+                  .filter(p => p.id !== post.id && p.status !== 'draft')
+                  .slice(0, 6)
+                  .map((p) => (
+                    <Link
+                      key={p.id}
+                      href={`/${p.slug}`}
+                      className="flex items-center gap-3 group bg-slate-50 hover:bg-orange-50/50 p-2.5 rounded-2xl border border-slate-100 transition-all"
+                    >
+                      <div className="w-16 h-16 relative rounded-xl overflow-hidden bg-slate-200 shrink-0">
+                        <BlogImage
+                          src={p.image}
+                          alt={p.imageAlt || p.title}
+                          fill
+                          className="object-cover group-hover:scale-105 transition-transform"
+                        />
                       </div>
-                      <h3 className="font-bold text-black text-base group-hover:text-orange-600 transition-colors line-clamp-2">
-                        {p.title}
-                      </h3>
-                    </div>
-                    <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs font-bold text-orange-600">
-                      <span>Read Tutorial</span>
-                      <ArrowLeft className="w-3.5 h-3.5 rotate-180 group-hover:translate-x-1 transition-transform" />
-                    </div>
-                  </div>
-                </Link>
-              ))}
-          </div>
-        </section>
+                      <div className="space-y-1 flex-1 min-w-0">
+                        <div className="text-[10px] text-orange-600 font-bold truncate">{p.category}</div>
+                        <h4 className="font-bold text-black text-xs group-hover:text-orange-600 transition-colors line-clamp-2">
+                          {p.title}
+                        </h4>
+                      </div>
+                    </Link>
+                  ))}
+              </div>
+            </div>
+          </aside>
+        </div>
       </main>
 
       {/* AI Summary Modal */}
