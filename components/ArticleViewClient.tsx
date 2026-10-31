@@ -207,7 +207,7 @@ export default function ArticleViewClient({
     if (!post) return;
     setIsSummarizing(true);
     try {
-      const res = await fetch('/api/ai-supervisor', {
+      const res = await fetch('/api/ai-supervisor/', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -235,7 +235,7 @@ export default function ArticleViewClient({
     setIsAskingQuestion(true);
     setQuestionAnswer(null);
     try {
-      const res = await fetch('/api/ai-supervisor', {
+      const res = await fetch('/api/ai-supervisor/', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

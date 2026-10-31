@@ -1209,7 +1209,7 @@ export default function AdminPanelPage() {
     if (!aiKeyword.trim()) return;
     setIsGeneratingAi(true);
     try {
-      const res = await fetch('/api/ai-supervisor', {
+      const res = await fetch('/api/ai-supervisor/', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'generate', keywordOrTitle: aiKeyword })
@@ -1247,7 +1247,7 @@ export default function AdminPanelPage() {
     }
     setIsAnalyzingAi(true);
     try {
-      const res = await fetch('/api/ai-supervisor', {
+      const res = await fetch('/api/ai-supervisor/', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'analyze', keywordOrTitle: blogTitle, content: currentContent })
@@ -1274,7 +1274,7 @@ export default function AdminPanelPage() {
     }
     setIsOptimizingAi(true);
     try {
-      const res = await fetch('/api/ai-supervisor', {
+      const res = await fetch('/api/ai-supervisor/', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'optimize', keywordOrTitle: blogTitle, content: currentContent })
